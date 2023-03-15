@@ -16,7 +16,7 @@
     function searchPapers(query) {
       isLoading = true;
 
-      const endpoint = `http://api.semanticscholar.org/graph/v1/paper/search?query=${query}&offset=${offset}&limit=${limit}`;
+      const endpoint = `https://api.semanticscholar.org/graph/v1/paper/search?query=${query}&offset=${offset}&limit=${limit}`;
       fetch(endpoint)
         .then(response => {
           if (!response.ok) {
