@@ -1,7 +1,14 @@
 <script>
   import { link } from "svelte-spa-router";
 
-  export let title = "Topological effectiveness of machine learning paradigms";
+  function trimElipsis(text){
+    if(text.length>60){
+      text = text.slice(0,100)+"...";
+    }
+    return text
+  }
+
+  export let title = "Topological effectivenes of machine learning paradigms";
   export let size = 7;
   if (size > 8) {
     size = Math.floor(3 * Math.log2(size));
@@ -47,7 +54,7 @@
     <div class="paper" style="--random:{getTRandomNumber(3)}; --order:{size}">
       <div class="cover">
         <div class="content">
-          <div class="title">{title}</div>
+          <div class="title">{trimElipsis(title)}</div>
           <div class="count">{size} papers</div>
         </div>
       </div>

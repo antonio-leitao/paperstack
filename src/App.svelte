@@ -37,7 +37,7 @@
     place-items: center;
   }
   .center{
-    width:70%;
+    width:65%;
     display:flex;
     flex-direction: column;
     justify-content: center;

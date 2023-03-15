@@ -1,47 +1,37 @@
 <script>
     let query="";
     function handleSubmit() {
-      console.log(query);
+      searchPapers(query.replace(" ","+"))
     }
     // let searchQuery = '';
     // let searchTerm = null;
     // let totalPages = null;
     // let searchResults = [];
     // let nextPage = 1;
-    // let isLoading = false;
+    let isLoading = false;
+    let limit = 25;
+    let offset = 0;
 
 
-    // function searchUnsplash() {
-    //   isLoading = true;
+    function searchPapers(query) {
+      isLoading = true;
 
-    //   const endpoint =
-    //     `https://api.unsplash.com/search/photos?query=${searchTerm}&page=${nextPage}&per_page=28&client_id=${UNSPLASH_ACCESS_KEY}`;
-
-    //   fetch(endpoint)
-    //     .then(response => {
-    //       if (!response.ok) {
-    //         throw Error(response.statusText);
-    //       }
-    //       return response.json();
-    //     })
-    //     .then(data => {
-    //       if (data.total === 0) {
-    //         alert("No photos were found for your search query.")
-    //         return;
-    //       }
-
-    //       searchResults = [...searchResults, ...data.results];
-    //       totalPages = data.total_pages;
-
-    //       if (nextPage < totalPages) {
-    //         nextPage += 1;
-    //       }
-    //     })
-    //     .catch(() => alert("An error occured!"))
-    //     .finally(() => {
-    //       isLoading = false;
-    //     });
-    // }
+      const endpoint = `http://api.semanticscholar.org/graph/v1/paper/search?query=${query}&offset=${offset}&limit=${limit}`;
+      fetch(endpoint)
+        .then(response => {
+          if (!response.ok) {
+            throw Error(response.statusText);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log(data)
+        })
+        .catch(() => alert("An error occured!"))
+        .finally(() => {
+          isLoading = false;
+        });
+    }
   </script>
 
  
@@ -52,10 +42,6 @@
       placeholder="Search research papers online" />
     </form>
   </div>
-  {#if query}
-  {query}
-  {/if}
-  
 
   <style>
     .search{
