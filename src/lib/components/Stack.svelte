@@ -1,9 +1,11 @@
 <script>
   import { link } from "svelte-spa-router";
-  function randomFloat(start, end) {
-    return Math.random() * (end - start) + start;
-  }
+
+  export let title = "Topological effectiveness of machine learning paradigms";
   export let size = 7;
+  if (size > 8) {
+    size = Math.floor(3 * Math.log2(size));
+  }
   function getRandomNormal(mean, stdDev) {
     let u1 = 0,
       u2 = 0;
@@ -12,74 +14,89 @@
     const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
     return z0 * stdDev + mean;
   }
+  function getTRandomNumber(df) {
+    // df: degrees of freedom
+    // returns a random number from a t-distribution with the given degrees of freedom
+
+    // generate two independent standard normal random variables
+    var z1 = Math.random() * 2 - 1; // uniform(-1, 1)
+    var z2 = Math.random() * 2 - 1; // uniform(-1, 1)
+
+    // calculate the squared norm of the vector (z1, z2)
+    var s = z1 * z1 + z2 * z2;
+
+    // if s is zero, generate a new pair of random variables
+    while (s === 0 || s > 1) {
+      z1 = Math.random() * 2 - 1; // uniform(-1, 1)
+      z2 = Math.random() * 2 - 1; // uniform(-1, 1)
+      s = z1 * z1 + z2 * z2;
+    }
+
+    // calculate the t-distributed random variable
+    var t = z1 * Math.sqrt(df * (s / (1 - s)));
+
+    return t;
+  }
 </script>
 
 <a href={"/publications"} use:link>
   <div class="stack">
-    <div class="label">PUBLICATIONS</div>
     {#each { length: size } as _, i}
-      <div class="paper" style="--random:{getRandomNormal(0, 2)}; --order:{i}" />
+      <div class="paper" style="--random:{getTRandomNumber(5)}; --order:{i}" />
     {/each}
-  </div>
-</a>
+    <div class="paper" style="--random:{getTRandomNumber(3)}; --order:{size}">
+      <div class="cover">
+        <div class="content">
+          <div class="title">{title}</div>
+          <div class="count">{size} papers</div>
+        </div>
+      </div>
+      <div />
+    </div>
+  </div></a
+>
 
 <style>
-  .label {
-    font-family: "Helvetica", "Arial", sans-serif;
-    position: absolute;
-    top: 30%;
-    color: var(--text1);
-    font-size: 0.8rem;
-    font-weight: 100;
-    text-transform: uppercase;
-    letter-spacing: 0.2rem;
-    margin-bottom: 0.5rem;
-    z-index: 5;
-    background-color: rgb(0, 0, 0, 0.8);
-    background-color: var(--clr-mixred-dark);
-    padding: 0.5rem;
-    cursor: pointer;
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 1);
-  }
-  .stack {
-    display: grid;
-    place-items: center;
-    margin: 2rem;
-    position: relative;
-    min-width: 7rem;
-    aspect-ratio: 1/1.4;
-  }
-  .paper {
-    position: absolute;
-    top: 0;
-    display: grid;
-    place-items: center;
-    border: 1px solid rgba(0, 0, 0, 0.3);
-    border-radius: 5px;
-    width: 5rem;
-    aspect-ratio: 1/1.4;
-    cursor: pointer;
-    /* Functional props*/
-    position: absolute;
-    --rotation: calc(calc(30deg / -4) + calc(calc(30deg / 25)) * var(--order));
-    --y_offset: calc(var(--order) * -2px);
-    transform: rotate(calc(var(--random) * 2deg))
-      translate(calc(var(--order) * -2px), calc(var(--y_offset)));
-    transform-origin: center;
-    transition: all 0.5s cubic-bezier(0.05, 0.43, 0.25, 0.95);
-    background-color: white;
-    box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4);
-  }
 
-  .stack:hover > .paper {
-    transform: rotate(calc(calc(60deg / -2) + 10deg * var(--order)));
-    transform-origin: center 120%;
-    box-shadow: -15px 2px 15px rgba(0, 0, 0, 0.07),
-      0px 0px 8px rgba(0, 0, 0, 0.07);
+  .paper:first-child {
+    box-shadow: none;
   }
+  /* .stack:hover > .paper{
+    transform: rotate(0) translate(calc(var(--order) * -2px), calc(var(--order) * -2px));
+  } */
   a {
     color: inherit;
     font: inherit;
     text-decoration: inherit;
+  }
+  .cover {
+    position: absolute;
+    color: var(--text1);
+    width: 100%;
+    height: 100%;
+    display:grid;
+    place-items: center;
+  }
+  .content {
+    position: absolute;
+    width: 92%;
+    height:95%;
+    border-radius: 0.15rem;
+    border: 1px lightgray solid;
+    padding: 0.25rem;
+    
+  }
+  .title{
+    font-family: Arbutus Slab, serif;
+    font-size:0.95rem;
+    margin-top:0.5rem;
+  }
+  .count{
+    font-family: Open 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+    font-size:0.6rem;
+    color:lightgrey;
+    position:absolute;
+    bottom:10%;
+    right:10%;
   }
 </style>

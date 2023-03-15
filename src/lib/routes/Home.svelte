@@ -1,21 +1,9 @@
 <script>
-  import  Stack from "../components/Stack.svelte";
+  import SearchBar from "../components/SearchBar.svelte";
+  import StackGrid from "../components/StackGrid.svelte";
 </script>
 
-<h2>Home component</h2>
+<h2>PaperStack</h2>
 
-<div class="temp">
-  <Stack />
-</div>
-<div class="temp">
-  <Stack size={2}/>
-</div>
-<div class="temp">
-  <Stack size={20}/>
-</div>
-
-<style>
-  .temp{
-    width:10rem
-  }
-</style>
+<SearchBar/>
+<StackGrid/>

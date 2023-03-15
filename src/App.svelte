@@ -22,4 +22,27 @@
   <a href="/wild/colors" use:link>Colors</a>
 </nav>
 
-<Router {routes} on:conditionsFailed={conditionsFailed} />
+
+<div class="layout">
+  <div class="center">
+    <Router {routes} on:conditionsFailed={conditionsFailed} />
+  </div>
+  
+</div>
+
+<style>
+  .layout{
+    width:99vw;
+    display: grid;
+    place-items: center;
+  }
+  .center{
+    width:70%;
+    display:flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+  
+</style>
+
