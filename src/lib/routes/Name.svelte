@@ -206,19 +206,9 @@
 </script>
 
 <div class="header">
-  <h2>Collection Name</h2>
+  <h2>{params.stackId}</h2>
 
-  <p>
-    route props:
-    <b>{params.first}</b>
-    <b
-      >{#if params.last}{params.last}{/if}</b
-    >
-  </p>
-
-  <p>
     static props: {num}
-  </p>
 
   <div class="buttons">
     <div class="icon">
@@ -289,9 +279,6 @@
     align-items: center;
     justify-content: center;
   }
-  .footer span {
-    display: block;
-  }
   .cards{
     width: max(70%, 30rem);
   }
@@ -300,7 +287,6 @@
     position: sticky;
     display: flex;
     align-items: left;
-    justify-content: center;
     flex-direction: column;
     border-radius: 1rem;
     background-position: center;
@@ -308,7 +294,8 @@
     /* border: 1px lightgray solid; */
     height: 90vh;
     
-    padding: 2rem;
+    padding: 3rem;
+    padding-top:10rem;
     --shadow: calc(var(--order) * 3px);
     box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 50px)
       rgba(0, 0, 0, 0.25);

@@ -18,8 +18,6 @@
 
 <nav>
   <a href="/" use:link>Home</a>
-  <a href="/hello/antonio/leitao" use:link>Hello</a>
-  <a href="/wild/colors" use:link>Colors</a>
 </nav>
 
 

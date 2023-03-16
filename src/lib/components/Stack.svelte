@@ -9,6 +9,7 @@
   }
 
   export let title = "Topological effectivenes of machine learning paradigms";
+  export let stackId;
   export let size = 7;
   if (size > 8) {
     size = Math.floor(3 * Math.log2(size));
@@ -22,31 +23,21 @@
     return z0 * stdDev + mean;
   }
   function getTRandomNumber(df) {
-    // df: degrees of freedom
-    // returns a random number from a t-distribution with the given degrees of freedom
-
-    // generate two independent standard normal random variables
     var z1 = Math.random() * 2 - 1; // uniform(-1, 1)
     var z2 = Math.random() * 2 - 1; // uniform(-1, 1)
-
-    // calculate the squared norm of the vector (z1, z2)
     var s = z1 * z1 + z2 * z2;
-
-    // if s is zero, generate a new pair of random variables
     while (s === 0 || s > 1) {
       z1 = Math.random() * 2 - 1; // uniform(-1, 1)
       z2 = Math.random() * 2 - 1; // uniform(-1, 1)
       s = z1 * z1 + z2 * z2;
     }
-
-    // calculate the t-distributed random variable
     var t = z1 * Math.sqrt(df * (s / (1 - s)));
 
     return t;
   }
 </script>
 
-<a href={"/publications"} use:link>
+<a href={"/stacks/"+stackId} use:link>
   <div class="stack">
     {#each { length: size } as _, i}
       <div class="paper" style="--random:{getTRandomNumber(4)}; --order:{i}" />

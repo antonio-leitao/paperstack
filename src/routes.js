@@ -4,26 +4,20 @@ import { wrap } from "svelte-spa-router/wrap";
 import Home from "./lib/routes/Home.svelte";
 import Loading from "./lib/routes/Loading.svelte";
 import Four0Four from "./lib/routes/Four0Four.svelte";
+import Name from "./lib/routes/Name.svelte";
 
 export default {
   // Exact path
   "/": Home,
 
-  "/hello/:first/:last?": wrap({
-    asyncComponent: () => import("./lib/routes/Name.svelte"),
-    //passed only to the route events
-    userData: { hello: "world" },
-
-    props: {
-      num: 42,
-    },
-
-    loadingComponent: Loading,
-    loadingParams: {
-      message: "Loading the Name route…",
-    },
-  }),
-
+  // "/stacks/:stackId": wrap({
+  //   asyncComponent: () => import("./lib/routes/Name.svelte"),
+  //   loadingComponent: Loading,
+  //   loadingParams: {
+  //     message: "Loading the Name route…",
+  //   },
+  // }),
+  "/stacks/:stackId": Name,
   // Wildcard parameter
   // This matches `/wild/*` (with anything after), but NOT `/wild` (with nothing after)
   // This is dynamically imported too

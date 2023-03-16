@@ -19,7 +19,11 @@
 {#if Math.random() < 0.5}
   <Postit {notes} />
 {/if}
-{year} | {citationCount} cit.
+
+<div class="abstract">
+  {year} | {citationCount} cit.
+</div>
+
 <h2>
   {title}
 </h2>
@@ -48,13 +52,15 @@
   h2 {
     font-size: 2.5rem;
     font-family: "Lora", serif;
-    margin-top: 0.5rem;
     font-weight: 800;
   }
   .abstract {
     font-weight: 100;
   }
-
+  .authors {
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
   .buttons {
     width: 100%;
     display: flex;
