@@ -17,5 +17,6 @@
     font-family: Arbutus Slab, serif;
     color:gray;
     background-color: #F9F9F9;
+    box-shadow: none;
   }
 </style>

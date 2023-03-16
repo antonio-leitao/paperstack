@@ -49,9 +49,9 @@
 <a href={"/publications"} use:link>
   <div class="stack">
     {#each { length: size } as _, i}
-      <div class="paper" style="--random:{getTRandomNumber(5)}; --order:{i}" />
+      <div class="paper" style="--random:{getTRandomNumber(4)}; --order:{i}" />
     {/each}
-    <div class="paper" style="--random:{getTRandomNumber(3)}; --order:{size}">
+    <div class="paper" style="--random:{getTRandomNumber(2)}; --order:{size}">
       <div class="cover">
         <div class="content">
           <div class="title">{trimElipsis(title)}</div>

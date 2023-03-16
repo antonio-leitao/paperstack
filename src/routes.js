@@ -22,18 +22,6 @@ export default {
     loadingParams: {
       message: "Loading the Name route…",
     },
-
-    conditions: [
-      (detail) => {
-        // Pre-condition succeeds only 50% of times
-        return Math.random() > 0.5;
-      },
-      // Second pre-condition function (async)
-      async (detail) => {
-        console.log(detail.location); //check git for the fields()
-        return true;
-      },
-    ],
   }),
 
   // Wildcard parameter
