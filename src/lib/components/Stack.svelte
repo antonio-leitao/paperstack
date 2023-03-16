@@ -94,7 +94,8 @@
     
   }
   .title{
-    font-family: Arbutus Slab, serif;
+    font-family: 'Lora', serif;
+    font-weight: 500;
     font-size:0.95rem;
     margin-top:0.5rem;
   }

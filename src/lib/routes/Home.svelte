@@ -7,3 +7,12 @@
 
 <SearchBar/>
 <StackGrid/>
+
+
+<style>
+  h2{
+    font-family: 'Lora',serif;
+    font-weight:700;
+    font-size:4rem;
+  }
+</style>
