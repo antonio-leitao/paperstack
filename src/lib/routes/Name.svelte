@@ -1,5 +1,6 @@
 <script>
   import Paper from "../components/Paper.svelte";
+  import {Edit3, Files, Link, Wifi, WifiOff, Trash2} from "lucide-svelte";
   let papers = [
     {
       paperId: "649def34f8be52c8b66281af98ae884c09aef38b",
@@ -184,14 +185,8 @@
   ];
   export let num;
   export let params = {};
-  function getRandomNormal(mean, stdDev) {
-    let u1 = 0,
-      u2 = 0;
-    while (u1 === 0) u1 = Math.random();
-    while (u2 === 0) u2 = Math.random();
-    const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-    return z0 * stdDev + mean;
-  }
+
+
   function getTRandomNumber(df) {
     var z1 = Math.random() * 2 - 1; // uniform(-1, 1)
     var z2 = Math.random() * 2 - 1; // uniform(-1, 1)
@@ -207,6 +202,7 @@
   }
 
   let N = papers.length + 1;
+  let visible=false;
 </script>
 
 <div class="header">
@@ -223,7 +219,27 @@
   <p>
     static props: {num}
   </p>
+
+  <div class="buttons">
+    <div class="icon">
+      <Edit3/>
+    </div>
+    <div class="icon">
+      <Files/>
+    </div>
+    <div class="icon">
+      {#if visible}
+      <Wifi/>
+      {:else}
+      <WifiOff/>
+      {/if}
+    </div>
+    <div class="icon">
+      <Link/>
+    </div>
+  </div>
 </div>
+
 
 {#each papers as paper, i}
   {#if i == 0}
@@ -251,10 +267,11 @@
 
 
 <div class="footer">
-  This is Footer&nbsp;<span>
-    Made by <a target="_blank" href="https://e-s.tw/">ES Design - Eason</a
-    ></span
-  >
+  <div class="buttons">
+    <div class="icon trash">
+      <Trash2 strokeWidth=1 size="42" />
+    </div>
+  </div>
 </div>
 
 <style>
@@ -297,5 +314,24 @@
       rgba(0, 0, 0, 0.25);
     transform: rotate(calc(var(--random) * 2deg))
       translate(calc(var(--order) * -2px), calc(var(--order) * -2px));
+  }
+
+  .buttons {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    color: gray;
+  }
+  .icon{
+    margin:2rem;
+    cursor:pointer;
+  }
+  .icon:hover {
+    color: black;
+  }
+  .trash:hover{
+    color:red;
   }
 </style>
