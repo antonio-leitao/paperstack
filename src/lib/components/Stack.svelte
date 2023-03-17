@@ -91,7 +91,6 @@
     margin-top:0.5rem;
   }
   .count{
-    font-family: Open 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
     font-size:0.6rem;
     color:lightgrey;
     position:absolute;

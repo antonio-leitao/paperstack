@@ -11,7 +11,7 @@
     });
   }
 
-  import { Forward, FileText, Files, X } from "lucide-svelte";
+  import { Forward, FileText, Files, X, FilePlus } from "lucide-svelte";
   import Postit from "./Postit.svelte";
   export let notes =
     "Lorem ipsum dolor sit amet consectetur adipisicing elit. Debitis nobis suntnumquam quaerat vero corporis, fugiat unde itaque explicabo nisi noncupiditate maiores delectus eum. Distinctio quaerat eaque quo aliquid.";
@@ -29,17 +29,28 @@
   function cite() {
     bibStatus = "Bib Copied";
     setTimeout(() => {
-    bibStatus = "Cite";
-  }, 3000);
+      bibStatus = "Cite";
+    }, 3000);
+  }
+  if (Math.random() < 0.5) {
+    notes = "";
   }
 </script>
 
-{#if Math.random() < 0.5}
+{#if notes}
   <Postit {notes} />
 {/if}
 
-<div class="abstract">
-  {year} | {citationCount} cit.
+<div class="banner">
+  <div class="abstract">
+    {year} | {citationCount} cit.
+  </div>
+  {#if !notes}
+    <div class="emptynote">
+      <FilePlus strokeWidth="1" size="42" />
+      <div class="smalltext">Add Note</div>
+    </div>
+  {/if}
 </div>
 
 <h2>
@@ -104,7 +115,19 @@
     display: grid;
     place-items: center;
   }
+  .emptynote:hover, 
   .icon:hover {
     color: black;
+  }
+  .banner {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: end;
+  }
+  .emptynote {
+    color: gray;
+    margin-right: 1rem;
+    cursor: pointer;
   }
 </style>

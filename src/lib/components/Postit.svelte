@@ -1,5 +1,6 @@
 <script>
   export let notes;
+  import { StickyNote } from "lucide-svelte";
   function getRandomNormal(mean, stdDev) {
     let u1 = 0,
       u2 = 0;
@@ -10,7 +11,7 @@
   }
 </script>
 
-<div class="postit --random:{getRandomNormal(0, 2)}">
+<div class="postit" style="--random:{getRandomNormal(0, 1.5)}">
   <div class="note">
     {notes}
   </div>
@@ -31,5 +32,10 @@
       0 0 40px rgba(0, 0, 0, 0.06) inset;
     transform: rotate(calc(var(--random) * 4deg))
       translate(calc(var(--random) * -20px), calc(var(--random) * -10px));
+  }
+  .noteicon {
+    position: absolute;
+    top: 5%;
+    right: 10%;
   }
 </style>

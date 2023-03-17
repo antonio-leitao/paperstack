@@ -129,6 +129,7 @@
 
 <div id="background" class:hidden on:click={cleanSlate} />
 <div id="foreground" class:hidden>
+  <slot name=title/>
   <slot name="input">
     <input type="text" bind:value bind:this={inputEl} />
   </slot>

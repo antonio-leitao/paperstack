@@ -229,7 +229,9 @@
   bind:hidden={hiddenSearch}
   on:pick={onPick}
   keys={["label", "link"]}
-/>
+>
+  <h3 slot="title">Move paper to which stack:</h3>
+</PopFuzzySearch>
 <div class="header">
   <h2>{params.stackId}</h2>
 
