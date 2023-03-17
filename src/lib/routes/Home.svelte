@@ -3,6 +3,8 @@
   import SearchBar from "../components/SearchBar.svelte";
   import StackGrid from "../components/StackGrid.svelte";
   import PopFuzzySearch from "../components/PopFuzzySearch.svelte";
+  let isLoading = false;
+  let queryResult = undefined;
 
   function onPick(e) {
     hiddenSearch = true;
@@ -37,13 +39,20 @@
     <h3>{selectedPaper.title}</h3>
     [tl;dr]
     <div class="abstract">
-      {selectedPaper.abstract}
+      {selectedPaper.tldr.text}
     </div>
     <h3>Add to stack:</h3>
   </div>
 </PopFuzzySearch>
-<SearchBar />
-<ResultStack on:addPaper={addPaper} />
+<SearchBar
+  bind:isLoading
+  on:queryData={(e) => (queryResult = e.detail.papers)}
+/>
+{#if isLoading}
+  <h2>Loading mah dude</h2>
+{:else}
+  <ResultStack {queryResult} on:addPaper={addPaper} />
+{/if}
 <StackGrid />
 
 <style>
