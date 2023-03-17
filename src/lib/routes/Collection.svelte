@@ -286,7 +286,7 @@
   {:else}
     <div
       class="cards"
-      style="--random:{getTRandomNumber(3)};--order:{i + 1};height: {90 *
+      style="--random:{getTRandomNumber(2)};--order:{i + 1};height: {90 *
         (N - i)}vh;margin-top: {90 * (i - N)}vh;"
     >
       <div class="card">
@@ -338,12 +338,13 @@
     height: 90vh;
 
     padding: 3rem;
-    padding-top: 10rem;
+    padding-top: 6rem;
     --shadow: calc(var(--order) * 3px);
     box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 50px)
       rgba(0, 0, 0, 0.25);
     transform: rotate(calc(var(--random) * 2deg))
       translate(calc(var(--order) * -2px), calc(var(--order) * -2px));
+    transform-origin: center 120%;
   }
 
   .buttons {

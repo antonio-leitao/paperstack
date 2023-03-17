@@ -9,188 +9,6 @@
       paper: paper,
     });
   }
-//   queryResult = [
-//     {
-//       paperId: "649def34f8be52c8b66281af98ae884c09aef38b",
-//       url: "https://www.semanticscholar.org/paper/649def34f8be52c8b66281af98ae884c09aef38b",
-//       title: "Construction of the Literature Graph in Semantic Scholar",
-//       abstract:
-//         "We describe a deployed scalable system for organizing published scientific literature into a heterogeneous graph to facilitate algorithmic manipulation and discovery. The resulting literature graph consists of more than 280M nodes, representing papers, authors, entities and various interactions between them (e.g., authorships, citations, entity mentions). We reduce literature graph construction into familiar NLP tasks (e.g., entity extraction and linking), point out research challenges due to differences from standard formulations of these tasks, and report empirical results for each task. The methods described in this paper are used to enable semantic features in www.semanticscholar.org.",
-//       year: 2018,
-//       citationCount: 296,
-//       openAccessPdf: {
-//         url: "https://www.aclweb.org/anthology/N18-3011.pdf",
-//         status: "HYBRID",
-//       },
-//       citationStyles: {
-//         bibtex:
-//           "@['JournalArticle', 'Conference']{Ammar2018ConstructionOT,\n author = {Waleed Ammar and Dirk Groeneveld and Chandra Bhagavatula and Iz Beltagy and Miles Crawford and Doug Downey and Jason Dunkelberger and Ahmed Elgohary and Sergey Feldman and Vu A. Ha and Rodney Michael Kinney and Sebastian Kohlmeier and Kyle Lo and Tyler C. Murray and Hsu-Han Ooi and Matthew E. Peters and Joanna L. Power and Sam Skjonsberg and Lucy Lu Wang and Christopher Wilhelm and Zheng Yuan and Madeleine van Zuylen and Oren Etzioni},\n booktitle = {North American Chapter of the Association for Computational Linguistics},\n pages = {84-91},\n title = {Construction of the Literature Graph in Semantic Scholar},\n year = {2018}\n}\n",
-//       },
-//       authors: [
-//         { authorId: "145585097", name: "Waleed Ammar" },
-//         { authorId: "3458736", name: "Dirk Groeneveld" },
-//         { authorId: "1857797", name: "Chandra Bhagavatula" },
-//         { authorId: "46181066", name: "Iz Beltagy" },
-//         { authorId: "46230609", name: "Miles Crawford" },
-//         { authorId: "145612610", name: "Doug Downey" },
-//         { authorId: "38092776", name: "Jason Dunkelberger" },
-//         { authorId: "143718836", name: "Ahmed Elgohary" },
-//         { authorId: "46411828", name: "Sergey Feldman" },
-//         { authorId: "4480314", name: "Vu A. Ha" },
-//         { authorId: "143967880", name: "Rodney Michael Kinney" },
-//       ],
-//     },
-//     {
-//       paperId: "649def34f8be52c8b66281af98ae884c09aef38b",
-//       url: "https://www.semanticscholar.org/paper/649def34f8be52c8b66281af98ae884c09aef38b",
-//       title: "Construction of the Literature Graph in Semantic Scholar",
-//       abstract:
-//         "We describe a deployed scalable system for organizing published scientific literature into a heterogeneous graph to facilitate algorithmic manipulation and discovery. The resulting literature graph consists of more than 280M nodes, representing papers, authors, entities and various interactions between them (e.g., authorships, citations, entity mentions). We reduce literature graph construction into familiar NLP tasks (e.g., entity extraction and linking), point out research challenges due to differences from standard formulations of these tasks, and report empirical results for each task. The methods described in this paper are used to enable semantic features in www.semanticscholar.org.",
-//       year: 2018,
-//       citationCount: 296,
-//       openAccessPdf: {
-//         url: "https://www.aclweb.org/anthology/N18-3011.pdf",
-//         status: "HYBRID",
-//       },
-//       citationStyles: {
-//         bibtex:
-//           "@['JournalArticle', 'Conference']{Ammar2018ConstructionOT,\n author = {Waleed Ammar and Dirk Groeneveld and Chandra Bhagavatula and Iz Beltagy and Miles Crawford and Doug Downey and Jason Dunkelberger and Ahmed Elgohary and Sergey Feldman and Vu A. Ha and Rodney Michael Kinney and Sebastian Kohlmeier and Kyle Lo and Tyler C. Murray and Hsu-Han Ooi and Matthew E. Peters and Joanna L. Power and Sam Skjonsberg and Lucy Lu Wang and Christopher Wilhelm and Zheng Yuan and Madeleine van Zuylen and Oren Etzioni},\n booktitle = {North American Chapter of the Association for Computational Linguistics},\n pages = {84-91},\n title = {Construction of the Literature Graph in Semantic Scholar},\n year = {2018}\n}\n",
-//       },
-//       authors: [
-//         { authorId: "145585097", name: "Waleed Ammar" },
-//         { authorId: "3458736", name: "Dirk Groeneveld" },
-//         { authorId: "1857797", name: "Chandra Bhagavatula" },
-//         { authorId: "46181066", name: "Iz Beltagy" },
-//         { authorId: "46230609", name: "Miles Crawford" },
-//         { authorId: "145612610", name: "Doug Downey" },
-//         { authorId: "38092776", name: "Jason Dunkelberger" },
-//         { authorId: "143718836", name: "Ahmed Elgohary" },
-//         { authorId: "46411828", name: "Sergey Feldman" },
-//         { authorId: "4480314", name: "Vu A. Ha" },
-//         { authorId: "143967880", name: "Rodney Michael Kinney" },
-//       ],
-//     },
-//     {
-//       paperId: "649def34f8be52c8b66281af98ae884c09aef38b",
-//       url: "https://www.semanticscholar.org/paper/649def34f8be52c8b66281af98ae884c09aef38b",
-//       title: "Construction of the Literature Graph in Semantic Scholar",
-//       abstract:
-//         "We describe a deployed scalable system for organizing published scientific literature into a heterogeneous graph to facilitate algorithmic manipulation and discovery. The resulting literature graph consists of more than 280M nodes, representing papers, authors, entities and various interactions between them (e.g., authorships, citations, entity mentions). We reduce literature graph construction into familiar NLP tasks (e.g., entity extraction and linking), point out research challenges due to differences from standard formulations of these tasks, and report empirical results for each task. The methods described in this paper are used to enable semantic features in www.semanticscholar.org.",
-//       year: 2018,
-//       citationCount: 296,
-//       openAccessPdf: {
-//         url: "https://www.aclweb.org/anthology/N18-3011.pdf",
-//         status: "HYBRID",
-//       },
-//       citationStyles: {
-//         bibtex:
-//           "@['JournalArticle', 'Conference']{Ammar2018ConstructionOT,\n author = {Waleed Ammar and Dirk Groeneveld and Chandra Bhagavatula and Iz Beltagy and Miles Crawford and Doug Downey and Jason Dunkelberger and Ahmed Elgohary and Sergey Feldman and Vu A. Ha and Rodney Michael Kinney and Sebastian Kohlmeier and Kyle Lo and Tyler C. Murray and Hsu-Han Ooi and Matthew E. Peters and Joanna L. Power and Sam Skjonsberg and Lucy Lu Wang and Christopher Wilhelm and Zheng Yuan and Madeleine van Zuylen and Oren Etzioni},\n booktitle = {North American Chapter of the Association for Computational Linguistics},\n pages = {84-91},\n title = {Construction of the Literature Graph in Semantic Scholar},\n year = {2018}\n}\n",
-//       },
-//       authors: [
-//         { authorId: "145585097", name: "Waleed Ammar" },
-//         { authorId: "3458736", name: "Dirk Groeneveld" },
-//         { authorId: "1857797", name: "Chandra Bhagavatula" },
-//         { authorId: "46181066", name: "Iz Beltagy" },
-//         { authorId: "46230609", name: "Miles Crawford" },
-//         { authorId: "145612610", name: "Doug Downey" },
-//         { authorId: "38092776", name: "Jason Dunkelberger" },
-//         { authorId: "143718836", name: "Ahmed Elgohary" },
-//         { authorId: "46411828", name: "Sergey Feldman" },
-//         { authorId: "4480314", name: "Vu A. Ha" },
-//         { authorId: "143967880", name: "Rodney Michael Kinney" },
-//       ],
-//     },
-//     {
-//       paperId: "649def34f8be52c8b66281af98ae884c09aef38b",
-//       url: "https://www.semanticscholar.org/paper/649def34f8be52c8b66281af98ae884c09aef38b",
-//       title: "Construction of the Literature Graph in Semantic Scholar",
-//       abstract:
-//         "We describe a deployed scalable system for organizing published scientific literature into a heterogeneous graph to facilitate algorithmic manipulation and discovery. The resulting literature graph consists of more than 280M nodes, representing papers, authors, entities and various interactions between them (e.g., authorships, citations, entity mentions). We reduce literature graph construction into familiar NLP tasks (e.g., entity extraction and linking), point out research challenges due to differences from standard formulations of these tasks, and report empirical results for each task. The methods described in this paper are used to enable semantic features in www.semanticscholar.org.",
-//       year: 2018,
-//       citationCount: 296,
-//       openAccessPdf: {
-//         url: "https://www.aclweb.org/anthology/N18-3011.pdf",
-//         status: "HYBRID",
-//       },
-//       citationStyles: {
-//         bibtex:
-//           "@['JournalArticle', 'Conference']{Ammar2018ConstructionOT,\n author = {Waleed Ammar and Dirk Groeneveld and Chandra Bhagavatula and Iz Beltagy and Miles Crawford and Doug Downey and Jason Dunkelberger and Ahmed Elgohary and Sergey Feldman and Vu A. Ha and Rodney Michael Kinney and Sebastian Kohlmeier and Kyle Lo and Tyler C. Murray and Hsu-Han Ooi and Matthew E. Peters and Joanna L. Power and Sam Skjonsberg and Lucy Lu Wang and Christopher Wilhelm and Zheng Yuan and Madeleine van Zuylen and Oren Etzioni},\n booktitle = {North American Chapter of the Association for Computational Linguistics},\n pages = {84-91},\n title = {Construction of the Literature Graph in Semantic Scholar},\n year = {2018}\n}\n",
-//       },
-//       authors: [
-//         { authorId: "145585097", name: "Waleed Ammar" },
-//         { authorId: "3458736", name: "Dirk Groeneveld" },
-//         { authorId: "1857797", name: "Chandra Bhagavatula" },
-//         { authorId: "46181066", name: "Iz Beltagy" },
-//         { authorId: "46230609", name: "Miles Crawford" },
-//         { authorId: "145612610", name: "Doug Downey" },
-//         { authorId: "38092776", name: "Jason Dunkelberger" },
-//         { authorId: "143718836", name: "Ahmed Elgohary" },
-//         { authorId: "46411828", name: "Sergey Feldman" },
-//         { authorId: "4480314", name: "Vu A. Ha" },
-//         { authorId: "143967880", name: "Rodney Michael Kinney" },
-//       ],
-//     },
-//     {
-//       paperId: "649def34f8be52c8b66281af98ae884c09aef38b",
-//       url: "https://www.semanticscholar.org/paper/649def34f8be52c8b66281af98ae884c09aef38b",
-//       title: "Construction of the Literature Graph in Semantic Scholar",
-//       abstract:
-//         "We describe a deployed scalable system for organizing published scientific literature into a heterogeneous graph to facilitate algorithmic manipulation and discovery. The resulting literature graph consists of more than 280M nodes, representing papers, authors, entities and various interactions between them (e.g., authorships, citations, entity mentions). We reduce literature graph construction into familiar NLP tasks (e.g., entity extraction and linking), point out research challenges due to differences from standard formulations of these tasks, and report empirical results for each task. The methods described in this paper are used to enable semantic features in www.semanticscholar.org.",
-//       year: 2018,
-//       citationCount: 296,
-//       openAccessPdf: {
-//         url: "https://www.aclweb.org/anthology/N18-3011.pdf",
-//         status: "HYBRID",
-//       },
-//       citationStyles: {
-//         bibtex:
-//           "@['JournalArticle', 'Conference']{Ammar2018ConstructionOT,\n author = {Waleed Ammar and Dirk Groeneveld and Chandra Bhagavatula and Iz Beltagy and Miles Crawford and Doug Downey and Jason Dunkelberger and Ahmed Elgohary and Sergey Feldman and Vu A. Ha and Rodney Michael Kinney and Sebastian Kohlmeier and Kyle Lo and Tyler C. Murray and Hsu-Han Ooi and Matthew E. Peters and Joanna L. Power and Sam Skjonsberg and Lucy Lu Wang and Christopher Wilhelm and Zheng Yuan and Madeleine van Zuylen and Oren Etzioni},\n booktitle = {North American Chapter of the Association for Computational Linguistics},\n pages = {84-91},\n title = {Construction of the Literature Graph in Semantic Scholar},\n year = {2018}\n}\n",
-//       },
-//       authors: [
-//         { authorId: "145585097", name: "Waleed Ammar" },
-//         { authorId: "3458736", name: "Dirk Groeneveld" },
-//         { authorId: "1857797", name: "Chandra Bhagavatula" },
-//         { authorId: "46181066", name: "Iz Beltagy" },
-//         { authorId: "46230609", name: "Miles Crawford" },
-//         { authorId: "145612610", name: "Doug Downey" },
-//         { authorId: "38092776", name: "Jason Dunkelberger" },
-//         { authorId: "143718836", name: "Ahmed Elgohary" },
-//         { authorId: "46411828", name: "Sergey Feldman" },
-//         { authorId: "4480314", name: "Vu A. Ha" },
-//         { authorId: "143967880", name: "Rodney Michael Kinney" },
-//       ],
-//     },
-//     {
-//       paperId: "649def34f8be52c8b66281af98ae884c09aef38b",
-//       url: "https://www.semanticscholar.org/paper/649def34f8be52c8b66281af98ae884c09aef38b",
-//       title: "Construction of the Literature Graph in Semantic Scholar",
-//       abstract:
-//         "We describe a deployed scalable system for organizing published scientific literature into a heterogeneous graph to facilitate algorithmic manipulation and discovery. The resulting literature graph consists of more than 280M nodes, representing papers, authors, entities and various interactions between them (e.g., authorships, citations, entity mentions). We reduce literature graph construction into familiar NLP tasks (e.g., entity extraction and linking), point out research challenges due to differences from standard formulations of these tasks, and report empirical results for each task. The methods described in this paper are used to enable semantic features in www.semanticscholar.org.",
-//       year: 2018,
-//       citationCount: 296,
-//       openAccessPdf: {
-//         url: "https://www.aclweb.org/anthology/N18-3011.pdf",
-//         status: "HYBRID",
-//       },
-//       citationStyles: {
-//         bibtex:
-//           "@['JournalArticle', 'Conference']{Ammar2018ConstructionOT,\n author = {Waleed Ammar and Dirk Groeneveld and Chandra Bhagavatula and Iz Beltagy and Miles Crawford and Doug Downey and Jason Dunkelberger and Ahmed Elgohary and Sergey Feldman and Vu A. Ha and Rodney Michael Kinney and Sebastian Kohlmeier and Kyle Lo and Tyler C. Murray and Hsu-Han Ooi and Matthew E. Peters and Joanna L. Power and Sam Skjonsberg and Lucy Lu Wang and Christopher Wilhelm and Zheng Yuan and Madeleine van Zuylen and Oren Etzioni},\n booktitle = {North American Chapter of the Association for Computational Linguistics},\n pages = {84-91},\n title = {Construction of the Literature Graph in Semantic Scholar},\n year = {2018}\n}\n",
-//       },
-//       authors: [
-//         { authorId: "145585097", name: "Waleed Ammar" },
-//         { authorId: "3458736", name: "Dirk Groeneveld" },
-//         { authorId: "1857797", name: "Chandra Bhagavatula" },
-//         { authorId: "46181066", name: "Iz Beltagy" },
-//         { authorId: "46230609", name: "Miles Crawford" },
-//         { authorId: "145612610", name: "Doug Downey" },
-//         { authorId: "38092776", name: "Jason Dunkelberger" },
-//         { authorId: "143718836", name: "Ahmed Elgohary" },
-//         { authorId: "46411828", name: "Sergey Feldman" },
-//         { authorId: "4480314", name: "Vu A. Ha" },
-//         { authorId: "143967880", name: "Rodney Michael Kinney" },
-//       ],
-//     },
-//   ];
 </script>
 
 <div class="space">
@@ -206,13 +24,14 @@
               {paper.title}
             </h2>
           </div>
-
-          <div class="smalltext">
-            {paper.authors[0].name}
-            <span style="font-style: italic"
-              >{paper.authors.length > 1 ? " et all" : ""}</span
-            >
-          </div>
+          {#if paper.authors}
+            <div class="smalltext">
+              {paper.authors[0].name}
+              <span style="font-style: italic"
+                >{paper.authors.length > 1 ? " et all" : ""}</span
+              >
+            </div>
+          {/if}
         </div>
       {/each}
     </div>

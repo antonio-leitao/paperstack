@@ -180,10 +180,13 @@
     background-color: white;
     padding: 1.5rem;
     border-radius: 0.5rem;
+    line-height: 1.3rem;
   }
   input {
     width: 100%;
-    height: 30px;
+    height: 2.5rem;
+    font-size: 1rem;
+    outline: none;
   }
   .list {
     max-height: 25vh;
@@ -200,6 +203,7 @@
     cursor: pointer;
   }
   .list li:focus {
+    outline: none;
     background-color: rgba(0, 0, 0, 0.1);
   }
   .list:not(:focus-within) > :first-child {

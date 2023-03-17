@@ -43,7 +43,7 @@
 
 <div class="banner">
   <div class="abstract">
-    {year} | {citationCount} cit.
+    {year} | {citationCount} citiations
   </div>
   {#if !notes}
     <div class="emptynote">
@@ -115,7 +115,7 @@
     display: grid;
     place-items: center;
   }
-  .emptynote:hover, 
+  .emptynote:hover,
   .icon:hover {
     color: black;
   }

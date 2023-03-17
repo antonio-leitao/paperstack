@@ -18,6 +18,7 @@
 
 <style>
   .postit {
+    cursor: pointer;
     position: absolute;
     top: 5%;
     right: 5%;
@@ -31,5 +32,9 @@
       0 0 40px rgba(0, 0, 0, 0.06) inset;
     transform: rotate(calc(var(--random) * 4deg))
       translate(calc(var(--random) * -20px), calc(var(--random) * -10px));
+    transition: all 0.5s cubic-bezier(0.05, 0.43, 0.25, 0.95);
+  }
+  .postit:hover {
+    opacity: 0.2;
   }
 </style>

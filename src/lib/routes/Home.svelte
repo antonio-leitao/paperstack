@@ -37,9 +37,12 @@
 >
   <div slot="title">
     <h3>{selectedPaper.title}</h3>
-    [tl;dr]
     <div class="abstract">
-      {selectedPaper.tldr.text}
+      {#if selectedPaper.tldr}
+        [tl;dr]{selectedPaper.tldr.text}
+      {:else}
+        {selectedPaper.abstract}
+      {/if}
     </div>
     <h3>Add to stack:</h3>
   </div>
