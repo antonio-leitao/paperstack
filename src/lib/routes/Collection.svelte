@@ -1,7 +1,15 @@
 <script>
   import Paper from "../components/Paper.svelte";
   import PopFuzzySearch from "../components/PopFuzzySearch.svelte";
-  import { Edit3, Files, Link, Wifi, WifiOff, Trash2 } from "lucide-svelte";
+  import {
+    Edit3,
+    Files,
+    Link,
+    Wifi,
+    WifiOff,
+    Trash2,
+    FileDown,
+  } from "lucide-svelte";
   let papers = [
     {
       paperId: "649def34f8be52c8b66281af98ae884c09aef38b",
@@ -233,16 +241,18 @@
   <h3 slot="title">Move paper to which stack:</h3>
 </PopFuzzySearch>
 <div class="header">
-  <h2>{params.stackId}</h2>
-
-  <p>Selected: {JSON.stringify(selectedOption)}</p>
-
   <div class="buttons">
     <div class="icon">
       <Edit3 />
+      <div class="smalltext">Rename</div>
     </div>
     <div class="icon">
       <Files />
+      <div class="smalltext">Copy bib</div>
+    </div>
+    <div class="icon">
+      <FileDown />
+      <div class="smalltext">Download Notes</div>
     </div>
     <div class="icon">
       {#if visible}
@@ -250,11 +260,16 @@
       {:else}
         <WifiOff />
       {/if}
+      <div class="smalltext">Publish</div>
     </div>
     <div class="icon">
       <Link />
+      <div class="smalltext">Share</div>
     </div>
   </div>
+  <h1>Neural Networks: Zero to Hero</h1>
+  <p>{params.stackId}</p>
+  <p>Selected: {JSON.stringify(selectedOption)}</p>
 </div>
 
 {#each papers as paper, i}
@@ -290,6 +305,9 @@
 </div>
 
 <style>
+  h1 {
+    margin: 0.2rem;
+  }
   .header {
     height: 30vh;
     display: flex;
@@ -337,13 +355,20 @@
     color: gray;
   }
   .icon {
-    margin: 2rem;
+    margin-left: 1rem;
+    margin-right: 1rem;
     cursor: pointer;
+    display: grid;
+    place-items: center;
   }
   .icon:hover {
     color: black;
   }
   .trash:hover {
     color: red;
+  }
+  .smalltext {
+    font-weight: 100;
+    font-size: 0.75rem;
   }
 </style>

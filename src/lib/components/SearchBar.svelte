@@ -56,7 +56,6 @@
       border: 1px solid #ccc;
       padding: 10px 20px;
       font-size: 20px;
-      margin-bottom: 50px;
     }
   </style>
 

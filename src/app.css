@@ -32,7 +32,6 @@
   aspect-ratio: 1/1.4;
   cursor: pointer;
   /* Functional props*/
-  position: absolute;
   --rotation: calc(calc(30deg / -4) + calc(calc(30deg / 25)) * var(--order));
   transform: rotate(calc(var(--random) * 2deg))
     translate(calc(var(--order) * -2px), calc(var(--order) * -2px));

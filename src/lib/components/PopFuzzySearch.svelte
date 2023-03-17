@@ -1,6 +1,7 @@
 <script>
   import { tick, onMount, createEventDispatcher } from "svelte";
   import fuzzysort from "fuzzysort";
+  import { fade } from "svelte/transition";
 
   export let hidden = true;
   export let options = [{ label: "Example", link: "/" }];
@@ -127,22 +128,30 @@
   }
 </script>
 
-<div id="background" class:hidden on:click={cleanSlate} />
-<div id="foreground" class:hidden>
-  <slot name=title/>
-  <slot name="input">
-    <input type="text" bind:value bind:this={inputEl} />
-  </slot>
-  <ul class="list" bind:this={listEl}>
-    {#each availiableOptions as option, i}
-      <li tabindex="0" on:click={() => onAction(option.obj)}>
-        {@html option.html.label}
-      </li>
-    {:else}
-      <li>No option</li>
-    {/each}
-  </ul>
-</div>
+{#if !hidden}
+  <div
+    id="background"
+    class:hidden
+    on:click={cleanSlate}
+    in:fade={{ duration: 200 }}
+  />
+
+  <div id="foreground" class:hidden in:fade={{ duration: 200 }}>
+    <slot name="title" />
+    <slot name="input">
+      <input type="text" bind:value bind:this={inputEl} />
+    </slot>
+    <ul class="list" bind:this={listEl}>
+      {#each availiableOptions as option, i}
+        <li tabindex="0" on:click={() => onAction(option.obj)}>
+          {@html option.html.label}
+        </li>
+      {:else}
+        <li>No option</li>
+      {/each}
+    </ul>
+  </div>
+{/if}
 
 <style>
   .hidden {
@@ -151,11 +160,16 @@
   #background {
     position: fixed;
     z-index: 1000;
-    background-color: rgba(0, 0, 0, 0.3);
     width: 100%;
     height: 100%;
     left: 0;
     top: 0;
+    background-color: rgba(10, 10, 10, 0.4);
+    color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(5px);
+    background-blend-mode: overlay;
+    border: rgba(10, 10, 10, 1) 1px solid;
+    transition: all 0.5s ease;
   }
   #foreground {
     z-index: 1111;
@@ -164,7 +178,8 @@
     top: 10%;
     width: 50%;
     background-color: white;
-    padding: 10px;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
   }
   input {
     width: 100%;
