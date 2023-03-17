@@ -12,6 +12,8 @@
     let limit = 25;
     let offset = 0;
 
+    //{total:,offset:next:data}
+    //data{paperId,title}
 
     function searchPapers(query) {
       isLoading = true;

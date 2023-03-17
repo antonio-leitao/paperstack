@@ -1,6 +1,7 @@
 <script>
   import Paper from "../components/Paper.svelte";
-  import {Edit3, Files, Link, Wifi, WifiOff, Trash2} from "lucide-svelte";
+  import PopFuzzySearch from "../components/PopFuzzySearch.svelte";
+  import { Edit3, Files, Link, Wifi, WifiOff, Trash2 } from "lucide-svelte";
   let papers = [
     {
       paperId: "649def34f8be52c8b66281af98ae884c09aef38b",
@@ -183,9 +184,7 @@
       ],
     },
   ];
-  export let num;
   export let params = {};
-
 
   function getTRandomNumber(df) {
     var z1 = Math.random() * 2 - 1; // uniform(-1, 1)
@@ -202,34 +201,59 @@
   }
 
   let N = papers.length + 1;
-  let visible=false;
+  let visible = false;
+  function onPick(e) {
+    hiddenSearch = true;
+    selectedOption = e.detail;
+    console.log(selectedOption);
+  }
+  let options = [
+    { label: "Example", link: "/" },
+    { label: "Search with fuzzy", link: "/also" },
+    { label: "Bolds the text", link: "/in" },
+    { label: "Other example", link: "/the-link" },
+  ];
+  let selectedOption;
+  let hiddenSearch = true;
+
+  //BUTTON HANDLING
+  function copyBib(e) {
+    console.log(e.detail);
+    console.log(hiddenSearch);
+    hiddenSearch = false;
+  }
 </script>
 
+<PopFuzzySearch
+  {options}
+  bind:hidden={hiddenSearch}
+  on:pick={onPick}
+  keys={["label", "link"]}
+/>
 <div class="header">
   <h2>{params.stackId}</h2>
 
-    static props: {num}
+  <p>Selected: {JSON.stringify(selectedOption)}</p>
 
   <div class="buttons">
     <div class="icon">
-      <Edit3/>
+      <Edit3 />
     </div>
     <div class="icon">
-      <Files/>
+      <Files />
     </div>
     <div class="icon">
       {#if visible}
-      <Wifi/>
+        <Wifi />
       {:else}
-      <WifiOff/>
+        <WifiOff />
       {/if}
     </div>
     <div class="icon">
-      <Link/>
+      <Link />
     </div>
   </div>
 </div>
-
 
 {#each papers as paper, i}
   {#if i == 0}
@@ -239,7 +263,7 @@
         (N - i)}vh;"
     >
       <div class="card">
-        <Paper {...paper} />
+        <Paper {...paper} on:update={copyBib} />
       </div>
     </div>
   {:else}
@@ -249,17 +273,16 @@
         (N - i)}vh;margin-top: {90 * (i - N)}vh;"
     >
       <div class="card">
-        <Paper {...paper} />
+        <Paper {...paper} on:update={copyBib} />
       </div>
     </div>
   {/if}
 {/each}
 
-
 <div class="footer">
   <div class="buttons">
     <div class="icon trash">
-      <Trash2 strokeWidth=1 size="42" />
+      <Trash2 strokeWidth="1" size="42" />
     </div>
   </div>
 </div>
@@ -279,7 +302,7 @@
     align-items: center;
     justify-content: center;
   }
-  .cards{
+  .cards {
     width: max(70%, 30rem);
   }
   .card {
@@ -293,9 +316,9 @@
     background-color: white;
     /* border: 1px lightgray solid; */
     height: 90vh;
-    
+
     padding: 3rem;
-    padding-top:10rem;
+    padding-top: 10rem;
     --shadow: calc(var(--order) * 3px);
     box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 50px)
       rgba(0, 0, 0, 0.25);
@@ -311,14 +334,14 @@
     align-items: center;
     color: gray;
   }
-  .icon{
-    margin:2rem;
-    cursor:pointer;
+  .icon {
+    margin: 2rem;
+    cursor: pointer;
   }
   .icon:hover {
     color: black;
   }
-  .trash:hover{
-    color:red;
+  .trash:hover {
+    color: red;
   }
 </style>

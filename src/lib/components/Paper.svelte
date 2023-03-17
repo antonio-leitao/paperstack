@@ -1,7 +1,17 @@
 <script>
   //https://api.semanticscholar.org/graph/v1/paper/649def34f8be52c8b66281af98ae884c09aef38b?fields=title,abstract,url,authors,year,citationCount,openAccessPdf,citationStyles
 
-  import { FileText, Files, X } from "lucide-svelte";
+  //buttons handler
+  import { createEventDispatcher } from "svelte";
+  const dispatch = createEventDispatcher();
+  function update(thing) {
+    dispatch("update", {
+      paperId: paperId,
+      value: thing,
+    });
+  }
+
+  import { Forward, FileText, Files, X } from "lucide-svelte";
   import Postit from "./Postit.svelte";
   export let notes =
     "Lorem ipsum dolor sit amet consectetur adipisicing elit. Debitis nobis suntnumquam quaerat vero corporis, fugiat unde itaque explicabo nisi noncupiditate maiores delectus eum. Distinctio quaerat eaque quo aliquid.";
@@ -14,6 +24,14 @@
   export let url;
   export let openAccessPdf;
   export let citationStyles;
+
+  let bibStatus = "Cite";
+  function cite() {
+    bibStatus = "Bib Copied";
+    setTimeout(() => {
+    bibStatus = "Cite";
+  }, 3000);
+  }
 </script>
 
 {#if Math.random() < 0.5}
@@ -28,8 +46,8 @@
   {title}
 </h2>
 <div class="authors">
-  {#each authors as author}
-    {author.name};
+  {#each authors as author, i}
+    {author.name}{i !== authors.length - 1 ? ", " : ""}
   {/each}
 </div>
 <div class="abstract">
@@ -39,12 +57,19 @@
 <div class="buttons">
   <div class="icon">
     <FileText strokeWidth="1" size="42" />
+    <div class="smalltext">PDF</div>
   </div>
-  <div class="icon">
+  <div class="icon" on:click={cite}>
     <Files strokeWidth="1" size="42" />
+    <div class="smalltext">{bibStatus}</div>
+  </div>
+  <div class="icon" on:click={() => update("files")}>
+    <Forward strokeWidth="1" size="42" />
+    <div class="smalltext">Move to Stack</div>
   </div>
   <div class="icon">
     <X strokeWidth="1" size="42" />
+    <div class="smalltext">Remove</div>
   </div>
 </div>
 
@@ -56,6 +81,10 @@
   }
   .abstract {
     font-weight: 100;
+  }
+  .smalltext {
+    font-weight: 100;
+    font-size: 0.75rem;
   }
   .authors {
     margin-top: 0.5rem;
@@ -72,6 +101,8 @@
   .icon {
     margin: 2rem;
     cursor: pointer;
+    display: grid;
+    place-items: center;
   }
   .icon:hover {
     color: black;

@@ -4,7 +4,7 @@ import { wrap } from "svelte-spa-router/wrap";
 import Home from "./lib/routes/Home.svelte";
 import Loading from "./lib/routes/Loading.svelte";
 import Four0Four from "./lib/routes/Four0Four.svelte";
-import Name from "./lib/routes/Name.svelte";
+import Collection from "./lib/routes/Collection.svelte";
 
 export default {
   // Exact path
@@ -17,7 +17,7 @@ export default {
   //     message: "Loading the Name route…",
   //   },
   // }),
-  "/stacks/:stackId": Name,
+  "/stacks/:stackId": Collection,
   // Wildcard parameter
   // This matches `/wild/*` (with anything after), but NOT `/wild` (with nothing after)
   // This is dynamically imported too
