@@ -11,7 +11,7 @@
     });
   }
 
-  import { Forward, FileText, Files, X, FilePlus } from "lucide-svelte";
+  import { Forward, FileText, Quote, X, Paperclip } from "lucide-svelte";
   import Postit from "./Postit.svelte";
   export let notes =
     "Lorem ipsum dolor sit amet consectetur adipisicing elit. Debitis nobis suntnumquam quaerat vero corporis, fugiat unde itaque explicabo nisi noncupiditate maiores delectus eum. Distinctio quaerat eaque quo aliquid.";
@@ -47,7 +47,7 @@
   </div>
   {#if !notes}
     <div class="emptynote">
-      <FilePlus strokeWidth="1" size="42" />
+      <Paperclip strokeWidth="1" />
       <div class="smalltext">Add Note</div>
     </div>
   {/if}
@@ -71,12 +71,12 @@
     <div class="smalltext">PDF</div>
   </div>
   <div class="icon" on:click={cite}>
-    <Files strokeWidth="1" size="42" />
+    <Quote strokeWidth="1" size="42" />
     <div class="smalltext">{bibStatus}</div>
   </div>
   <div class="icon" on:click={() => update("files")}>
     <Forward strokeWidth="1" size="42" />
-    <div class="smalltext">Move to Stack</div>
+    <div class="smalltext">Move</div>
   </div>
   <div class="icon">
     <X strokeWidth="1" size="42" />
@@ -129,5 +129,9 @@
     color: gray;
     margin-right: 1rem;
     cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
   }
 </style>

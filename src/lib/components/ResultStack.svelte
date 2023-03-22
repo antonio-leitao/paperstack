@@ -1,5 +1,7 @@
 <script>
   export let queryResult;
+  export let isLoading;
+  import Loading from "../routes/Loading.svelte";
   //buttons handler
   import { createEventDispatcher } from "svelte";
   const dispatch = createEventDispatcher();
@@ -12,7 +14,9 @@
 </script>
 
 <div class="space">
-  {#if queryResult}
+  {#if isLoading}
+    <Loading />
+  {:else if queryResult}
     <div class="rack">
       {#each queryResult as paper, i}
         <div class="publication" on:click={addPaper(paper)}>
@@ -47,6 +51,7 @@
 
 <style>
   .space {
+    width:100%;
     width: 100%;
     height: 15rem;
     display: flex;
@@ -54,16 +59,16 @@
     justify-content: center;
     align-items: flex-start;
   }
+  .rack {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+  }
   h2 {
     font-size: 0.8rem;
     font-family: "Lora", serif;
     font-weight: 800;
-  }
-  .rack {
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
   }
 
   .description {

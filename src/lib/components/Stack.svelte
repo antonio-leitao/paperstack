@@ -1,16 +1,21 @@
 <script>
   import { link } from "svelte-spa-router";
 
-  function trimElipsis(text){
-    if(text.length>60){
-      text = text.slice(0,100)+"...";
+  function trimElipsis(text) {
+    if (text.length > 60) {
+      text = text.slice(0, 100) + "...";
     }
-    return text
+    return text;
   }
 
   export let title = "Topological effectivenes of machine learning paradigms";
   export let stackId;
   export let size = 7;
+  export let image = "";
+  let hasImage = false;
+  if (image) {
+    hasImage = true;
+  }
   if (size > 8) {
     size = Math.floor(3 * Math.log2(size));
   }
@@ -37,14 +42,20 @@
   }
 </script>
 
-<a href={"/stacks/"+stackId} use:link>
+<a href={"/stacks/" + stackId} use:link>
   <div class="stack">
     {#each { length: size } as _, i}
       <div class="paper" style="--random:{getTRandomNumber(4)}; --order:{i}" />
     {/each}
-    <div class="paper" style="--random:{getTRandomNumber(2)}; --order:{size}">
+    <div
+      class="paper"
+      class:image={hasImage}
+      style="--image:url({image});--random:{getTRandomNumber(
+        2
+      )}; --order:{size};"
+    >
       <div class="cover">
-        <div class="content">
+        <div class="content" class:noborder={hasImage}>
           <div class="title">{trimElipsis(title)}</div>
           <div class="count">{size} papers</div>
         </div>
@@ -55,13 +66,14 @@
 >
 
 <style>
-
   .paper:first-child {
     box-shadow: none;
   }
-  /* .stack:hover > .paper{
-    transform: rotate(0) translate(calc(var(--order) * -2px), calc(var(--order) * -2px));
-  } */
+  .stack:hover > .paper{
+    transform: rotate(calc(var(--random) * 1deg))
+    translate(calc(var(--order) * -1px), calc(var(--order) * -1px));
+    box-shadow: 0px calc(var(--order)*0.2px) min(var(--shadow),5px) rgba(0, 0, 0, 0.25);
+  }
   a {
     color: inherit;
     font: inherit;
@@ -72,29 +84,36 @@
     color: var(--text1);
     width: 100%;
     height: 100%;
-    display:grid;
+    display: grid;
     place-items: center;
+  }
+  .image {
+    background-image: var(--image);
+    background-position: center;
+    background-size: cover;
   }
   .content {
     position: absolute;
     width: 92%;
-    height:95%;
+    height: 95%;
     border-radius: 0.15rem;
     border: 1px lightgray solid;
     padding: 0.25rem;
-    
   }
-  .title{
-    font-family: 'Lora', serif;
+  .noborder {
+    border: none;
+  }
+  .title {
+    font-family: "Lora", serif;
     font-weight: 500;
-    font-size:0.95rem;
-    margin-top:0.5rem;
+    font-size: 0.95rem;
+    margin-top: 0.5rem;
   }
-  .count{
-    font-size:0.6rem;
-    color:lightgrey;
-    position:absolute;
-    bottom:10%;
-    right:10%;
+  .count {
+    font-size: 0.6rem;
+    color: lightgrey;
+    position: absolute;
+    bottom: 10%;
+    right: 10%;
   }
 </style>

@@ -2,6 +2,7 @@
   import Paper from "../components/Paper.svelte";
   import PopFuzzySearch from "../components/PopFuzzySearch.svelte";
   import {
+    FileSearch,
     Edit3,
     Files,
     Link,
@@ -242,6 +243,10 @@
 </PopFuzzySearch>
 <div class="header">
   <div class="buttons">
+    <div class="icon">
+      <FileSearch />
+      <div class="smalltext">More like this</div>
+    </div>
     <div class="icon">
       <Edit3 />
       <div class="smalltext">Rename</div>

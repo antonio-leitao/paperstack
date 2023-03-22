@@ -3,6 +3,7 @@
   import SearchBar from "../components/SearchBar.svelte";
   import StackGrid from "../components/StackGrid.svelte";
   import PopFuzzySearch from "../components/PopFuzzySearch.svelte";
+  import Featured from "../components/Featured.svelte";
   let isLoading = false;
   let queryResult = undefined;
 
@@ -27,7 +28,7 @@
     hiddenSearch = false;
   }
 </script>
-
+<Featured/>
 <h2>PaperStack</h2>
 <PopFuzzySearch
   {options}
@@ -51,11 +52,9 @@
   bind:isLoading
   on:queryData={(e) => (queryResult = e.detail.papers)}
 />
-{#if isLoading}
-  <h2>Loading mah dude</h2>
-{:else}
-  <ResultStack {queryResult} on:addPaper={addPaper} />
-{/if}
+
+<ResultStack bind:isLoading {queryResult} on:addPaper={addPaper} />
+
 <StackGrid />
 
 <style>

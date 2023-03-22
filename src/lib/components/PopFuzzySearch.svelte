@@ -205,8 +205,10 @@
   .list li:focus {
     outline: none;
     background-color: rgba(0, 0, 0, 0.1);
+    background-color: var(--main-blue);
   }
   .list:not(:focus-within) > :first-child {
     background-color: rgba(0, 0, 0, 0.1);
+    background-color: var(--main-blue);
   }
 </style>
