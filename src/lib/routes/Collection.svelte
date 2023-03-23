@@ -1,10 +1,11 @@
 <script>
   import Paper from "../components/Paper.svelte";
+  import { ownStacks } from "../store.js";
   import PopFuzzySearch from "../components/PopFuzzySearch.svelte";
   import {
     FileSearch,
     Edit3,
-    Files,
+    Quote,
     Link,
     Wifi,
     WifiOff,
@@ -252,7 +253,7 @@
       <div class="smalltext">Rename</div>
     </div>
     <div class="icon">
-      <Files />
+      <Quote />
       <div class="smalltext">Copy bib</div>
     </div>
     <div class="icon">

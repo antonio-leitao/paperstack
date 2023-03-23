@@ -1,5 +1,6 @@
 <script>
   import { link } from "svelte-spa-router";
+  import { ownStacks } from "../store.js";
 
   function trimElipsis(text) {
     if (text.length > 60) {
@@ -7,18 +8,23 @@
     }
     return text;
   }
-
   export let title = "Topological effectivenes of machine learning paradigms";
   export let stackId;
   export let size = 7;
-  export let image = "";
+  export let image = false;
+  export let description = "";
+  export let locked = false;
   let hasImage = false;
   if (image) {
     hasImage = true;
   }
-  if (size > 8) {
-    size = Math.floor(3 * Math.log2(size));
+  function trimSize(size) {
+    if (size > 8) {
+      size = Math.floor(3 * Math.log2(size));
+    }
+    return size;
   }
+
   function getRandomNormal(mean, stdDev) {
     let u1 = 0,
       u2 = 0;
@@ -44,7 +50,7 @@
 
 <a href={"/stacks/" + stackId} use:link>
   <div class="stack">
-    {#each { length: size } as _, i}
+    {#each { length: trimSize(size) } as _, i}
       <div class="paper" style="--random:{getTRandomNumber(4)}; --order:{i}" />
     {/each}
     <div
@@ -52,12 +58,12 @@
       class:image={hasImage}
       style="--image:url({image});--random:{getTRandomNumber(
         2
-      )}; --order:{size};"
+      )}; --order:{trimSize(size)};"
     >
       <div class="cover">
         <div class="content" class:noborder={hasImage}>
           <div class="title">{trimElipsis(title)}</div>
-          <div class="count">{size} papers</div>
+          <div class="count">{size} {size == 1 ? "paper" : "papers"}</div>
         </div>
       </div>
       <div />
@@ -69,10 +75,11 @@
   .paper:first-child {
     box-shadow: none;
   }
-  .stack:hover > .paper{
+  .stack:hover > .paper {
     transform: rotate(calc(var(--random) * 1deg))
-    translate(calc(var(--order) * -1px), calc(var(--order) * -1px));
-    box-shadow: 0px calc(var(--order)*0.2px) min(var(--shadow),5px) rgba(0, 0, 0, 0.25);
+      translate(calc(var(--order) * -1px), calc(var(--order) * -1px));
+    box-shadow: 0px calc(var(--order) * 0.2px) min(var(--shadow), 5px)
+      rgba(0, 0, 0, 0.25);
   }
   a {
     color: inherit;
