@@ -12,6 +12,7 @@
     Trash2,
     FileDown,
   } from "lucide-svelte";
+  window.scrollTo(0,0); 
 
   export let params = {};
 
@@ -159,11 +160,10 @@
     background-color: white;
     /* border: 1px lightgray solid; */
     height: 90vh;
-
-    padding: 3rem;
-    padding-top: 6rem;
-    --shadow: calc(var(--order) * 3px);
+    --shadow: calc(var(--order) * 0.25px);
     box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 50px)
+      rgba(0, 0, 0, 0.25);
+    box-shadow: 0px 0.5px calc(3px + var(--shadow))
       rgba(0, 0, 0, 0.25);
     transform: rotate(calc(var(--random) * 2deg))
       translate(calc(var(--order) * -2px), calc(var(--order) * -2px));

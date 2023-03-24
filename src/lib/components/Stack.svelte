@@ -113,7 +113,13 @@
     font-family: "Lora", serif;
     font-weight: 500;
     font-size: 0.95rem;
-    margin-top: 0.5rem;
+    text-align: center;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%,-65%);
+    width: 90%;
+    /* margin-top: 0.5rem; */
   }
   .count {
     font-size: 0.6rem;
