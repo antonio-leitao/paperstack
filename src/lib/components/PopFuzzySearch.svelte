@@ -2,7 +2,6 @@
   import { tick, onMount, createEventDispatcher } from "svelte";
   import fuzzysort from "fuzzysort";
   import { fade } from "svelte/transition";
-  import { ownThumbnails } from "../store.js";
 
   export let hidden = true;
   export let options = [{ label: "Example", link: "/" }];

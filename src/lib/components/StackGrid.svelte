@@ -1,22 +1,22 @@
 <script>
   import Stack from "./Stack.svelte";
   import NewStack from "./NewStack.svelte";
-  import { loadOwnData } from "../store.js";
-  import { ownThumbnails } from "../store.js";
+  import { stacks } from "../store.js";
 </script>
 
-{#await loadOwnData()}
-  Loading...
-{:then}
-  <div class="shelf">
-    <NewStack />
-    {#each Object.entries($ownThumbnails) as [stackId, stack], i}
-      <Stack {...stack} />
-    {/each}
-  </div>
-{:catch error}
-  Error occurred: {error}
-{/await}
+<div class="shelf">
+  <NewStack />
+  {#each $stacks as stack, i}
+    <Stack
+      stackId={stack.stackId}
+      title={stack.title}
+      size={stack.size}
+      image={stack.image}
+      description={stack.description}
+      locked={stack.locked}
+    />
+  {/each}
+</div>
 
 <style>
   .shelf {

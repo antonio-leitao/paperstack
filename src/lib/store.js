@@ -3,22 +3,19 @@ import { parse } from "toml";
 
 //consider: function that sets all stores at start of app
 
-export let ownThumbnails = writable({});
-export let ownStacks = writable({});
-
-export let featuredThumbnails = readable({});
-export let featuredStacks = readable({});
+export let stacks = writable({});
 
 export async function loadOwnData() {
-  const response = await fetch("static/demo_thumbnails.toml");
+  const response = await fetch("static/demo_stacks.toml");
   const tomlString = await response.text();
-  const thumbnail_data = parse(tomlString);
-  ownThumbnails.set(thumbnail_data);
+  const data = parse(tomlString);
+  console.log(data);
+  stacks.set(data["stacks"]);
 
-  const stack_response = await fetch("static/demo_stacks.toml");
-  const stack_String = await stack_response.text();
-  const stack_data = parse(stack_String);
-  ownStacks.set(stack_data);
+  //   const stack_response = await fetch("static/demo_stacks.toml");
+  //   const stack_String = await stack_response.text();
+  //   const stack_data = parse(stack_String);
+  //   ownStacks.set(stack_data);
 }
 
 // async function getFeaturedThumbnails() {

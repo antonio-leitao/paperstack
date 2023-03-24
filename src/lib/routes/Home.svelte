@@ -7,11 +7,6 @@
   let isLoading = false;
   let queryResult = undefined;
 
-  function onPick(e) {
-    hiddenSearch = true;
-    selectedOption = e.detail;
-    console.log(selectedOption);
-  }
 
   let options = [
     { label: "Example", link: "/" },
@@ -22,7 +17,11 @@
   let selectedOption;
   let hiddenSearch = true;
   let selectedPaper = { title: "", abstract: "" };
-
+  function onPick(e) {
+    hiddenSearch = true;
+    selectedOption = e.detail;
+    console.log(selectedOption);
+  }
   function addPaper(e) {
     selectedPaper = e.detail.paper;
     hiddenSearch = false;

@@ -1,6 +1,5 @@
 <script>
   import { link } from "svelte-spa-router";
-  import { ownStacks } from "../store.js";
 
   function trimElipsis(text) {
     if (text.length > 60) {
@@ -11,7 +10,7 @@
   export let title = "Topological effectivenes of machine learning paradigms";
   export let stackId;
   export let size = 7;
-  export let image = false;
+  export let image = "";
   export let description = "";
   export let locked = false;
   let hasImage = false;
