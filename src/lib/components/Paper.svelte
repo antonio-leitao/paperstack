@@ -1,6 +1,13 @@
 <script>
   //https://api.semanticscholar.org/graph/v1/paper/649def34f8be52c8b66281af98ae884c09aef38b?fields=title,abstract,url,authors,year,citationCount,openAccessPdf,citationStyles
 
+  function trimElipsis(text, n = 1000) {
+    if (text.length > n) {
+      text = text.slice(0, n) + "...";
+    }
+    return text;
+  }
+
   //buttons handler
   import { createEventDispatcher } from "svelte";
   const dispatch = createEventDispatcher();
@@ -61,10 +68,11 @@
     {author.name}{i !== authors.length - 1 ? ", " : ""}
   {/each}
 </div>
-<div class="abstract">
-  {abstract}
-</div>
-
+{#if abstract}
+  <div class="abstract">
+    {trimElipsis(abstract)}
+  </div>
+{/if}
 <div class="buttons">
   <div class="icon">
     <FileText strokeWidth="1" size="42" />

@@ -158,6 +158,8 @@
     border-radius: 1rem;
     background-position: center;
     background-color: white;
+    padding:2rem;
+    padding-top:5rem;
     /* border: 1px lightgray solid; */
     height: 90vh;
     --shadow: calc(var(--order) * 0.25px);
