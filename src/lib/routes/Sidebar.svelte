@@ -1,22 +1,29 @@
 <script>
+  import { fly } from "svelte/transition";
   import {
     Layers,
     LayoutDashboard,
     Settings,
     Share2,
     Search,
+    ChevronsRight,
   } from "lucide-svelte";
   let collapsed = false;
 </script>
 
-<div class="sidebar">
+<div class="sidebar" class:uncollapsed={!collapsed}>
   <div class="sidebar-item title">
-    {collapsed ? "" : "PaperStack"}
+    {#if collapsed}
+      <ChevronsRight size="18" />
+      <div class="tooltip">Expand</div>
+    {:else}
+      PaperStack
+    {/if}
   </div>
 
   <div class="sidebar-item search" on:click={() => (collapsed = !collapsed)}>
     <div class="side-icon">
-      <Search />
+      <Search size="18" />
     </div>
 
     {#if collapsed}
@@ -28,7 +35,7 @@
 
   <div class="sidebar-item">
     <div class="side-icon">
-      <LayoutDashboard />
+      <LayoutDashboard size="18" />
     </div>
 
     {#if collapsed}
@@ -39,7 +46,7 @@
   </div>
   <div class="sidebar-item">
     <div class="side-icon">
-      <Layers />
+      <Layers size="18" />
     </div>
 
     {#if collapsed}
@@ -51,7 +58,7 @@
 
   <div class="sidebar-item">
     <div class="side-icon">
-      <Share2 />
+      <Share2 size="18" />
     </div>
 
     {#if collapsed}
@@ -64,7 +71,7 @@
 
   <div class="sidebar-item">
     <div class="side-icon">
-      <Settings />
+      <Settings size="18" />
     </div>
     {#if collapsed}
       <div class="tooltip">Settings</div>
@@ -93,8 +100,10 @@
     position: sticky;
     top: 0;
     border-top-right-radius: 0.3rem;
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
   .sidebar-item {
+    font-size: small;
     cursor: pointer;
     padding: 0.5rem;
     margin: 0.5rem;
@@ -109,6 +118,7 @@
   }
   .sidebar-item:hover > .tooltip {
     opacity: 1;
+    transform: translateX(4rem);
     color: var(--side-accent);
   }
   .side-icon {
@@ -125,9 +135,9 @@
     border-radius: 0.3rem;
     position: absolute;
     top: 0;
-    right: -10rem;
     opacity: 0;
     background-color: var(--side-background);
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
   .tooltip::before {
     content: "";
@@ -142,6 +152,7 @@
   }
   hr {
     width: 100%;
+    margin: 0.5rem 0 0.5rem 0;
     height: 0;
     border: 0;
     border-top: 2px solid var(--side-midground);
@@ -149,11 +160,15 @@
   .search {
     background-color: var(--side-midground);
     border-radius: 0.3rem;
+    box-shadow: var(--shadow-md);
   }
   .title {
     font-family: "Lora", serif;
     font-weight: 800;
     font-size: 1.3rem;
     color: var(--side-accent);
+  }
+  .uncollapsed {
+    width: 20rem;
   }
 </style>

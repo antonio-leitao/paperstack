@@ -1,0 +1,166 @@
+<script>
+  import { onMount, createEventDispatcher } from "svelte";
+  import { Search, Layers } from "lucide-svelte";
+  import { fade } from "svelte/transition";
+  export let hidden = true;
+  onMount(() => {
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  });
+
+  let textquery = "";
+  let input_element;
+  let cursor = -1;
+  //when writting cursor goes to zero
+
+  function onKeyDown(e) {
+    // CTRL + K
+    if (e.ctrlKey && e.keyCode == 75) {
+      hidden = false;
+      input_element.focus();
+      e.preventDefault();
+    }
+    if (hidden) return;
+    switch (e.keyCode.toString()) {
+      case "27":
+        hidden = true;
+        break;
+      // ArrowUp
+      case "38":
+        cursor = Math.max(-1, cursor - 1);
+        e.preventDefault();
+        break;
+      // ArrowDown
+      case "40":
+        cursor = Math.min(5, cursor + 1);
+        e.preventDefault();
+        break;
+    }
+    if (
+      (e.key.length === 1 &&
+        e.ctrlKey === false &&
+        e.altKey === false &&
+        e.metaKey === false) ||
+      e.key === "Backspace"
+    ) {
+      input_element.focus();
+      cursor = -1;
+    }
+  }
+</script>
+
+{#if !hidden}
+  <div
+    class="background"
+    on:click={() => (hidden = true)}
+    in:fade={{ duration: 150 }}
+  />
+  <div class="foreground">
+    <div class="sidebar-item" style="color:var(--side-accent)">
+      <div class="side-icon">
+        <Search size="18" />
+      </div>
+      <input
+        class="side-text"
+        type="text"
+        placeholder="Search over 250 Million papers"
+        bind:value={textquery}
+        bind:this={input_element}
+      />
+    </div>
+
+    <hr />
+    {#each { length: 5 } as _, i}
+      <div
+        on:mouseenter={() => (cursor = i)}
+        class="sidebar-item"
+        class:focus={cursor == i}
+      >
+        <div class="side-icon">
+          <Layers size="18" />
+        </div>
+        <div class="side-text">Name of a stack</div>
+      </div>
+    {/each}
+  </div>
+{/if}
+
+<style>
+  input {
+    width: 100%;
+    border: none;
+    outline: none;
+    color: inherit;
+    background-color: var(--side-background);
+  }
+  input:active {
+    border: none;
+    outline: none;
+  }
+  hr {
+    width: 95%;
+    margin: 1rem;
+    height: 0;
+    border: 0;
+    height: 2px;
+    background-color: var(--side-midground);
+  }
+
+  .sidebar-item {
+    cursor: pointer;
+    padding: 0.5rem;
+    margin: 0.5rem;
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .background {
+    position: fixed;
+    z-index: 1000;
+    width: 100%;
+    height: 100%;
+    left: 0;
+    top: 0;
+    background-color: rgba(10, 10, 10, 0.4);
+    color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(5px);
+    background-blend-mode: overlay;
+    border: rgba(10, 10, 10, 1) 1px solid;
+    transition: all 0.5s ease;
+  }
+  .foreground {
+    --side-background: rgb(16, 18, 19);
+    --side-midground: rgb(29, 31, 32);
+    --side-foreground: rgb(132, 132, 132);
+    --side-accent: white;
+    z-index: 1111;
+    position: fixed;
+    left: 30%;
+    top: 30%;
+    width: 40%;
+    background-color: var(--side-background);
+    color: var(--side-foreground);
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    line-height: 1.3rem;
+    box-shadow: var(--shadow-2xl);
+  }
+  .focus {
+    background-color: var(--side-midground);
+    color: var(--side-accent);
+    border-radius: 0.3rem;
+    box-shadow: var(--shadow-md);
+  }
+  .side-icon {
+    display: grid;
+    place-items: center;
+  }
+  .side-text {
+    margin-left: 1rem;
+  }
+</style>

@@ -4,9 +4,9 @@
   import StackGrid from "../components/StackGrid.svelte";
   import PopFuzzySearch from "../components/PopFuzzySearch.svelte";
   import Featured from "../components/Featured.svelte";
+  import HangingBar from "../components/HangingBar.svelte";
   let isLoading = false;
   let queryResult = undefined;
-
 
   let options = [
     { label: "Example", link: "/" },
@@ -27,8 +27,9 @@
     hiddenSearch = false;
   }
 </script>
-<Featured/>
-<h2>PaperStack</h2>
+
+<Featured />
+<HangingBar />
 <PopFuzzySearch
   {options}
   bind:hidden={hiddenSearch}
