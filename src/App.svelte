@@ -3,6 +3,7 @@
   import routes from "./routes.js";
   import { loadOwnData } from "./lib/store.js";
   import Sidebar from "./lib/routes/Sidebar.svelte";
+  import HangingBar from "./lib/components/HangingBar.svelte";
 
   function conditionsFailed(event) {
     console.error("conditionsFailed event", event.detail);
@@ -12,17 +13,13 @@
       replace("/hello/world");
     }
   }
+  let hidden = true;
 </script>
 
-<!-- <p>
-  Current location = {$location}
-</p>
 
-<nav>
-  <a href="/" use:link>Home</a>
-</nav> -->
+<HangingBar bind:hidden />
 <div class="layout">
-  <Sidebar />
+  <Sidebar on:search={() => (hidden = false)} />
   <div class="content">
     {#await loadOwnData()}
       Loading...

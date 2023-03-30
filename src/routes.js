@@ -6,6 +6,7 @@ import Home from "./lib/routes/Home.svelte";
 import Loading from "./lib/routes/Loading.svelte";
 import Four0Four from "./lib/routes/Four0Four.svelte";
 import Collection from "./lib/routes/Collection.svelte";
+import Stacks from "./lib/routes/Stacks.svelte";
 
 export default {
   // Exact path
@@ -18,6 +19,7 @@ export default {
   //     message: "Loading the Name route…",
   //   },
   // }),
+  "/stacks": Stacks,
   "/stacks/:stackId": Collection,
   "/search/:query": Search,
   // Wildcard parameter

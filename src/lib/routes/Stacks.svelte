@@ -1,6 +1,6 @@
 <script>
-  import Stack from "./Stack.svelte";
-  import NewStack from "./NewStack.svelte";
+  import Stack from "../components/Stack.svelte";
+  import NewStack from "../components/NewStack.svelte";
   import { stacks } from "../store.js";
 </script>
 

@@ -1,4 +1,5 @@
 <script>
+  import { createEventDispatcher } from "svelte";
   import {
     Layers,
     LayoutDashboard,
@@ -10,6 +11,10 @@
   } from "lucide-svelte";
   import { link } from "svelte-spa-router";
   let collapsed = false;
+  const dispatch = createEventDispatcher();
+  function openSearch(option) {
+    dispatch("search", option);
+  }
 </script>
 
 <div class="sidebar" class:uncollapsed={!collapsed}>
@@ -26,19 +31,17 @@
     {/if}
   </div>
 
-  <a href={"/search/Advances in NLP"} use:link>
-    <div class="sidebar-item search">
-      <div class="side-icon">
-        <Search size="18" />
-      </div>
+  <div on:click={openSearch} class="sidebar-item search">
+    <div class="side-icon">
+      <Search size="18" />
+    </div>
 
-      {#if collapsed}
-        <div class="tooltip">Search</div>
-      {:else}
-        <div class="side-text">Search</div>
-      {/if}
-    </div></a
-  >
+    {#if collapsed}
+      <div class="tooltip">Search</div>
+    {:else}
+      <div class="side-text">Search</div>
+    {/if}
+  </div>
 
   <div class="sidebar-item">
     <div class="side-icon">
@@ -51,17 +54,19 @@
       <div class="side-text">Dashboard</div>
     {/if}
   </div>
-  <div class="sidebar-item">
-    <div class="side-icon">
-      <Layers size="18" />
-    </div>
+  <a href={"/stacks"} use:link>
+    <div class="sidebar-item">
+      <div class="side-icon">
+        <Layers size="18" />
+      </div>
 
-    {#if collapsed}
-      <div class="tooltip">Stacks</div>
-    {:else}
-      <div class="side-text">Stacks</div>
-    {/if}
-  </div>
+      {#if collapsed}
+        <div class="tooltip">Stacks</div>
+      {:else}
+        <div class="side-text">Stacks</div>
+      {/if}
+    </div></a
+  >
 
   <div class="sidebar-item">
     <div class="side-icon">

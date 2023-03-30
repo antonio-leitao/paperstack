@@ -1,11 +1,10 @@
 <script>
-  import { onMount, createEventDispatcher } from "svelte";
+  import { onMount } from "svelte";
   import fuzzysort from "fuzzysort";
   import { push } from "svelte-spa-router";
   import { Search, Layers } from "lucide-svelte";
   import { fade } from "svelte/transition";
   import { stacks } from "../store.js";
-  import { object_without_properties } from "svelte/internal";
   export let hidden = true;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
@@ -14,13 +13,15 @@
     };
   });
 
+  $: console.log(hidden);
+
   let optionsSize = 5;
   let textquery = "";
   let input_element;
   let cursor = -1;
 
   $: results = fuzzysort.go(textquery, $stacks, { key: "title" }).map((res) => {
-    let html = fuzzysort.highlight(res, "<u>", "</u>");
+    let html = fuzzysort.highlight(res, "<b>", "</b>");
 
     return { html: html, key: res.target, link: "/stacks/" + res.obj.stackId };
   });
@@ -74,7 +75,7 @@
 
     //clear text and hide bar
     textquery = "";
-    hidden = false;
+    hidden = true;
   }
 </script>
 
