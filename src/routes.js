@@ -1,4 +1,5 @@
 import { wrap } from "svelte-spa-router/wrap";
+import Search from "./lib/routes/Search.svelte";
 
 // Components: only Home, Loading and NotFound are statically included in the bundle
 import Home from "./lib/routes/Home.svelte";
@@ -18,6 +19,7 @@ export default {
   //   },
   // }),
   "/stacks/:stackId": Collection,
+  "/search/:query": Search,
   // Wildcard parameter
   // This matches `/wild/*` (with anything after), but NOT `/wild` (with nothing after)
   // This is dynamically imported too

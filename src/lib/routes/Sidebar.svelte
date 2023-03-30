@@ -1,5 +1,4 @@
 <script>
-  import { fly } from "svelte/transition";
   import {
     Layers,
     LayoutDashboard,
@@ -7,31 +6,39 @@
     Share2,
     Search,
     ChevronsRight,
+    ChevronsLeft,
   } from "lucide-svelte";
+  import { link } from "svelte-spa-router";
   let collapsed = false;
 </script>
 
 <div class="sidebar" class:uncollapsed={!collapsed}>
-  <div class="sidebar-item title">
+  <div class="sidebar-item">
     {#if collapsed}
-      <ChevronsRight size="18" />
-      <div class="tooltip">Expand</div>
+      <div class="side-icon" on:click={() => (collapsed = false)}>
+        <ChevronsRight size="18" />
+      </div>
     {:else}
-      PaperStack
+      <div class="side-text title">PaperStack</div>
+      <div class="side-icon" on:click={() => (collapsed = true)}>
+        <ChevronsLeft size="18" />
+      </div>
     {/if}
   </div>
 
-  <div class="sidebar-item search" on:click={() => (collapsed = !collapsed)}>
-    <div class="side-icon">
-      <Search size="18" />
-    </div>
+  <a href={"/search/Advances in NLP"} use:link>
+    <div class="sidebar-item search">
+      <div class="side-icon">
+        <Search size="18" />
+      </div>
 
-    {#if collapsed}
-      <div class="tooltip">Search</div>
-    {:else}
-      <div class="side-text">Search</div>
-    {/if}
-  </div>
+      {#if collapsed}
+        <div class="tooltip">Search</div>
+      {:else}
+        <div class="side-text">Search</div>
+      {/if}
+    </div></a
+  >
 
   <div class="sidebar-item">
     <div class="side-icon">
@@ -39,7 +46,7 @@
     </div>
 
     {#if collapsed}
-      <div class="tooltip">Dasboard</div>
+      <div class="tooltip">Dashboard</div>
     {:else}
       <div class="side-text">Dashboard</div>
     {/if}
@@ -100,11 +107,13 @@
     position: sticky;
     top: 0;
     border-top-right-radius: 0.3rem;
-    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    width: 5rem;
+    transition: all 0.2s cubic-bezier(0.47, 0.58, 0.42, 1.03);
   }
   .sidebar-item {
     font-size: small;
     cursor: pointer;
+    line-height: 2rem;
     padding: 0.5rem;
     margin: 0.5rem;
     position: relative;
@@ -118,7 +127,7 @@
   }
   .sidebar-item:hover > .tooltip {
     opacity: 1;
-    transform: translateX(4rem);
+    transform: translateX(2rem);
     color: var(--side-accent);
   }
   .side-icon {
@@ -135,6 +144,7 @@
     border-radius: 0.3rem;
     position: absolute;
     top: 0;
+    left: 2rem;
     opacity: 0;
     background-color: var(--side-background);
     transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
@@ -170,5 +180,10 @@
   }
   .uncollapsed {
     width: 20rem;
+  }
+  a {
+    color: inherit;
+    font: inherit;
+    text-decoration: inherit;
   }
 </style>

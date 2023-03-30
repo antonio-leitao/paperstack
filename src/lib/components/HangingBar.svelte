@@ -93,6 +93,7 @@
     border: none;
     outline: none;
     color: inherit;
+    font-size: medium;
     background-color: var(--side-background);
   }
   input:active {
@@ -110,6 +111,7 @@
 
   .sidebar-item {
     cursor: pointer;
+    line-height: 2rem;
     padding: 0.5rem;
     margin: 0.5rem;
     position: relative;
@@ -140,9 +142,9 @@
     --side-accent: white;
     z-index: 1111;
     position: fixed;
-    left: 30%;
-    top: 30%;
-    width: 40%;
+    left: 25%;
+    top: 25%;
+    width: 50%;
     background-color: var(--side-background);
     color: var(--side-foreground);
     padding: 1.5rem;
@@ -155,6 +157,7 @@
     color: var(--side-accent);
     border-radius: 0.3rem;
     box-shadow: var(--shadow-md);
+    font-weight: 500;
   }
   .side-icon {
     display: grid;
