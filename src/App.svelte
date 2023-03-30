@@ -1,5 +1,5 @@
 <script>
-  import Router, { location, link, replace } from "svelte-spa-router";
+  import Router, { replace } from "svelte-spa-router";
   import routes from "./routes.js";
   import { loadOwnData } from "./lib/store.js";
   import Sidebar from "./lib/routes/Sidebar.svelte";
@@ -14,19 +14,21 @@
     }
   }
   let hidden = true;
+  let toggle = false;
 </script>
 
-
-<HangingBar bind:hidden />
+<HangingBar bind:hidden on:forceReload={() => (toggle = !toggle)} />
 <div class="layout">
   <Sidebar on:search={() => (hidden = false)} />
   <div class="content">
     {#await loadOwnData()}
       Loading...
     {:then}
-      <div class="center">
-        <Router {routes} on:conditionsFailed={conditionsFailed} />
-      </div>
+      {#key toggle}
+        <div class="center">
+          <Router {routes} on:conditionsFailed={conditionsFailed} />
+        </div>
+      {/key}
     {:catch error}
       Error occurred: {error}
     {/await}

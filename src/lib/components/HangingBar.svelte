@@ -1,7 +1,9 @@
 <script>
+  import { createEventDispatcher } from "svelte";
+  const dispatch = createEventDispatcher();
   import { onMount } from "svelte";
   import fuzzysort from "fuzzysort";
-  import { push } from "svelte-spa-router";
+  import { push, location } from "svelte-spa-router";
   import { Search, Layers } from "lucide-svelte";
   import { fade } from "svelte/transition";
   import { stacks } from "../store.js";
@@ -67,8 +69,12 @@
 
   function handleSubmit() {
     if (cursor === -1) {
-      //send to search
-      push("/search/" + textquery);
+      if ($location.startsWith("/search")) {
+        push("/search/" + textquery);
+        dispatch("forceReload");
+      } else {
+        push("/search/" + textquery);
+      }
     } else {
       push(results[cursor].link);
     }

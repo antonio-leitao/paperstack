@@ -13,12 +13,14 @@
   let offset = 0;
   $: endpoint = `https://api.semanticscholar.org/graph/v1/paper/search?query=${params.query}&offset=${offset}&limit=${limit}&fields=title,abstract,url,authors,year,citationCount,openAccessPdf,citationStyles,tldr`;
   let papers = [];
+  let percentile;
   async function fetchPapers() {
     isLoading = true;
     const response = await fetch(endpoint);
     const data = await response.json();
     total = data.total;
     newBatch = data.data;
+    percentile = getNthPercentile(papers, 70);
   }
   async function loadNextBatch() {
     if (Math.min(total - offset, limit)) {
@@ -29,18 +31,28 @@
     fetchPapers();
   }
 
-  const getCardClass = (citationCount) => {
-    if (citationCount <= 200) {
-      return "tiny";
-    }
-    return "small";
-  };
-
   onMount(() => {
     fetchPapers();
   });
 
   $: papers = [...papers, ...newBatch];
+  function getNthPercentile(list, n) {
+    const sortedList = list.sort((a, b) => a.citationCount - b.citationCount);
+    const index = (n / 100) * sortedList.length;
+    if (Number.isInteger(index)) {
+      return sortedList[index - 1].citationCount;
+    } else {
+      const roundedIndex = Math.ceil(index);
+      return sortedList[roundedIndex - 1].citationCount;
+    }
+  }
+
+  const getCardClass = (citationCount) => {
+    if (citationCount <= percentile) {
+      return "tiny";
+    }
+    return "small";
+  };
 </script>
 
 <div class="grid-layout">
@@ -72,7 +84,7 @@
   .grid-layout {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-    grid-auto-rows: minmax(12.6rem, auto);
+    grid-auto-rows: 12.6rem;
     grid-gap: 1px;
 
     grid-auto-flow: dense;
@@ -86,7 +98,7 @@
     color: #000;
     background-color: #ccc;
     border-radius: 10px;
-    overflow: elipsis;
+    overflow: hidden;
   }
 
   .tiny {

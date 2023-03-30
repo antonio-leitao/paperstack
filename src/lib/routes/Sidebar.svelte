@@ -43,17 +43,20 @@
     {/if}
   </div>
 
-  <div class="sidebar-item">
-    <div class="side-icon">
-      <LayoutDashboard size="18" />
-    </div>
+  <a href={"/"} use:link>
+    <div class="sidebar-item">
+      <div class="side-icon">
+        <LayoutDashboard size="18" />
+      </div>
 
-    {#if collapsed}
-      <div class="tooltip">Dashboard</div>
-    {:else}
-      <div class="side-text">Dashboard</div>
-    {/if}
-  </div>
+      {#if collapsed}
+        <div class="tooltip">Dashboard</div>
+      {:else}
+        <div class="side-text">Dashboard</div>
+      {/if}
+    </div></a
+  >
+
   <a href={"/stacks"} use:link>
     <div class="sidebar-item">
       <div class="side-icon">
