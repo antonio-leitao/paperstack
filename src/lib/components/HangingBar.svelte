@@ -1,7 +1,11 @@
 <script>
   import { onMount, createEventDispatcher } from "svelte";
+  import fuzzysort from "fuzzysort";
+  import { push } from "svelte-spa-router";
   import { Search, Layers } from "lucide-svelte";
   import { fade } from "svelte/transition";
+  import { stacks } from "../store.js";
+  import { object_without_properties } from "svelte/internal";
   export let hidden = true;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
@@ -10,14 +14,20 @@
     };
   });
 
+  let optionsSize = 5;
   let textquery = "";
   let input_element;
   let cursor = -1;
-  //when writting cursor goes to zero
+
+  $: results = fuzzysort.go(textquery, $stacks, { key: "title" }).map((res) => {
+    let html = fuzzysort.highlight(res, "<u>", "</u>");
+
+    return { html: html, key: res.target, link: "/stacks/" + res.obj.stackId };
+  });
 
   function onKeyDown(e) {
     // CTRL + K
-    if (e.ctrlKey && e.keyCode == 75) {
+    if ((e.ctrlKey || e.metaKey) && e.keyCode == 75) {
       hidden = false;
       input_element.focus();
       e.preventDefault();
@@ -34,8 +44,12 @@
         break;
       // ArrowDown
       case "40":
-        cursor = Math.min(5, cursor + 1);
+        cursor = Math.min(optionsSize - 1, cursor + 1);
         e.preventDefault();
+        break;
+      // Enter
+      case "13":
+        handleSubmit();
         break;
     }
     if (
@@ -48,6 +62,19 @@
       input_element.focus();
       cursor = -1;
     }
+  }
+
+  function handleSubmit() {
+    if (cursor === -1) {
+      //send to search
+      push("/search/" + textquery);
+    } else {
+      push(results[cursor].link);
+    }
+
+    //clear text and hide bar
+    textquery = "";
+    hidden = false;
   }
 </script>
 
@@ -72,17 +99,20 @@
     </div>
 
     <hr />
-    {#each { length: 5 } as _, i}
+    {#each results as result, i}
       <div
         on:mouseenter={() => (cursor = i)}
         class="sidebar-item"
         class:focus={cursor == i}
+        on:click={handleSubmit}
       >
         <div class="side-icon">
           <Layers size="18" />
         </div>
-        <div class="side-text">Name of a stack</div>
+        <div class="side-text">{@html result.html}</div>
       </div>
+    {:else}
+      <div class="empty-results">No match in stacks</div>
     {/each}
   </div>
 {/if}
