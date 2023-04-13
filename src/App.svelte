@@ -15,19 +15,20 @@
   }
   let hidden = true;
   let toggle = false;
+  let collapsed = false;
 </script>
 
 <HangingBar bind:hidden on:forceReload={() => (toggle = !toggle)} />
 <div class="layout">
-  <Sidebar on:search={() => (hidden = false)} />
+  <div class="sidebar" >
+    <Sidebar bind:collapsed on:search={() => (hidden = false)} />
+  </div>
   <div class="content">
     {#await loadOwnData()}
       Loading...
     {:then}
       {#key toggle}
-        <div class="center">
-          <Router {routes} on:conditionsFailed={conditionsFailed} />
-        </div>
+        <Router {routes} on:conditionsFailed={conditionsFailed} />
       {/key}
     {:catch error}
       Error occurred: {error}
@@ -42,12 +43,13 @@
     place-items: row;
   }
   .content {
-    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    flex-grow: 9;
   }
+
   .center {
     width: 65%;
     display: flex;

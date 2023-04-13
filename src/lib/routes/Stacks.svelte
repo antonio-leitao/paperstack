@@ -26,5 +26,6 @@
     grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
     grid-gap: 2rem;
     place-items: center;
+    background-color: aqua;
   }
 </style>

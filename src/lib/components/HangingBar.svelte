@@ -92,7 +92,7 @@
     in:fade={{ duration: 150 }}
   />
   <div class="foreground">
-    <div class="sidebar-item" style="color:var(--side-accent)">
+    <div class="sidebar-item search" style="color:var(--side-accent)">
       <div class="side-icon">
         <Search size="18" />
       </div>
@@ -116,7 +116,7 @@
         <div class="side-icon">
           <Layers size="18" />
         </div>
-        <div class="side-text">{@html result.html}</div>
+        <div class="side-text">{result.key}</div>
       </div>
     {:else}
       <div class="empty-results">No match in stacks</div>
@@ -125,49 +125,16 @@
 {/if}
 
 <style>
-  input {
-    width: 100%;
-    border: none;
-    outline: none;
-    color: inherit;
-    font-size: medium;
-    background-color: var(--side-background);
-  }
-  input:active {
-    border: none;
-    outline: none;
-  }
-  hr {
-    width: 95%;
-    margin: 1rem;
-    height: 0;
-    border: 0;
-    height: 2px;
-    background-color: var(--side-midground);
-  }
-
-  .sidebar-item {
-    cursor: pointer;
-    line-height: 2rem;
-    padding: 0.5rem;
-    margin: 0.5rem;
-    position: relative;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-  }
-
-  .background {
+    .background {
     position: fixed;
     z-index: 1000;
     width: 100%;
     height: 100%;
     left: 0;
     top: 0;
-    background-color: rgba(10, 10, 10, 0.4);
+    background-color: rgba(10 0, 0, 0.2);
     color: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(5px);
+    backdrop-filter: blur(4px);
     background-blend-mode: overlay;
     border: rgba(10, 10, 10, 1) 1px solid;
     transition: all 0.5s ease;
@@ -182,19 +149,58 @@
     left: 25%;
     top: 25%;
     width: 50%;
-    background-color: var(--side-background);
-    color: var(--side-foreground);
-    padding: 1.5rem;
+    background-color: var(--primary-background);
+    color: var(--primary-foreground);
+    padding: 1rem;
     border-radius: 0.5rem;
-    line-height: 1.3rem;
-    box-shadow: var(--shadow-2xl);
+    line-height: 1rem;
+    box-shadow: 0 22px 70px 4px rgba(0, 0, 0, 0.56);  
   }
+  input {
+    width: 100%;
+    border: none;
+    outline: none;
+    color: inherit;
+    font-size: medium;
+    background-color: var(--primary-background);
+  }
+  input:active {
+    border: none;
+    outline: none;
+  }
+  hr {
+    width: 95%;
+    margin: 1rem;
+    height: 0;
+    border: 0;
+    border-radius: 1rem;
+    height: 2px;
+    background-color: var(--color-black);
+  }
+
+  .sidebar-item {
+    cursor: pointer;
+    line-height: 1rem;
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .search{
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
   .focus {
-    background-color: var(--side-midground);
-    color: var(--side-accent);
+    background-color: var(--color-black);
+    color: var(--color-bright-white);
     border-radius: 0.3rem;
     box-shadow: var(--shadow-md);
-    font-weight: 500;
   }
   .side-icon {
     display: grid;
@@ -202,5 +208,12 @@
   }
   .side-text {
     margin-left: 1rem;
+  }
+  .empty-results{
+    color:var(--color-bright-black);
+    display: grid;
+    place-items: center;
+    width:100%;
+    height:5rem;
   }
 </style>
