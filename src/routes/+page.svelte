@@ -1,108 +1,85 @@
 <script>
     import { invoke } from "@tauri-apps/api/tauri";
-
+    import { info } from "../stores.js";
+    import FloatPrompt from "./FloatPrompt.svelte";
+    import Paper from "./Paper.svelte";
     let value = "";
     let results = [];
     let resultsPromise;
-    // Reactively determine if the input has text
-    $: isNotEmpty = value.trim().length > 0;
 
     async function search_stack(value) {
-        results = await invoke("filter_papers", { query: value });
+        switch (true) {
+            case value.length === 0:
+                return [];
+            case value.startsWith("@"):
+                if (value.startsWith("@add")) {
+                    info.set(`Command called: ${value.slice(4)}`);
+                }
+                return [];
+            case value.startsWith("!"):
+                // Example: Handle command searches
+                return await invoke("execute_command", {
+                    command: value.slice(1),
+                });
+            default:
+                return await invoke("filter_papers", { query: value });
+        }
     }
 
     // Watch for changes in searchTerm and update the results
     $: resultsPromise = search_stack(value);
+    $: resultsPromise.then((r) => (results = r));
+    $:console.log(results);
+
+
 </script>
 
-<div class="back">
-    <div class="background {isNotEmpty ? 'translated' : ''}">
-        <div class="splash" />
-        <div class="list">
-            <ul>
-                {#each results as item}
-                    <li>{item.author}</li>
-                {/each}
-            </ul>
-        </div>
+<div class="container">
+    <div class="background" class:upwards={results.length > 0}></div>
+    <div class="results" class:inview={results.length > 0}>
+        {#each results as result}
+            <Paper {...result} />
+        {/each}
     </div>
-    <div class="input-container {isNotEmpty ? 'translated' : ''}">
-        <input
-            class="input"
-            bind:value
-            type="text"
-            placeholder="Enter some text"
-        />
-    </div>
+    <FloatPrompt bind:inputValue={value} />
 </div>
 
 <style>
-    * {
-        margin: 0;
-    }
-    .back {
-        height: 100lvh;
-        position: block;
-        /*overflow-y: hidden;*/
-    }
-    .background {
+    .container {
         position: relative;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    .background {
+        position: absolute;
         top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--primary-clr);
         transition: transform 0.9s cubic-bezier(0, 0.55, 0.45, 1); /* Slower transition for the background */
     }
 
-    .input-container {
+    .background.upwards {
+        transform: translateY(-100%);
+    }
+
+    .results {
+        position: absolute;
+        top: 100%;
         left: 0;
         right: 0;
-        margin-left: auto;
-        margin-right: auto;
-        position: absolute; /* Change to absolute to facilitate parallax */
-        width: 400px;
-        height: 100px;
-        overflow: hidden;
-        top: 40%;
-        /*transform: translateX(40%);*/
-        transition: top 0.9s cubic-bezier(0, 0.55, 0.45, 1); /* Faster transition for the input */
-    }
-    ul {
-        margin-top:15%;
-    }
-
-    .input {
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 100%;
-        color: var(--base);
-        height: 60px;
-        text-align: center;
-        border: none;
-        outline: none;
-        background-color: rgba(255, 255, 255, 0.9);
-        border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-
-    /* When the input is not empty, apply transformations */
-    .input-container.translated {
-        top: 10%; /* Moves the input container to the top */
-    }
-
-    .background.translated {
-        transform: translateY(-100lvh); /* Scrolls the background upwards */
-    }
-    .background .splash {
-        height: 100lvh;
-        width: 100lvw;
-        background-color: var(--primary-clr);
-    }
-    .background .list {
-        display:flex;
-        flex-direction:column;
-        align-items:center;
-        justify-content:flex-start;
-        min-height: 100lvh;
-        width: 100lvw;
+        height:0;
         background-color: white;
+        padding: 20px;
+        box-sizing: border-box;
+        transition: transform 0.9s cubic-bezier(0, 0.55, 0.45, 1); /* Slower transition for the background */
     }
+
+    .results.inview{
+        min-height: 100vh;
+        transform: translateY(-100%);
+    }
+
 </style>

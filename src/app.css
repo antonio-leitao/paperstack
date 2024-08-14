@@ -11,7 +11,6 @@
         "Open Sans",
         "Helvetica Neue",
         sans-serif;
-    color: black;
     padding: 0;
     margin: 0;
     --primary-clr: #9cbfdc;
@@ -23,6 +22,7 @@
     --lines: #0e1114;
     --shade: #0c0e1f;
     --base: #090a0d;
+    --error:#EE564C;
 }
 
 * {
