@@ -1,37 +1,36 @@
 <script>
     import { invoke } from "@tauri-apps/api/tauri";
     import { info } from "../stores.js";
+    import { add } from "./add.js";
     import FloatPrompt from "./FloatPrompt.svelte";
     import Paper from "./Paper.svelte";
     let value = "";
     let results = [];
     let resultsPromise;
 
-    async function search_stack(value) {
+    async function handleSubmission(event) {
+        if (value.startsWith("@add")) {
+            add(event.detail.value);
+        }
+    }
+
+    async function handleContinuous(value) {
         switch (true) {
             case value.length === 0:
                 return [];
             case value.startsWith("@"):
                 if (value.startsWith("@add")) {
-                    info.set(`Command called: ${value.slice(4)}`);
+                    info.set(`Adds paper from link: ${value.slice(4)}`);
                 }
                 return [];
-            case value.startsWith("!"):
-                // Example: Handle command searches
-                return await invoke("execute_command", {
-                    command: value.slice(1),
-                });
             default:
                 return await invoke("filter_papers", { query: value });
         }
     }
 
     // Watch for changes in searchTerm and update the results
-    $: resultsPromise = search_stack(value);
+    $: resultsPromise = handleContinuous(value);
     $: resultsPromise.then((r) => (results = r));
-    $:console.log(results);
-
-
 </script>
 
 <div class="container">
@@ -41,7 +40,7 @@
             <Paper {...result} />
         {/each}
     </div>
-    <FloatPrompt bind:inputValue={value} />
+    <FloatPrompt bind:inputValue={value} on:submission={handleSubmission} />
 </div>
 
 <style>
@@ -70,16 +69,15 @@
         top: 100%;
         left: 0;
         right: 0;
-        height:0;
+        height: 0;
         background-color: white;
         padding: 20px;
         box-sizing: border-box;
         transition: transform 0.9s cubic-bezier(0, 0.55, 0.45, 1); /* Slower transition for the background */
     }
 
-    .results.inview{
+    .results.inview {
         min-height: 100vh;
         transform: translateY(-100%);
     }
-
 </style>

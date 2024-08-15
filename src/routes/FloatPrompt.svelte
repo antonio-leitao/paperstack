@@ -1,5 +1,13 @@
 <script>
     import { onMount } from "svelte";
+    import { createEventDispatcher } from "svelte";
+
+    // Create an event dispatcher
+    const dispatch = createEventDispatcher();
+
+    function submission() {
+        dispatch("submission", { value: inputValue });
+    }
 
     export let inputValue = "";
     let isVisible = false;
@@ -13,8 +21,14 @@
     }
 
     function handleInputKeydown(event) {
-        if (event.key === "Enter" || event.key === "Escape") {
-            isVisible = false;
+        switch (event.key) {
+            case "Enter":
+                submission();
+                isVisible = false;
+                return [];
+            case "Escape":
+                isVisible = false;
+                return [];
         }
     }
 

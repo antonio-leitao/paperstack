@@ -1,29 +1,12 @@
 use crate::fmt::Clean;
 use crate::Paper;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use biblatex::{Bibliography, Entry, Person, RetrievalError};
 use regex::Regex;
 use shellexpand::tilde;
 use std::fs;
 use std::io::{Read, Write};
-use std::path::Path;
-
-pub fn read_bibliography() -> Result<Bibliography> {
-    let base_dir = tilde("~/.bib/tda.bib").to_string();
-    let bib_path = Path::new(&base_dir);
-    let mut bib_content = String::new();
-    if !bib_path.exists() {
-        // If the bib file doesn't exist, create an empty one
-        fs::create_dir_all(&bib_path)?;
-        let mut file = fs::File::create(&bib_path)?;
-        file.write_all(b"")?;
-    } else {
-        // If the bib file exists, open and read its content
-        let mut file = fs::File::open(&bib_path)?;
-        file.read_to_string(&mut bib_content)?;
-    }
-    read_bibtex(&bib_content)
-}
+use std::path::PathBuf;
 
 fn parse_year(entry: &Entry) -> Result<i64, RetrievalError> {
     entry.get_as::<i64>("year")
@@ -94,14 +77,56 @@ pub fn parse_bibliography(bibliography: Bibliography) -> Vec<Paper> {
     papers
 }
 
-fn read_bibtex(bib_content: &str) -> Result<Bibliography> {
+pub fn read_bibtex(bib_content: &str) -> Result<Bibliography> {
     Bibliography::parse(&bib_content)
         .map_err(|err| anyhow!("Failed to parse bibliography\n{}", err))
 }
 
-//pub fn save_bibliography(bibliography: Bibliography) -> Result<()> {
-//    let bib_path = settings::base_bib_path()?;
-//    let mut file = fs::File::create(bib_path)?;
-//    file.write_all(bibliography.to_biblatex_string().as_bytes())?;
-//    Ok(())
-//}
+fn get_bib_path() -> PathBuf {
+    PathBuf::from(tilde("~/.paperstack/stack.bib").to_string())
+}
+
+pub fn save_bibliography(bibliography: Bibliography) -> Result<()> {
+    let bib_path = get_bib_path();
+
+    // Check if the path exists and is a directory
+    if bib_path.exists() && bib_path.is_dir() {
+        bail!("Error: {:?} is a directory, not a file", bib_path);
+    }
+
+    // Ensure the parent directory exists
+    if let Some(parent) = bib_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory: {:?}", parent))?;
+    }
+
+    // Create or overwrite the file
+    let mut file = fs::File::create(&bib_path)
+        .with_context(|| format!("Failed to create or open file for writing: {:?}", bib_path))?;
+
+    file.write_all(bibliography.to_biblatex_string().as_bytes())
+        .with_context(|| "Failed to write bibliography content")?;
+
+    Ok(())
+}
+
+pub fn read_bibliography() -> Result<Bibliography> {
+    let bib_path = get_bib_path();
+
+    // Check if the path exists and is a directory
+    if bib_path.exists() && bib_path.is_dir() {
+        bail!("Error: {:?} is a directory, not a file", bib_path);
+    }
+    // If the file doesn't exist, return an empty bibliography
+    if !bib_path.exists() {
+        return Ok(Bibliography::new());
+    }
+    let mut bib_content = String::new();
+    let mut file = fs::File::open(&bib_path)
+        .with_context(|| format!("Failed to open file for reading: {:?}", bib_path))?;
+
+    file.read_to_string(&mut bib_content)
+        .with_context(|| "Failed to read bibliography content")?;
+
+    read_bibtex(&bib_content).with_context(|| "Failed to parse bibliography content")
+}

@@ -16,7 +16,8 @@ fn remove_entry(papers: Vec<Paper>) -> Vec<ReadOnlyPaper> {
         .collect()
 }
 
-pub fn search(query: String) -> Result<Vec<ReadOnlyPaper>> {
+pub fn search(_query: String) -> Result<Vec<ReadOnlyPaper>> {
+    println!("Scavenging...");
     let bibliography = bibfile::read_bibliography()?;
     let items = bibfile::parse_bibliography(bibliography);
     Ok(remove_entry(items))
