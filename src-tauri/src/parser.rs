@@ -192,7 +192,7 @@ pub async fn download_pdf(arxiv_id: &str) -> Result<PathBuf> {
     Ok(filename)
 }
 
-pub async fn rename_pdf_file(file_path: PathBuf, new_name: String) -> Result<()> {
+pub async fn rename_pdf_file(file_path: PathBuf, new_name: String) -> Result<PathBuf> {
     // Get the parent directory of the file
     let parent_dir = match file_path.parent() {
         Some(dir) => dir,
@@ -202,7 +202,7 @@ pub async fn rename_pdf_file(file_path: PathBuf, new_name: String) -> Result<()>
     let new_file_path = parent_dir.join(format!("{}.pdf", new_name));
     // Rename the file
     rename(&file_path, &new_file_path).await?;
-    Ok(())
+    Ok(new_file_path)
 }
 
 pub async fn arxiv2bib(arxiv_id: &str) -> Result<(String, String, String)> {

@@ -69,7 +69,7 @@
         color: var(--base);
         height: 60px;
         text-align: center;
-        border: none;
+        border: solid 1px rgb(229, 231, 235);
         outline: none;
         background-color: rgba(255, 255, 255, 0.9);
         border-radius: 8px;

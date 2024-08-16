@@ -33,7 +33,7 @@
     $: resultsPromise.then((r) => (results = r));
 </script>
 
-<div class="container">
+<div class="container" class:scroll={results.length > 0}>
     <div class="background" class:upwards={results.length > 0}></div>
     <div class="results" class:inview={results.length > 0}>
         {#each results as result}
@@ -48,6 +48,9 @@
         position: relative;
         height: 100vh;
         overflow: hidden;
+    }
+    .scroll {
+        overflow: scroll;
     }
 
     .background {
@@ -66,6 +69,8 @@
 
     .results {
         position: absolute;
+        display: flex;
+        flex-direction: column;
         top: 100%;
         left: 0;
         right: 0;
@@ -74,6 +79,23 @@
         padding: 20px;
         box-sizing: border-box;
         transition: transform 0.9s cubic-bezier(0, 0.55, 0.45, 1); /* Slower transition for the background */
+        background-color: #f9fafb;
+        background-image: linear-gradient(
+                90deg,
+                transparent 24%,
+                rgba(0, 0, 0, 0.05) 25%,
+                rgba(0, 0, 0, 0.05) 26%,
+                transparent 27%,
+                transparent
+            ),
+            linear-gradient(
+                transparent 24%,
+                rgba(0, 0, 0, 0.05) 25%,
+                rgba(0, 0, 0, 0.05) 26%,
+                transparent 27%,
+                transparent
+            );
+        background-size: 20px 20px;
     }
 
     .results.inview {

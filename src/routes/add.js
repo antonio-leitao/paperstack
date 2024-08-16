@@ -26,11 +26,14 @@ function removeCommandText(input) {
   return input.replace(regex, "");
 }
 
+//
 export function add(input) {
   let link = removeCommandText(input);
   let arxivID = getArxivId(link);
 
   invoke("add_command", { arxivid: arxivID })
-    .then((message) => info.set(message))
+    .then((key) => {
+      info.set(`Added paper: ${key}`);
+    })
     .catch((error) => info.set(error));
 }
