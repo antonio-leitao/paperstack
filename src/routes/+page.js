@@ -12,6 +12,8 @@ export async function load() {
         console.log('store.json does not exist');
     }
     const store = await loadStore('store.json', { autoSave: true });
+    //needed for reset
+    //store.delete('files');
     initializeStore(store);
     const files = await store.get('files');
     return {

@@ -7,41 +7,34 @@ export function parseBibEntry(bibtexString) {
   const entries = cite.get({ type: "json" });
 
   // Extract title, year, and authors
-    if (entries.length > 0) {
-        const entry = entries[0];
-        return {
-        bibtex:cite.format('bibtex'),
-        title: entry.title || "No title available",
-        year: entry.issued ? entry.issued["date-parts"]?.[0]?.[0] || "Unknown year" : "Unknown year",
-        author: entry.author
-        ? entry.author.map(author => `${author.given || ""} ${author.family || ""}`.trim())
-        : [] // Return an empty array if no authors are available
-            };
-        }
+  if (entries.length > 0) {
+    const entry = entries[0];
+    return entry
     }
+}
     
-    export function extractBibtex(inputString) {
-        // Sanitize input
-        if (typeof inputString !== 'string') {
-            return null;
-        }
-        const xmlTagMatch = inputString.match(/<bibtex>([\s\S]*?)<\/bibtex>/);
-        if (xmlTagMatch) {
-            const trimmedEntry = xmlTagMatch[1].trim();
-            return trimmedEntry.length > 0 ? trimmedEntry : null;
-        }
-        try {
-            // Try to parse the input string with Citation.js
-            const citation = new Cite(inputString);
-            // Check if it successfully parsed any BibTeX entries
-            const bibtex = citation.format('bibtex');
-            // Return the BibTeX if found and valid
-            return bibtex.trim() || null;
-        } catch (error) {
-            // If parsing fails, return null
-            return null;
-        }
+export function extractBibtex(inputString) {
+    // Sanitize input
+    if (typeof inputString !== 'string') {
+        return null;
     }
+    const xmlTagMatch = inputString.match(/<bibtex>([\s\S]*?)<\/bibtex>/);
+    if (xmlTagMatch) {
+        const trimmedEntry = xmlTagMatch[1].trim();
+        return trimmedEntry.length > 0 ? trimmedEntry : null;
+    }
+    try {
+        // Try to parse the input string with Citation.js
+        const citation = new Cite(inputString);
+        // Check if it successfully parsed any BibTeX entries
+        const bibtex = citation.format('bibtex');
+        // Return the BibTeX if found and valid
+        return bibtex.trim() || null;
+    } catch (error) {
+        // If parsing fails, return null
+        return null;
+    }
+}
 
 
 

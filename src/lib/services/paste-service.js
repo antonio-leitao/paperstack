@@ -1,5 +1,6 @@
 import {extractBibtex} from "./bib-service";
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
+import { fetch } from '@tauri-apps/plugin-http'
 
 function extractImageSourceFromHtml(htmlString) {
   const parser = new DOMParser();
@@ -43,7 +44,7 @@ async function identifyUrlType(url) {
         return "URL";
     } catch (error) {
         console.error('Error checking URL:', error);
-        return null;
+        return "URL";
     }
 }
 
@@ -84,7 +85,7 @@ export async function readPaste(event) {
       const link = parseLink(pastedText);
       if (link) {
         const urlType = await identifyUrlType(link);
-        return { type: urlType, content: link, urlType };
+        return { type: urlType, content: link };
       }
       // Return plain text if not BibTeX or URL
       return { type: "Text", content: pastedText };
