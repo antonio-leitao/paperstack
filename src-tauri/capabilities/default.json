@@ -29,7 +29,15 @@
         }
       ]
     },
-{
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        {
+          "path": "$APPDATA/**"
+        }
+      ]
+    },
+    {
       "identifier": "fs:allow-remove",
       "allow": [
         {
@@ -41,10 +49,26 @@
     {
       "identifier": "http:default",
       "allow": [
-          {
-            "url": "https://**"
-          }
-        ]
+        {
+          "url": "https://**"
+        }
+      ]
+    },
+    "shell:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "open-pdf",
+          "cmd": "open",
+          "args": [
+            {
+              "validator": ".*\\.pdf$" 
+            }
+          ],
+          "sidecar": false
+        }
+      ]
     }
   ]
 }

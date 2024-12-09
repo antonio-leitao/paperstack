@@ -12,7 +12,7 @@
   import ContextMenu from "$lib/ContextMenu.svelte";
   import { download } from "@tauri-apps/plugin-upload";
   import { appDataDir,join,basename } from "@tauri-apps/api/path";
-  import { mkdir,BaseDirectory, remove } from '@tauri-apps/plugin-fs';
+  import { mkdir,BaseDirectory, remove, writeFile} from '@tauri-apps/plugin-fs';
   import { fetch } from "@tauri-apps/plugin-http";
   import {
     createFile,
@@ -33,18 +33,31 @@
   let selected_file = $derived(files.find((file) => file.id === selected_id));
 
   // Content Creation Handlers
-  async function handlePDFContent(pdfFile, target_id: string) {
+  async function handlePDFContent(pdfFile: File, target_id: string) {
     LoadingState.start("Extracting PDF");
     try {
+      // Create pdfs directory in AppData if it doesn't exist
+      await mkdir('pdfs', { baseDir: BaseDirectory.AppData, recursive: true });
+      
+      // Get paths
+      const appDataDirPath = await appDataDir();
+      const pdfPath = await join(appDataDirPath, 'pdfs', pdfFile.name);
+      
+      // Write the PDF file
+      const arrayBuffer = await pdfFile.arrayBuffer();
+      await writeFile(pdfPath, new Uint8Array(arrayBuffer), { baseDir: BaseDirectory.AppData });
+
+      // Extract text and process as before
       const { text, pages } = await extractTextFromPDF(pdfFile);
       LoadingState.lap("Asking AI");
       const bibtex = await extractBibFromPDF(text);
       let bib = parseBibEntry(bibtex);
+      
       if (target_id) {
         bib = { ...bib, ...selected_file.bib }; //add to bib any missing fields from selected_file
-        files = await updateFile(target_id, { pages, bibtex, bib });
+        files = await updateFile(target_id, { pages, bibtex, bib, pdf: pdfPath});
       } else {
-        files = await createFile({ pages, bibtex, bib });
+        files = await createFile({ pages, bibtex, bib, pdf: pdfPath});
       }
     } catch (error) {
       console.error("Error processing PDF:", error);
@@ -88,6 +101,7 @@
       case "PDF": {
         LoadingState.start("Fetching PDF");
         try {
+			//can be done at the same time
           const response = await fetch(payload.content);
           const pdfBlob = await response.blob();
           const pdfFile = new File([pdfBlob], "pasted.pdf", {
@@ -172,9 +186,12 @@
 
   async function handleDelete() {
     if (selected_id) {
-		if (selected_file.image){
-			await remove(selected_file.image);
-		}
+      if (selected_file.image) {
+        await remove(selected_file.image);
+      }
+      if (selected_file.pdf) {
+        await remove(selected_file.pdf);
+      }
       files = await deleteFile(selected_id);
       selected_id = null;
       showContextMenu = false;

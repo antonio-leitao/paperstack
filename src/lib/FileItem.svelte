@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { convertFileSrc } from '@tauri-apps/api/core';
+	import { Command } from '@tauri-apps/plugin-shell';
+// opens the given URL on the default browser:
 	import Cite from 'citation-js';
-	let { id, url, image,bib,pages,ondrop, ondragenter, ondragover, ondragleave, isSelected = false, isBeingDraggedOver = false } = $props();
+	let { id, url, image,pdf,bib,pages,ondrop, ondragenter, ondragover, ondragleave, isSelected = false, isBeingDraggedOver = false } = $props();
     let  year = bib.issued ? bib.issued["date-parts"]?.[0]?.[0] || "Unknown year" : "Unknown year";
 	let author = bib.author ? bib.author.map(author => `${author.given || ""} ${author.family || ""}`.trim()) : []
 	let link = $derived(url || bib.URL);
@@ -12,7 +14,16 @@
 		const cite = new Cite(bib);
 		bibtex = cite.format('bibtex');
 	})
+	async function openPDF() {
+		if (!pdf) return;
+		try {
+			await Command.create('open-pdf', [pdf]).execute();
+		} catch (error) {
+			console.error('Failed to open PDF:', error);
+		}
+	}
 
+	console.log(pdf);
 </script>
 
 <div 
@@ -30,6 +41,9 @@
 <pre>{bibtex}</pre>
 {#if image_url}
 	<img src={image_url} alt="Image from local path" />
+{/if}
+{#if pdf}
+	<button onclick={openPDF}>PDF</button>
 {/if}
 	<p>{bib.title}</p>
 <a href={link} target="_blank">{link}</a>
