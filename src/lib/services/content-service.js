@@ -5,11 +5,22 @@ import { parseBibEntry } from "$lib/services/bib-service";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { LoadingState } from "$lib/state/loading.svelte";
 import { mkdir, BaseDirectory, remove, writeFile } from "@tauri-apps/plugin-fs";
-import { createFile, updateFile } from "$lib/state/database.svelte";
+import { createFile, updateFile, getFiles } from "$lib/state/database.svelte";
+import { promptUserConfirmation } from "$lib/state/confirmation.svelte";
 
 export async function addPDFContent(pdfFile, selected_file) {
   LoadingState.start("Extracting PDF");
   try {
+    if (selected_file) {
+      if (
+        !await promptUserConfirmation(
+          `Are you sure you want to replace "${selected_file.bib.title}" PDF with "${pdfFile.name}"?`,
+          "This action cannot be undone."
+        )
+      ) {
+        return getFiles();
+      }
+    }
     // Extract text and process as before
     const { text, pages } = await extractTextFromPDF(pdfFile);
     LoadingState.lap("Asking AI");
@@ -46,6 +57,7 @@ export async function addPDFContent(pdfFile, selected_file) {
     }
   } catch (error) {
     console.error("Error processing PDF:", error);
+    return getFiles();
   } finally {
     LoadingState.stop();
   }
@@ -54,6 +66,8 @@ export async function addPDFContent(pdfFile, selected_file) {
 export async function addBibTeXContent(bibtex, selected_file) {
   const bib = parseBibEntry(bibtex);
   if (selected_file) {
+    if (!await promptUserConfirmation(`Are you sure you want to replace "${selected_file.bib.title}" bib entry?`, "This action cannot be undone."))
+      return getFiles();
     return updateFile(selected_file.id, { bib });
   } else {
     return createFile({ bib });
@@ -62,11 +76,19 @@ export async function addBibTeXContent(bibtex, selected_file) {
 
 export async function addURLContent(url, selected_file) {
   if (selected_file) {
+    if (!await promptUserConfirmation(`Are you sure you want to replace "${selected_file.title}" URL?`, "This action cannot be undone."))
+      return getFiles();
     return updateFile(selected_file.id, { url });
   }
+  return getFiles();
 }
+
 export async function addImageContent(imageFile, selected_file) {
   if (selected_file) {
+    if (selected_file.image) {
+      if (!await promptUserConfirmation(`Are you sure you want to replace "${selected_file.title}" image?`, "This action cannot be undone."))
+        return getFiles();
+    }
     try {
       // Create images directory in AppData if it doesn't exist
       await mkdir("images", {
@@ -94,6 +116,8 @@ export async function addImageContent(imageFile, selected_file) {
       return updateFile(selected_file.id, { image: imagePath });
     } catch (error) {
       console.error("Error saving image:", error);
+      return getFiles();
     }
   }
+  return getFiles();
 }

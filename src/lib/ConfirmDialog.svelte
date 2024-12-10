@@ -1,39 +1,21 @@
 <script>
-    let { title = "Confirm Action", message = "", confirmText = "Confirm", cancelText = "Cancel", handleConfirm, handleCancel } = $props();
+	import {ConfirmationState, confirmAction, cancelAction} from "./state/confirmation.svelte.js";
 </script>
 
-<div class="modal-overlay">
-    <div class="modal" role="dialog" aria-modal="true">
-        <h2>{title}</h2>
-        <p>{message}</p>
-        <div class="button-group">
-            <button onclick={handleCancel}>{cancelText}</button>
-            <button onclick={handleConfirm} class="primary">{confirmText}</button>
-        </div>
+{#if ConfirmationState.show}
+  <div class="modal-backdrop">
+    <div class="modal-content">
+      <h2>{ConfirmationState.title}</h2>
+      <p>{ConfirmationState.message}</p>
+      <div class="button-group">
+        <button onclick={cancelAction}>Cancel</button>
+        <button class="primary" onclick={confirmAction}>Confirm</button>
+      </div>
     </div>
-</div>
+  </div>
+{/if}
 
 <style>
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-    }
-
-    .modal {
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        max-width: 400px;
-        width: 90%;
-    }
 
     .button-group {
         display: flex;

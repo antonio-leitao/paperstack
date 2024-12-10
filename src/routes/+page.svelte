@@ -4,7 +4,7 @@
   import ProgressStep from "$lib/ProgressStep.svelte";
   import FileItem from "$lib/FileItem.svelte";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
-
+  import {promptUserConfirmation} from "$lib/state/confirmation.svelte.js"
   import { readPaste } from "$lib/services/paste-service.js";
   import { LoadingState } from "$lib/state/loading.svelte";
   import ContextMenu from "$lib/ContextMenu.svelte";
@@ -23,7 +23,6 @@
   let dragOverGrid = $state(false);
   let drag_id = $state(null);
   let selected_id = $state(null);
-  let confirmationState = $state(null);
   let contextMenuX = $state(0);
   let contextMenuY = $state(0);
   let showContextMenu = $state(false);
@@ -112,26 +111,20 @@
   async function handleDelete() {
     if (selected_id) {
       let selected_file = files.find((file) => file.id === selected_id);
+	  //return on cancel
+	  if (!await promptUserConfirmation(`Are you sure you want to delete ${selected_file.bib.title}?`, "This action cannot be undone.")) return;
       if (selected_file.image) {
         await remove(selected_file.image);
       }
       if (selected_file.pdf) {
         await remove(selected_file.pdf);
       }
-      files = await deleteFile(selected_id);
+      files = await deleteFile(selected_file.id);
       selected_id = null;
       showContextMenu = false;
     }
   }
 
-  function handleCopyBibTeX() {
-    if (selected_id) {
-      let selected_file = files.find((file) => file.id === selected_id);
-      const bibtex = `@article{${selected_file.id},\n\ttitle={${selected_file.bib.title}}\n}`;
-      navigator.clipboard.writeText(bibtex);
-      showContextMenu = false;
-    }
-  }
 
   function handleDragEnter(event: DragEvent, fileId: string) {
     event.preventDefault();
@@ -171,20 +164,12 @@
 
 <svelte:window onclick={handleClick} onpaste={handlePasteEvent} />
 
-<ContextMenu x={contextMenuX} y={contextMenuY} show={showContextMenu}>
-  <div class="menu-item" onclick={handleCopyBibTeX}>Copy BibTeX</div>
-  <div class="menu-item" onclick={handleDelete}>Delete</div>
-</ContextMenu>
+<ContextMenu bind:show={showContextMenu} x={contextMenuX} y={contextMenuY} file={files.find((file) => file.id === selected_id)} {handleDelete}/>
+<ConfirmDialog />
+<ProgressStep/>
 
 <div>
   <input type="file" accept="application/pdf" onchange={handleFileInput} />
-
-  <div class="progress">
-    <ProgressStep
-      label={LoadingState.what}
-      isCompleted={!LoadingState.is_loading}
-    />
-  </div>
 </div>
 
 <div
@@ -237,28 +222,10 @@
   {/if}
 </div>
 
-{#if confirmationState}
-  <ConfirmDialog
-    title={confirmationState.title}
-    message={confirmationState.message}
-    confirmText={confirmationState.confirmText}
-    cancelText={confirmationState.cancelText}
-    handleConfirm={confirmationState.onConfirm}
-    handleCancel={confirmationState.onCancel}
-  />
-{/if}
 
 <style>
   .file-grid {
     user-select: none;
   }
 
-  :global(.menu-item) {
-    padding: 8px 16px;
-    cursor: pointer;
-  }
-
-  :global(.menu-item:hover) {
-    background-color: #f0f0f0;
-  }
 </style>

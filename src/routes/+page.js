@@ -1,5 +1,5 @@
 import { load as loadStore } from '@tauri-apps/plugin-store';
-import { initializeStore } from '$lib/state/database.svelte';
+import { initializeStore,getFiles } from '$lib/state/database.svelte';
 import { exists, BaseDirectory } from '@tauri-apps/plugin-fs';
 
 export const ssr = false; // Disable SSR for this page
@@ -15,7 +15,7 @@ export async function load() {
     //needed for reset
     //store.delete('files');
     initializeStore(store);
-    const files = await store.get('files');
+    const files = await getFiles();
     return {
         files: files ?? []
     };

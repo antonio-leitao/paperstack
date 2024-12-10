@@ -1,15 +1,14 @@
 <script>
-    export let label = "";
-    export let isCompleted = false;
+    import { LoadingState } from "$lib/state/loading.svelte.js";
 </script>
 
-{#if !isCompleted}
+{#if LoadingState.is_loading}
     <div class="modal-backdrop">
         <div class="modal-content">
             <div class="progress-container">
                 <div class="progress-step">
                     <div class="spinner"></div>
-                    <span>{label}</span>
+                    <span>{LoadingState.what}</span>
                 </div>
             </div>
         </div>

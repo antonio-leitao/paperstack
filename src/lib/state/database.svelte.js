@@ -12,6 +12,11 @@ export async function initializeStore(storeInstance) {
     store = storeInstance;
 }
 
+export async function getFiles() {
+    if (!store) throw new Error('Store not initialized');
+    return await store.get('files') ?? [];
+}
+
 export async function createFile(file){
     if (!store) throw new Error('Store not initialized');
     try {
