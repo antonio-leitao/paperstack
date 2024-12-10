@@ -4,21 +4,18 @@
   import ProgressStep from "$lib/ProgressStep.svelte";
   import FileItem from "$lib/FileItem.svelte";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
-  import { extractTextFromPDF } from "$lib/services/pdf-service";
-  import { extractBibFromPDF } from "$lib/services/ai-service";
-  import { parseBibEntry } from "$lib/services/bib-service";
+
   import { readPaste } from "$lib/services/paste-service.js";
   import { LoadingState } from "$lib/state/loading.svelte";
   import ContextMenu from "$lib/ContextMenu.svelte";
-  import { download } from "@tauri-apps/plugin-upload";
-  import { appDataDir,join,basename } from "@tauri-apps/api/path";
-  import { mkdir,BaseDirectory, remove, writeFile} from '@tauri-apps/plugin-fs';
-  import { fetch } from "@tauri-apps/plugin-http";
   import {
-    createFile,
-    updateFile,
-    deleteFile,
-  } from "$lib/state/database.svelte";
+    addPDFContent,
+    addURLContent,
+    addBibTeXContent,
+    addImageContent,
+  } from "$lib/services/content-service.js";
+  import { remove } from "@tauri-apps/plugin-fs";
+  import { deleteFile } from "$lib/state/database.svelte";
 
   // State
   let { data } = $props();
@@ -30,112 +27,40 @@
   let contextMenuX = $state(0);
   let contextMenuY = $state(0);
   let showContextMenu = $state(false);
-  let selected_file = $derived(files.find((file) => file.id === selected_id));
-
-  // Content Creation Handlers
-  async function handlePDFContent(pdfFile: File, target_id: string) {
-    LoadingState.start("Extracting PDF");
-    try {
-      // Create pdfs directory in AppData if it doesn't exist
-      await mkdir('pdfs', { baseDir: BaseDirectory.AppData, recursive: true });
-      
-      // Get paths
-      const appDataDirPath = await appDataDir();
-      const pdfPath = await join(appDataDirPath, 'pdfs', pdfFile.name);
-      
-      // Write the PDF file
-      const arrayBuffer = await pdfFile.arrayBuffer();
-      await writeFile(pdfPath, new Uint8Array(arrayBuffer), { baseDir: BaseDirectory.AppData });
-
-      // Extract text and process as before
-      const { text, pages } = await extractTextFromPDF(pdfFile);
-      LoadingState.lap("Asking AI");
-      const bibtex = await extractBibFromPDF(text);
-      let bib = parseBibEntry(bibtex);
-      
-      if (target_id) {
-        bib = { ...bib, ...selected_file.bib }; //add to bib any missing fields from selected_file
-        files = await updateFile(target_id, { pages, bibtex, bib, pdf: pdfPath});
-      } else {
-        files = await createFile({ pages, bibtex, bib, pdf: pdfPath});
-      }
-    } catch (error) {
-      console.error("Error processing PDF:", error);
-    } finally {
-      LoadingState.stop();
-    }
-  }
-
-  async function handleBibTeXContent(bibtex: string, target_id: string) {
-    const bib = parseBibEntry(bibtex);
-    if (target_id) {
-      files = await updateFile(target_id, { bib });
-    } else {
-      files = await createFile({ bib });
-    }
-  }
-
-  async function handleURLContent(url: string, target_id: string) {
-    if (target_id) {
-      files = await updateFile(target_id, { url });
-    }
-  }
-  async function handleImageContent(image: string, target_id: string) {
-    if (target_id) {
-
-	  await mkdir('images', { baseDir: BaseDirectory.AppData , recursive: true });
-	  const appDataDirPath = await appDataDir();
-	  const filename = await basename(image);
-	  const imgPath = await join(appDataDirPath, 'images', filename);
-	  console.log("Downloading from:", image, "to:", imgPath);
-      await download( image, imgPath);
-      files = await updateFile(target_id, { image: imgPath});
-    }
-  }
 
   // Input Event Handlers
   async function handlePasteEvent(event: ClipboardEvent) {
     const payload = await readPaste(event);
-    const target_id = selected_id;
+    const selected_file = files.find((file) => file.id === selected_id);
     switch (payload.type) {
       case "PDF": {
         LoadingState.start("Fetching PDF");
-        try {
-			//can be done at the same time
-          const response = await fetch(payload.content);
-          const pdfBlob = await response.blob();
-          const pdfFile = new File([pdfBlob], "pasted.pdf", {
-            type: "application/pdf",
-          });
-          await handlePDFContent(pdfFile, target_id);
-        } catch (error) {
-          console.error("Error fetching PDF from URL:", error);
-        }
+        files = await addPDFContent(payload.content, selected_file);
         break;
       }
       case "URL":
-        await handleURLContent(payload.content, target_id);
+        files = await addURLContent(payload.content, selected_file);
         break;
       case "BibTeX":
-        await handleBibTeXContent(payload.content, target_id);
+        files = await addBibTeXContent(payload.content, selected_file);
         break;
       case "Image":
-        await handleImageContent(payload.content, target_id);
+        files = await addImageContent(payload.content, selected_file);
         break;
     }
   }
 
   async function handleFileInput(event) {
-    const targetId = selected_id;
+    const selected_file = files.find((file) => file.id === selected_id);
     const inputFiles = event.target.files;
     if (!inputFiles) return;
-    if (targetId) {
+    if (selected_file) {
       const newFile = inputFiles[0];
-      await handlePDFContent(newFile, targetId);
+      files = await addPDFContent(newFile, selected_file);
     } else {
       for (const file of inputFiles) {
         if (file.type.includes("pdf")) {
-          await handlePDFContent(file, null);
+          files = await addPDFContent(file, null);
         }
       }
     }
@@ -143,18 +68,18 @@
 
   // Drag and Drop Handlers
   async function handleDrop(event) {
-    const targetId = drag_id;
+    let selected_file = files.find((file) => file.id === drag_id);
     event.preventDefault();
     const droppedFiles = event.dataTransfer?.files;
     if (!droppedFiles) return;
-    if (targetId) {
+    if (selected_file) {
       const newFile = droppedFiles[0];
-      await handlePDFContent(newFile, targetId);
+      files = await addPDFContent(newFile, selected_file);
     } else if (dragOverGrid) {
       //THIS IS WHY WE CANT MERGE BOTH HANDLERS
       for (const file of droppedFiles) {
         if (file.type.includes("pdf")) {
-          await handlePDFContent(file, null);
+          files = await addPDFContent(file, null);
         }
       }
     }
@@ -186,6 +111,7 @@
 
   async function handleDelete() {
     if (selected_id) {
+      let selected_file = files.find((file) => file.id === selected_id);
       if (selected_file.image) {
         await remove(selected_file.image);
       }
@@ -200,7 +126,8 @@
 
   function handleCopyBibTeX() {
     if (selected_id) {
-      const bibtex = `@article{${selected_file.id},\n\ttitle={${selected_file.title}}\n}`;
+      let selected_file = files.find((file) => file.id === selected_id);
+      const bibtex = `@article{${selected_file.id},\n\ttitle={${selected_file.bib.title}}\n}`;
       navigator.clipboard.writeText(bibtex);
       showContextMenu = false;
     }
@@ -274,7 +201,7 @@
            gap: 10px; 
            padding: 20px;"
 >
-  {#each files as file, index (file.id)}
+  {#each files as file (file.id)}
     <div
       class="card"
       role="gridcell"
