@@ -4,19 +4,21 @@
   import ProgressStep from "$lib/ProgressStep.svelte";
   import FileItem from "$lib/FileItem.svelte";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
-  import {promptUserConfirmation} from "$lib/state/confirmation.svelte.js"
+  import { promptUserConfirmation } from "$lib/state/confirmation.svelte.js";
   import { readPaste } from "$lib/services/paste-service.js";
   import { LoadingState } from "$lib/state/loading.svelte";
   import ContextMenu from "$lib/ContextMenu.svelte";
+  import InputButton from "$lib/InputButton.svelte";
+  import { FileUp } from "lucide-svelte";
   import {
     addPDFContent,
     addURLContent,
     addBibTeXContent,
     addImageContent,
-  } from "$lib/services/content-service.js";
+  } from "$lib/services/content-service";
   import { remove } from "@tauri-apps/plugin-fs";
   import { deleteFile } from "$lib/state/database.svelte";
-
+  import GridToggle from "$lib/GridToggle.svelte";
   // State
   let { data } = $props();
   let files = $state(data.files);
@@ -26,7 +28,7 @@
   let contextMenuX = $state(0);
   let contextMenuY = $state(0);
   let showContextMenu = $state(false);
-
+  let layout_grid = $state(true);
   // Input Event Handlers
   async function handlePasteEvent(event: ClipboardEvent) {
     const payload = await readPaste(event);
@@ -55,7 +57,12 @@
     if (!inputFiles) return;
     if (selected_file) {
       const newFile = inputFiles[0];
-      files = await addPDFContent(newFile, selected_file);
+      if (newFile.type.includes("pdf")) {
+        files = await addPDFContent(newFile, selected_file);
+      }
+      if (newFile.type.includes("image")) {
+        files = await addImageContent(newFile, selected_file);
+      }
     } else {
       for (const file of inputFiles) {
         if (file.type.includes("pdf")) {
@@ -73,7 +80,12 @@
     if (!droppedFiles) return;
     if (selected_file) {
       const newFile = droppedFiles[0];
-      files = await addPDFContent(newFile, selected_file);
+      if (newFile.type.includes("pdf")) {
+        files = await addPDFContent(newFile, selected_file);
+      }
+      if (newFile.type.includes("image")) {
+        files = await addImageContent(newFile, selected_file);
+      }
     } else if (dragOverGrid) {
       //THIS IS WHY WE CANT MERGE BOTH HANDLERS
       for (const file of droppedFiles) {
@@ -88,6 +100,7 @@
 
   function handleContextMenu(event, fileId) {
     event.preventDefault();
+    event.stopPropagation();
     contextMenuX = event.clientX;
     contextMenuY = event.clientY;
     selected_id = fileId;
@@ -111,8 +124,14 @@
   async function handleDelete() {
     if (selected_id) {
       let selected_file = files.find((file) => file.id === selected_id);
-	  //return on cancel
-	  if (!await promptUserConfirmation(`Are you sure you want to delete ${selected_file.bib.title}?`, "This action cannot be undone.")) return;
+      //return on cancel
+      if (
+        !(await promptUserConfirmation(
+          "Confirm Delete",
+          `Are you sure you want to delete ${selected_file.bib.title}?`
+        ))
+      )
+        return;
       if (selected_file.image) {
         await remove(selected_file.image);
       }
@@ -124,7 +143,6 @@
       showContextMenu = false;
     }
   }
-
 
   function handleDragEnter(event: DragEvent, fileId: string) {
     event.preventDefault();
@@ -164,31 +182,36 @@
 
 <svelte:window onclick={handleClick} onpaste={handlePasteEvent} />
 
-<ContextMenu bind:show={showContextMenu} x={contextMenuX} y={contextMenuY} file={files.find((file) => file.id === selected_id)} {handleDelete}/>
+<ContextMenu
+  bind:show={showContextMenu}
+  x={contextMenuX}
+  y={contextMenuY}
+  file={files.find((file) => file.id === selected_id)}
+  {handleDelete}
+/>
 <ConfirmDialog />
-<ProgressStep/>
+<ProgressStep />
 
 <div>
-  <input type="file" accept="application/pdf" onchange={handleFileInput} />
+  <InputButton {handleFileInput} />
+  <GridToggle bind:grid={layout_grid} />
 </div>
 
 <div
-  class="file-grid"
+  class="tray"
+  class:grid={layout_grid}
   role="grid"
   tabindex="0"
   ondrop={handleDrop}
   ondragover={handleGridDragOver}
   ondragleave={handleGridDragLeave}
-  style="border: 2px dashed {dragOverGrid ? 'blue' : 'gray'}; 
-           min-height: 300px; 
-           display: grid; 
-           grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); 
-           gap: 10px; 
-           padding: 20px;"
+  oncontextmenu={(event) => handleContextMenu(event, null)}
+  style="border: 2px dashed {dragOverGrid ? 'blue' : 'gray'};"
 >
   {#each files as file (file.id)}
     <div
       class="card"
+      class:grid={layout_grid}
       role="gridcell"
       data-file-id={file.id}
       onclick={() => {
@@ -205,6 +228,7 @@
     >
       <FileItem
         {...file}
+        compactView={!layout_grid}
         isSelected={selected_id === file.id}
         isBeingDraggedOver={drag_id === file.id}
         ondragenter={(e) => handleDragEnter(e, file.id)}
@@ -217,15 +241,30 @@
 
   {#if files.length === 0}
     <div style="grid-column: 1 / -1; text-align: center; color: gray;">
+      <FileUp size={24} /><br />
       Drag and drop files here
     </div>
   {/if}
 </div>
 
-
 <style>
-  .file-grid {
+  .tray {
     user-select: none;
+    min-height: 300px;
+    gap: 10px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
   }
-
+  .tray.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+    gap: 10px;
+    place-items: center;
+  }
+  .card.grid {
+    display: grid;
+    place-items: center;
+  }
 </style>

@@ -13,16 +13,16 @@ export async function addPDFContent(pdfFile, selected_file) {
   try {
     if (selected_file) {
       if (
-        !await promptUserConfirmation(
+        !(await promptUserConfirmation(
           `Are you sure you want to replace "${selected_file.bib.title}" PDF with "${pdfFile.name}"?`,
           "This action cannot be undone."
-        )
+        ))
       ) {
         return getFiles();
       }
     }
     // Extract text and process as before
-    const { text, pages } = await extractTextFromPDF(pdfFile);
+    const { text, pages, image } = await extractTextFromPDF(pdfFile);
     LoadingState.lap("Asking AI");
     const bibtex = await extractBibFromPDF(text);
     let bib = parseBibEntry(bibtex);
@@ -48,12 +48,33 @@ export async function addPDFContent(pdfFile, selected_file) {
       baseDir: BaseDirectory.AppData,
     });
 
+    let imagePath = null;
+    //if creating a new file or file has no image, create one
+    if (!selected_file || !selected_file.image) {
+      await mkdir("images", {
+        baseDir: BaseDirectory.AppData,
+        recursive: true,
+      });
+
+      // Get paths
+      const appDataDirPath = await appDataDir();
+      const extension = image.name.split(".").pop() || "png";
+      const filename = `${prefix}_${timestamp}.${extension}`;
+      imagePath = await join(appDataDirPath, "images", filename);
+      // Write the image file
+      const arrayBuffer = await image.arrayBuffer();
+      await writeFile(imagePath, new Uint8Array(arrayBuffer), {
+        baseDir: BaseDirectory.AppData,
+      });
+    }
+
     //UPDATE BACKEND AND UI
     if (selected_file) {
       bib = { ...bib, ...selected_file.bib }; //add to bib any missing fields from selected_file
-      return updateFile(selected_file.id, { pages, bibtex, bib, pdf: pdfPath });
+      imagePath = selected_file.image || imagePath;
+      return updateFile(selected_file.id, { pages, bibtex, bib, pdf: pdfPath, image: imagePath });
     } else {
-      return createFile({ pages, bibtex, bib, pdf: pdfPath });
+      return createFile({ pages, bibtex, bib, pdf: pdfPath, image: imagePath });
     }
   } catch (error) {
     console.error("Error processing PDF:", error);
@@ -66,7 +87,12 @@ export async function addPDFContent(pdfFile, selected_file) {
 export async function addBibTeXContent(bibtex, selected_file) {
   const bib = parseBibEntry(bibtex);
   if (selected_file) {
-    if (!await promptUserConfirmation(`Are you sure you want to replace "${selected_file.bib.title}" bib entry?`, "This action cannot be undone."))
+    if (
+      !(await promptUserConfirmation(
+        `Are you sure you want to replace "${selected_file.bib.title}" bib entry?`,
+        "This action cannot be undone."
+      ))
+    )
       return getFiles();
     return updateFile(selected_file.id, { bib });
   } else {
@@ -76,7 +102,12 @@ export async function addBibTeXContent(bibtex, selected_file) {
 
 export async function addURLContent(url, selected_file) {
   if (selected_file) {
-    if (!await promptUserConfirmation(`Are you sure you want to replace "${selected_file.title}" URL?`, "This action cannot be undone."))
+    if (
+      !(await promptUserConfirmation(
+        `Are you sure you want to replace "${selected_file.title}" URL?`,
+        "This action cannot be undone."
+      ))
+    )
       return getFiles();
     return updateFile(selected_file.id, { url });
   }
@@ -86,7 +117,12 @@ export async function addURLContent(url, selected_file) {
 export async function addImageContent(imageFile, selected_file) {
   if (selected_file) {
     if (selected_file.image) {
-      if (!await promptUserConfirmation(`Are you sure you want to replace "${selected_file.title}" image?`, "This action cannot be undone."))
+      if (
+        !(await promptUserConfirmation(
+          `Are you sure you want to replace "${selected_file.title}" image?`,
+          "This action cannot be undone."
+        ))
+      )
         return getFiles();
     }
     try {
