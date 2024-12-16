@@ -4,6 +4,7 @@
   import {
     Trash2,
     ScanText,
+    Paperclip,
     FileText,
     GraduationCap,
     ChevronRight,
@@ -63,6 +64,9 @@
           Open PDF <FileText size={18} />
         </div>
       {/if}
+      <div class="menu-item">
+        Add Notes<Paperclip size={18} />
+      </div>
       <div class="menu-item" onclick={handleCopyCite}>
         Cite<GraduationCap size={18} />
       </div>
@@ -74,7 +78,7 @@
         onmouseenter={() => (showExportSubmenu = true)}
         onmouseleave={() => (showExportSubmenu = false)}
       >
-        Export to <ChevronRight size={18} />
+        Copy to Stack <ChevronRight size={18} />
         {#if showExportSubmenu}
           <div class="submenu">
             <div class="menu-item" onclick={handleExportPDF}>PDF</div>
