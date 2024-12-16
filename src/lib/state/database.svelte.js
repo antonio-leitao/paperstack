@@ -1,3 +1,5 @@
+import { load } from '@tauri-apps/plugin-store';
+
 function generate_unique_id() {
     // Get current Unix timestamp in milliseconds
     const timestamp = Date.now();
@@ -7,14 +9,32 @@ function generate_unique_id() {
 }
 
 let store = $state(null);
-
-export async function initializeStore(storeInstance) {
-    store = storeInstance;
+let papers = $state([]);
+let stackID = $state(null);
+export let Stack = {
+    get stackID() {
+        return stackID;
+    },
+    set stackID(val) {
+        stackID = val;
+    },
+    get papers() {
+        return papers;
+    },
+    set papers(val) {
+        papers = val;
+    },
 }
 
-export async function getFiles() {
-    if (!store) throw new Error('Store not initialized');
-    return await store.get('files') ?? [];
+
+export async function initializeStore(params) {
+    if (!store) {
+        store = await load('store.json', { autoSave: true });
+    }
+    console.log("initializeStore", params);
+    Stack.stackID = "files"
+    Stack.papers = await store.get('files') ?? [];
+    return;
 }
 
 export async function createFile(file){
@@ -23,7 +43,8 @@ export async function createFile(file){
         const files = await store.get('files') ?? [];
         let id = generate_unique_id();
         await store.set('files', [...files, {...file, id}]);
-        return [...files, {...file, id}];
+		Stack.papers =  [...files, {...file, id}]
+        return
     } catch (error) {
         console.error('Error creating file in store:', error);
         throw error;
@@ -38,7 +59,8 @@ export async function updateFile(update_id,updatedFile) {
             file.id === update_id ? { ...file, ...updatedFile } : file
         );
         await store.set('files', updatedFiles);
-        return updatedFiles;
+		Stack.papers =  updatedFiles
+        return
     } catch (error) {
         console.error('Error updating file in store:', error);
         throw error;
@@ -51,7 +73,8 @@ export async function deleteFile(fileId) {
         const files = await store.get('files') ?? [];
         const filteredFiles = files.filter(file => file.id !== fileId);
         await store.set('files', filteredFiles);
-        return filteredFiles;
+		Stack.papers = filteredFiles;
+        return;
     } catch (error) {
         console.error('Error deleting file from store:', error);
         throw error;

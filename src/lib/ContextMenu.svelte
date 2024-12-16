@@ -11,26 +11,26 @@
     BookCopy,
     FilePlus2,
   } from "lucide-svelte";
-  let { show = $bindable(), x, y, file, handleDelete } = $props();
-  let link = $derived(file.url || file.bib.URL);
+  let { show = $bindable(), x, y, paper, handleDelete } = $props();
+  let link = $derived(paper.url || paper.bib.URL);
   let showExportSubmenu = $state(false);
 
   function handleCopyBibTeX() {
-    const cite = new Cite(file.bib);
+    const cite = new Cite(paper.bib);
     let bibtex = cite.format("bibtex");
     navigator.clipboard.writeText(bibtex);
     show = false;
   }
 
   function handleCopyCite() {
-    navigator.clipboard.writeText(file.bib.id);
+    navigator.clipboard.writeText(paper.bib.id);
     show = false;
   }
 
   async function openPDF() {
-    if (!file.pdf) return;
+    if (!paper.pdf) return;
     try {
-      await Command.create("open-pdf", [file.pdf]).execute();
+      await Command.create("open-pdf", [paper.pdf]).execute();
     } catch (error) {
       console.error("Failed to open PDF:", error);
     }
@@ -52,13 +52,13 @@
 
 {#if show}
   <div class="context-menu" style="position: fixed; left: {x}px; top: {y}px;">
-    {#if file}
+    {#if paper}
       {#if link}
         <a class="menu-item" href={link} target="_blank"
           >Open Link<ExternalLink size={18} /></a
         >
       {/if}
-      {#if file.pdf}
+      {#if paper.pdf}
         <div class="menu-item" onclick={openPDF}>
           Open PDF <FileText size={18} />
         </div>

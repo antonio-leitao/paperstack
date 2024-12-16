@@ -1,5 +1,8 @@
 <script>
-  import "./styles.css";
+import "./styles.css";
+let { children } = $props();
 </script>
 
-<slot />
+<main>
+	{@render children()}
+</main>
