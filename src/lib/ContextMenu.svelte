@@ -1,6 +1,11 @@
 <script>
     import { Command } from "@tauri-apps/plugin-shell";
     import { ContextState } from "$lib/state/context.svelte";
+    import {
+        Store,
+        createPaper,
+        deleteStack,
+    } from "$lib/state/database.svelte";
     import Cite from "citation-js";
     import {
         Trash2,
@@ -40,19 +45,22 @@
         } catch (error) {
             console.error("Failed to open PDF:", error);
         }
-        ContextState.show = false;
+        ContextState.close();
     }
 
-    function handleExportPDF() {
-        ContextState.show = false;
+    async function handleSendToStack(stackId) {
+        if (!ContextState.paper) {
+            return;
+        }
+        const { id, ...paper } = ContextState.paper;
+        await createPaper(stackId, paper);
+        ContextState.close();
     }
-
-    function handleExportText() {
-        ContextState.show = false;
-    }
-
-    function handleExportBib() {
-        ContextState.show = false;
+    async function handleDeleteStack() {
+        if (ContextState.stack) {
+            deleteStack(ContextState.stack.id);
+        }
+        ContextState.close();
     }
 </script>
 
@@ -89,15 +97,16 @@
                 Copy to Stack <ChevronRight size={18} />
                 {#if showExportSubmenu}
                     <div class="submenu">
-                        <div class="menu-item" onclick={handleExportPDF}>
-                            PDF
-                        </div>
-                        <div class="menu-item" onclick={handleExportText}>
-                            Text
-                        </div>
-                        <div class="menu-item" onclick={handleExportBib}>
-                            BibTeX
-                        </div>
+                        {#each Store.stacks as stack}
+                            {#if stack.id !== Store.currentStackId}
+                                <div
+                                    class="menu-item"
+                                    onclick={() => handleSendToStack(stack.id)}
+                                >
+                                    {stack.name}
+                                </div>
+                            {/if}
+                        {/each}
                     </div>
                 {/if}
             </div>
@@ -120,7 +129,7 @@
                 Merge With<Blend size={18} />
             </div>
             <div class="separator"></div>
-            <div class="menu-item delete" onclick={ContextState.handleDelete}>
+            <div class="menu-item delete" onclick={handleDeleteStack}>
                 Delete<Trash2 size={18} />
             </div>
         {:else}

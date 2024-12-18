@@ -18,10 +18,11 @@
         addImageContent,
     } from "$lib/services/content-service.js";
     import { remove } from "@tauri-apps/plugin-fs";
-    import { Stack, deleteFile } from "$lib/state/database.svelte.js";
+    import { Store, deletePaper } from "$lib/state/database.svelte";
+    let { data } = $props();
+    const stack_id = data.stackID;
     import GridToggle from "$lib/GridToggle.svelte";
     // State
-    let { data } = $props();
     let dragOverGrid = $state(false);
     let drag_id = $state(null);
     let selected_id = $state(null);
@@ -29,29 +30,37 @@
     // Input Event Handlers
     async function handlePasteEvent(event: ClipboardEvent) {
         const payload = await readPaste(event);
-        const selected_paper = Stack.papers.find(
+        const selected_paper = Store.papers.find(
             (paper) => paper.id === selected_id,
         );
         switch (payload.type) {
             case "PDF": {
                 LoadingState.start("Fetching PDF");
-                await addPDFContent(payload.content, selected_paper);
+                await addPDFContent(stack_id, payload.content, selected_paper);
                 break;
             }
             case "URL":
-                await addURLContent(payload.content, selected_paper);
+                await addURLContent(stack_id, payload.content, selected_paper);
                 break;
             case "BibTeX":
-                await addBibTeXContent(payload.content, selected_paper);
+                await addBibTeXContent(
+                    stack_id,
+                    payload.content,
+                    selected_paper,
+                );
                 break;
             case "Image":
-                await addImageContent(payload.content, selected_paper);
+                await addImageContent(
+                    stack_id,
+                    payload.content,
+                    selected_paper,
+                );
                 break;
         }
     }
 
     async function handleFileInput(event) {
-        const selected_paper = Stack.papers.find(
+        const selected_paper = Store.papers.find(
             (paper) => paper.id === selected_id,
         );
         const inputFiles = event.target.files;
@@ -59,15 +68,15 @@
         if (selected_paper) {
             const newFile = inputFiles[0];
             if (newFile.type.includes("pdf")) {
-                await addPDFContent(newFile, selected_paper);
+                await addPDFContent(stack_id, newFile, selected_paper);
             }
             if (newFile.type.includes("image")) {
-                await addImageContent(newFile, selected_paper);
+                await addImageContent(stack_id, newFile, selected_paper);
             }
         } else {
             for (const file of inputFiles) {
                 if (file.type.includes("pdf")) {
-                    await addPDFContent(file, null);
+                    await addPDFContent(stack_id, file, null);
                 }
             }
         }
@@ -75,23 +84,23 @@
 
     // Drag and Drop Handlers
     async function handleDrop(event) {
-        let selected_paper = Stack.papers.find((paper) => paper.id === drag_id);
+        let selected_paper = Store.papers.find((paper) => paper.id === drag_id);
         event.preventDefault();
         const droppedFiles = event.dataTransfer?.files;
         if (!droppedFiles) return;
         if (selected_paper) {
             const newFile = droppedFiles[0];
             if (newFile.type.includes("pdf")) {
-                await addPDFContent(newFile, selected_paper);
+                await addPDFContent(stack_id, newFile, selected_paper);
             }
             if (newFile.type.includes("image")) {
-                await addImageContent(newFile, selected_paper);
+                await addImageContent(stack_id, newFile, selected_paper);
             }
         } else if (dragOverGrid) {
             //THIS IS WHY WE CANT MERGE BOTH HANDLERS
             for (const file of droppedFiles) {
                 if (file.type.includes("pdf")) {
-                    await addPDFContent(file, null);
+                    await addPDFContent(stack_id, file, null);
                 }
             }
         }
@@ -103,18 +112,13 @@
         event.preventDefault();
         event.stopPropagation();
         selected_id = paperId;
-        let paper = Stack.papers.find((paper) => paper.id === paperId);
+        let paper = Store.papers.find((paper) => paper.id === paperId);
         ContextState.open_paper(
             event.clientX,
             event.clientY,
             paper,
             handleDelete,
         );
-        //ContextState.x = event.clientX;
-        //ContextState.y = event.clientY;
-        //ContextState.show = true;
-        //ContextState.handleDelte = handleDelete;
-        //
     }
 
     function handleClick(event) {
@@ -124,7 +128,6 @@
 
         if (!clickedContextMenu) {
             ContextState.close();
-            //ContextState.show = false;
         }
 
         if (!clickedInside && !clickedContextMenu && !clickedInput) {
@@ -134,10 +137,9 @@
 
     async function handleDelete() {
         if (selected_id) {
-            let selected_paper = Stack.papers.find(
+            let selected_paper = Store.papers.find(
                 (paper) => paper.id === selected_id,
             );
-            //return on cancel
             if (
                 !(await promptUserConfirmation(
                     "Confirm Delete",
@@ -151,10 +153,9 @@
             if (selected_paper.pdf) {
                 await remove(selected_paper.pdf);
             }
-            await deleteFile(selected_paper.id);
+            await deletePaper(stack_id, selected_paper.id);
             selected_id = null;
             ContextState.close();
-            //ContextState.show = false;
         }
     }
 
@@ -201,6 +202,7 @@
 <ProgressStep />
 
 <div>
+    <a href="/"> BACK </a>
     <InputButton {handleFileInput} />
     <GridToggle bind:grid={layout_grid} />
 </div>
@@ -216,7 +218,7 @@
     oncontextmenu={(event) => handleContextMenu(event, null)}
     style="border: 2px dashed {dragOverGrid ? 'blue' : 'gray'};"
 >
-    {#each Stack.papers as paper (paper.id)}
+    {#each Store.papers as paper (paper.id)}
         <div
             class="card"
             class:grid={layout_grid}
@@ -247,7 +249,7 @@
         </div>
     {/each}
 
-    {#if Stack.papers.length === 0}
+    {#if Store.papers.length === 0}
         <div style="grid-column: 1 / -1; text-align: center; color: gray;">
             <FileUp size={24} /><br />
             Drag and drop files here
@@ -276,4 +278,3 @@
         place-items: center;
     }
 </style>
-

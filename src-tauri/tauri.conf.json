@@ -15,7 +15,8 @@
         "title": "codex",
         "width": 800,
         "height": 600,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {

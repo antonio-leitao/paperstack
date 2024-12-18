@@ -1,8 +1,12 @@
 <script lang="ts">
-    import { Navbar } from "$lib/state/database.svelte.js";
     import { fly } from "svelte/transition";
     import { quintInOut } from "svelte/easing";
     import { ContextState } from "$lib/state/context.svelte";
+    import {
+        Store,
+        reorderStacks,
+        createStack,
+    } from "$lib/state/database.svelte";
     import {
         ArrowLeft,
         Layers,
@@ -12,27 +16,56 @@
     } from "lucide-svelte";
     import { goto } from "$app/navigation";
 
-    let { isOpen = $bindable(), initialId } = $props();
-    let currentStackId = $state(initialId);
-    let stacks = [
-        { id: 1, name: "topological data analysis" },
-        { id: 2, name: "To Read" },
-        { id: 3, name: "Unsorted" },
-        { id: 4, name: "Machine Learning" },
-    ];
+    let { isOpen = $bindable() } = $props();
+
+    let draggedItem = $state(null);
+    let hoveredItem = $state(null);
+
     function trimText(text: string) {
         return text.length > 20 ? text.slice(0, 20) + "..." : text;
+    }
+
+    async function newUnnamedStack() {
+        const name = `Stack #${Store.stacks.length + 1}`;
+        let stackId = await createStack(name);
+        goto(`/stack/${stackId}`);
     }
     function handleContextMenu(event, stackId) {
         event.preventDefault();
         event.stopPropagation();
-        currentStackId = stackId;
-        let stack = stacks.find((stack) => stack.id === stackId);
+        let stack = Store.stacks.find((stack) => stack.id === stackId);
         ContextState.open_stack(event.clientX, event.clientY, stack);
     }
+
     function handleClick(stackId) {
-        currentStackId = stackId;
-        goto(`/${currentStackId}`);
+        goto(`/stack/${stackId}`);
+    }
+
+    function handleDragStart(event, stackId) {
+        draggedItem = stackId;
+        event.dataTransfer.effectAllowed = "move";
+    }
+
+    function handleDragOver(event, stackId) {
+        event.preventDefault();
+        if (draggedItem === stackId) return;
+        hoveredItem = stackId;
+        event.dataTransfer.dropEffect = "move";
+    }
+
+    function handleDragLeave() {
+        hoveredItem = null;
+    }
+
+    function handleDrop(event, stackId) {
+        event.preventDefault();
+        if (draggedItem === null || draggedItem === stackId) {
+            hoveredItem = null;
+            return; // Avoid reordering if dropped in the same place
+        }
+        reorderStacks(draggedItem, stackId);
+        draggedItem = null;
+        hoveredItem = null;
     }
 </script>
 
@@ -42,7 +75,7 @@
             {#if isOpen}
                 <ArrowLeft size={18} />
             {:else}
-                <Layers size={18} /> {Navbar.stacks.length}
+                <Layers size={18} /> {Store.stacks.length}
             {/if}
         </div>
     </button>
@@ -55,16 +88,25 @@
         out:fly={{ x: -250, duration: 300, easing: quintInOut }}
     >
         <div class="info">
-            Stacks <div class="icon"><Plus size={18} /></div>
+            Stacks <div class="icon">
+                <button onclick={newUnnamedStack}><Plus size={18} /></button>
+            </div>
         </div>
         <div class="stack-tray">
-            {#each stacks as stack (stack.id)}
+            {#each Store.stacks as stack (stack.id)}
                 <div
+                    draggable="true"
                     class="list-item"
+                    class:dragging={draggedItem === stack.id}
+                    class:hovered={hoveredItem === stack.id}
                     onclick={() => handleClick(stack.id)}
                     oncontextmenu={(event) =>
                         handleContextMenu(event, stack.id)}
-                    class:active={currentStackId === stack.id}
+                    ondragstart={(event) => handleDragStart(event, stack.id)}
+                    ondragover={(event) => handleDragOver(event, stack.id)}
+                    ondragleave={handleDragLeave}
+                    ondrop={(event) => handleDrop(event, stack.id)}
+                    class:active={Store.currentStackId === stack.id}
                 >
                     <div class="icon">
                         <SquareLibrary size={18} />
@@ -118,6 +160,7 @@
         align-items: center;
         text-decoration: none;
         justify-content: space-between;
+        position: relative;
         color: inherit;
     }
     .list-item:hover {
@@ -151,6 +194,21 @@
         white-space: nowrap;
         overflow: hidden;
         user-select: none;
+    }
+    .list-item.dragging {
+        opacity: 0.5;
+    }
+
+    .list-item.hovered::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        width: 80%;
+        height: 2px;
+        background-color: var(--accent-color);
+        transform: translateX(-50%);
+        transition: height 0.2s ease-in-out;
     }
     button {
         background-color: transparent;

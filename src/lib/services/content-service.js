@@ -5,7 +5,7 @@ import { parseBibEntry } from "$lib/services/bib-service";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { LoadingState } from "$lib/state/loading.svelte";
 import { mkdir, BaseDirectory, remove, writeFile } from "@tauri-apps/plugin-fs";
-import { createFile, updateFile } from "$lib/state/database.svelte";
+import { Store, createPaper, updatePaper } from "$lib/state/database.svelte";
 import { promptUserConfirmation } from "$lib/state/confirmation.svelte";
 
 /**
@@ -44,15 +44,15 @@ async function saveFileToAppData(dirName, file, prefix, oldFilePath = null) {
 /**
  * Adds or updates content for a file based on the provided data.
  */
-async function addOrUpdateContent(data, selected_file = null) {
+async function addOrUpdateContent(stack_id, data, selected_file = null) {
   if (selected_file) {
-    await updateFile(selected_file.id, data);
+    await updatePaper(stack_id, selected_file.id, data);
   } else {
-    await createFile(data);
+    await createPaper(stack_id, data);
   }
 }
 
-export async function addPDFContent(pdfFile, selected_file) {
+export async function addPDFContent(stack_id, pdfFile, selected_file) {
   try {
     // Confirmation before processing
     if (
@@ -75,7 +75,7 @@ export async function addPDFContent(pdfFile, selected_file) {
       "pdfs",
       pdfFile,
       prefix,
-      selected_file?.pdf
+      selected_file?.pdf,
     );
     //add image if not present
     let imagePath = selected_file?.image || null;
@@ -90,8 +90,9 @@ export async function addPDFContent(pdfFile, selected_file) {
 
     //save content to database
     await addOrUpdateContent(
+      stack_id,
       { pages, bibtex, bib, pdf: pdfPath, image: imagePath },
-      selected_file
+      selected_file,
     );
   } catch (error) {
     console.error("Error processing PDF:", error);
@@ -100,26 +101,26 @@ export async function addPDFContent(pdfFile, selected_file) {
   }
 }
 
-export async function addBibTeXContent(bibtex, selected_file) {
+export async function addBibTeXContent(stack_id, bibtex, selected_file) {
   // Confirmation before processing
   if (selected_file && !(await confirmUpdate(selected_file, "bib entry"))) {
     return;
   }
   const bib = parseBibEntry(bibtex);
-  await addOrUpdateContent({ bib }, selected_file);
+  await addOrUpdateContent(stack_id, { bib }, selected_file);
 }
 
-export async function addURLContent(url, selected_file) {
+export async function addURLContent(stack_id, url, selected_file) {
   // Confirmation before processing
   if (selected_file) {
     if (selected_file.url && !(await confirmUpdate(selected_file, "URL"))) {
       return;
     }
-    await addOrUpdateContent({ url }, selected_file);
+    await addOrUpdateContent(stack_id, { url }, selected_file);
   }
 }
 
-export async function addImageContent(imageFile, selected_file) {
+export async function addImageContent(stack_id, imageFile, selected_file) {
   if (selected_file) {
     // Confirmation before processing
     if (selected_file.image && !(await confirmUpdate(selected_file, "image"))) {
@@ -132,9 +133,9 @@ export async function addImageContent(imageFile, selected_file) {
         "images",
         imageFile,
         prefix,
-        selected_file?.image
+        selected_file?.image,
       );
-      await addOrUpdateContent({ image: imagePath }, selected_file);
+      await addOrUpdateContent(stack_id, { image: imagePath }, selected_file);
     } catch (error) {
       console.error("Error saving image:", error);
     }

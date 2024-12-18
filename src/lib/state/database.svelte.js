@@ -1,143 +1,184 @@
+// store.js
 import { load } from "@tauri-apps/plugin-store";
 
 function generate_unique_id() {
-  // Get current Unix timestamp in milliseconds
   const timestamp = Date.now();
-  // Generate a random number between 1000 and 9999
   const randomNum = Math.floor(Math.random() * 9000) + 1000;
-  return parseInt(`${timestamp}${randomNum}`);
+  return `${timestamp}${randomNum}`;
 }
 
-let store = $state(null);
-let papers = $state([]);
-let stackID = $state(null);
-let stacks = $state([]);
-export let Navbar = {
+let tauriStore = $state(null);
+let stacks = $state([]); // Only IDs and names of stacks
+let papers = $state([]); // Papers for the currently active stack
+let currentStackId = $state(null); // ID of the currently active stack
+
+// Initialize the store (only connect to the Tauri store)
+export async function initializeStore() {
+  if (!tauriStore) {
+    tauriStore = await load("store.json", { autoSave: true });
+    stacks = (await tauriStore.get("stacks")) ?? []; // Load only stack metadata
+  }
+}
+
+export async function resetStore() {
+  if (tauriStore) {
+    tauriStore.clear();
+  }
+}
+
+// --- Stack CRUD Operations ---
+
+export async function createStack(name) {
+  const stackId = generate_unique_id();
+  const newStack = { id: stackId, name };
+  stacks = [...stacks, newStack];
+  //add metadata
+  await tauriStore.set("stacks", stacks);
+  //create empty stack
+  await tauriStore.set(`${stackId}`, []);
+  return stackId;
+}
+
+// Get metadata for all stacks (without papers)
+export async function getStacks() {
+  return stacks;
+}
+
+// Get a specific stack (without papers) by ID
+export async function getStack(stackId) {
+  return stacks.find((stack) => stack.id === stackId);
+}
+
+export async function updateStack(stackId, name) {
+  stacks = stacks.map((stack) =>
+    stack.id === stackId ? { ...stack, name } : stack,
+  );
+  await tauriStore.set("stacks", stacks);
+}
+
+export async function deleteStack(stackId) {
+  //dont delete stack while accessing it
+  if (currentStackId === stackId) {
+    throw new Error("Cannot delete current stack");
+  }
+  // Delete the stack metadata
+  stacks = stacks.filter((stack) => stack.id !== stackId);
+  await tauriStore.set("stacks", stacks);
+
+  // Delete the associated papers
+  await tauriStore.delete(`${stackId}`);
+}
+
+export function reorderStacks(draggedItemId, targetItemId) {
+  const draggedItemIndex = stacks.findIndex(
+    (stack) => stack.id === draggedItemId,
+  );
+  const targetItemIndex = stacks.findIndex(
+    (stack) => stack.id === targetItemId,
+  );
+
+  if (draggedItemIndex !== -1 && targetItemIndex !== -1) {
+    const [draggedItem] = stacks.splice(draggedItemIndex, 1);
+    stacks.splice(targetItemIndex, 0, draggedItem);
+    stacks = stacks;
+  }
+}
+
+export async function mergeStacks(sourceStackId, targetStackId) {
+  const sourceStackPapers = (await tauriStore.get(`${sourceStackId}`)) ?? [];
+  const targetStackPapers = (await tauriStore.get(`${targetStackId}`)) ?? [];
+  // Merge papers
+  const mergedPapers = [...targetStackPapers, ...sourceStackPapers];
+  await tauriStore.set(`${targetStackId}`, mergedPapers);
+  // Delete the source stack
+  await deleteStack(sourceStackId);
+}
+
+// --- Paper CRUD Operations ---
+
+// Load papers for a specific stack and set the current stack
+export async function loadPapers(stackId) {
+  if (!tauriStore) {
+    await initializeStore();
+  }
+  currentStackId = stackId;
+  console.log("loading papers from", stackId);
+  //TODO throw error if not found
+  papers = await tauriStore.get(`${stackId}`);
+}
+
+// Create a new paper within a specific stack
+export async function createPaper(stackId, paper) {
+  const newPaper = { id: generate_unique_id(), ...paper };
+  //if it doesnt affect the frontend
+  let updatedPapers = [];
+  if (currentStackId !== stackId) {
+    let other_papers = await tauriStore.get(`${stackId}`);
+    updatedPapers = [...other_papers, newPaper];
+  } else {
+    updatedPapers = [...papers, newPaper];
+  }
+  await tauriStore.set(`${stackId}`, updatedPapers);
+  // Only update the papers state if it's the current stack
+  if (currentStackId === stackId) {
+    papers = updatedPapers;
+  }
+}
+
+//// Create a new paper within a specific stack
+//export async function createPaper(stackId, paper) {
+//  const newPaper = { id: generate_unique_id(), ...paper };
+//  const updatedPapers = [...papers, newPaper];
+//  await tauriStore.set(`${stackId}`, updatedPapers);
+//  // Only update the papers state if it's the current stack
+//  if (currentStackId === stackId) {
+//    papers = updatedPapers;
+//  }
+//}
+
+// Update an existing paper within a specific stack
+export async function updatePaper(stackId, paperId, updatedPaper) {
+  const updatedPapers = papers.map((paper) =>
+    paper.id === paperId ? { ...paper, ...updatedPaper } : paper,
+  );
+  await tauriStore.set(`${stackId}`, updatedPapers);
+  // Only update the papers state if it's the current stack
+  if (currentStackId === stackId) {
+    papers = updatedPapers;
+  }
+}
+
+// Delete a paper from a specific stack
+export async function deletePaper(stackId, paperId) {
+  const updatedPapers = papers.filter((paper) => paper.id !== paperId);
+  await tauriStore.set(`${stackId}`, updatedPapers);
+  // Only update the papers state if it's the current stack
+  if (currentStackId === stackId) {
+    papers = updatedPapers;
+  }
+}
+
+// --- Accessors ---
+export const Store = {
+  initializeStore,
+  getStacks,
+  createStack,
+  getStack,
+  updateStack,
+  deleteStack,
+  mergeStacks,
+  loadPapers,
+  createPaper,
+  updatePaper,
+  deletePaper,
+  // Expose the reactive states:
+  get currentStackId() {
+    return currentStackId;
+  },
   get stacks() {
     return stacks;
-  },
-  set stacks(val) {
-    stacks = val;
-  },
-};
-
-export let Stack = {
-  get stackID() {
-    return stackID;
-  },
-  set stackID(val) {
-    stackID = val;
   },
   get papers() {
     return papers;
   },
-  set papers(val) {
-    papers = val;
-  },
 };
-
-export async function initializeStacks() {
-  if (!store) throw new Error("Store not initialized");
-  Stack.papers = (await store.get("stacks")) ?? [];
-}
-
-export async function createStack(name) {
-  if (!store) throw new Error("Store not initialized");
-  try {
-    const stacks = (await store.get("stacks")) ?? [];
-    let id = generate_unique_id();
-    await store.set("stacks", [...stacks, { name, id }]);
-    Navbar.stacks = [...stacks, { name, id }];
-    return;
-  } catch (error) {
-    console.error("Error creating stack in store:", error);
-    throw error;
-  }
-}
-
-export async function updateStack(update_id, newName) {
-  if (!store) throw new Error("Store not initialized");
-  try {
-    const stacks = (await store.get("stacks")) ?? [];
-    const updatedStacks = stacks.map((stack) =>
-      stack.id === update_id ? { ...stack, name: newName } : stack
-    );
-    await store.set("stacks", updatedStacks);
-    Navbar.stacks = updatedStacks;
-    return;
-  } catch (error) {
-    console.error("Error updating stack in store:", error);
-    throw error;
-  }
-}
-
-export async function deleteStack(delete_id) {
-  if (!store) throw new Error("Store not initialized");
-  try {
-    const stacks = (await store.get("stacks")) ?? [];
-    const filteredStacks = stacks.filter((stack) => stack.id !== delete_id);
-    await store.set("stacks", filteredStacks);
-    Navbar.stacks = filteredStacks;
-    //MUST ALSO DELETE FILES IN STACK
-    return;
-  } catch (error) {
-    console.error("Error deleting stack from store:", error);
-    throw error;
-  }
-}
-
-//PAPERS
-
-export async function initializeStore(params) {
-  if (!store) {
-    store = await load("store.json", { autoSave: true });
-  }
-  console.log("initializeStore", params);
-  Stack.stackID = "files";
-  Stack.papers = (await store.get("files")) ?? [];
-  return;
-}
-
-export async function createFile(file) {
-  if (!store) throw new Error("Store not initialized");
-  try {
-    const files = (await store.get("files")) ?? [];
-    let id = generate_unique_id();
-    await store.set("files", [...files, { ...file, id }]);
-    Stack.papers = [...files, { ...file, id }];
-    return;
-  } catch (error) {
-    console.error("Error creating file in store:", error);
-    throw error;
-  }
-}
-
-export async function updateFile(update_id, updatedFile) {
-  if (!store) throw new Error("Store not initialized");
-  try {
-    const files = (await store.get("files")) ?? [];
-    const updatedFiles = files.map((file) =>
-      file.id === update_id ? { ...file, ...updatedFile } : file
-    );
-    await store.set("files", updatedFiles);
-    Stack.papers = updatedFiles;
-    return;
-  } catch (error) {
-    console.error("Error updating file in store:", error);
-    throw error;
-  }
-}
-
-export async function deleteFile(fileId) {
-  if (!store) throw new Error("Store not initialized");
-  try {
-    const files = (await store.get("files")) ?? [];
-    const filteredFiles = files.filter((file) => file.id !== fileId);
-    await store.set("files", filteredFiles);
-    Stack.papers = filteredFiles;
-    return;
-  } catch (error) {
-    console.error("Error deleting file from store:", error);
-    throw error;
-  }
-}
