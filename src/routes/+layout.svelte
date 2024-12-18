@@ -9,7 +9,7 @@
 
 <div class="layout">
   <nav class:open={isNavOpen}>
-    <SideNav bind:isOpen={isNavOpen} currentStackId={$page.params.stackID} />
+    <SideNav bind:isOpen={isNavOpen} initialId={$page.params.stackID} />
   </nav>
   <main>
     {@render children()}
