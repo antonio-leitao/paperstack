@@ -1,11 +1,13 @@
 <script lang="ts">
-    import { fly } from "svelte/transition";
+    import { flip } from "svelte/animate";
     import { quintInOut } from "svelte/easing";
+    import { fly } from "svelte/transition";
     import { ContextState } from "$lib/state/context.svelte";
     import {
         Store,
         reorderStacks,
         createStack,
+        updateStack,
     } from "$lib/state/database.svelte";
     import {
         ArrowLeft,
@@ -20,6 +22,9 @@
 
     let draggedItem = $state(null);
     let hoveredItem = $state(null);
+    let editingStackId = $state(null);
+    let newStackName = $state("");
+    ContextState.triggerStackRename = startEditing;
 
     function trimText(text: string) {
         return text.length > 20 ? text.slice(0, 20) + "..." : text;
@@ -30,6 +35,7 @@
         let stackId = await createStack(name);
         goto(`/stack/${stackId}`);
     }
+
     function handleContextMenu(event, stackId) {
         event.preventDefault();
         event.stopPropagation();
@@ -38,7 +44,9 @@
     }
 
     function handleClick(stackId) {
-        goto(`/stack/${stackId}`);
+        if (editingStackId !== stackId) {
+            goto(`/stack/${stackId}`);
+        }
     }
 
     function handleDragStart(event, stackId) {
@@ -61,11 +69,51 @@
         event.preventDefault();
         if (draggedItem === null || draggedItem === stackId) {
             hoveredItem = null;
-            return; // Avoid reordering if dropped in the same place
+            return;
         }
         reorderStacks(draggedItem, stackId);
         draggedItem = null;
         hoveredItem = null;
+    }
+
+    function startEditing(stackId) {
+        editingStackId = stackId;
+        newStackName = Store.stacks.find((s) => s.id === stackId)?.name || "";
+        // Focus and select text in the input field after a slight delay
+        setTimeout(() => {
+            const inputField = document.getElementById(`input-${stackId}`);
+            if (inputField) {
+                inputField.focus();
+                inputField.select();
+            }
+        }, 0);
+    }
+
+    async function handleRename(stackId) {
+        await updateStack(stackId, newStackName);
+        editingStackId = null;
+        newStackName = "";
+    }
+
+    function handleRenameInputBlur(stackId) {
+        // Prevent renaming if the new name is empty or the same as the old name
+        let originalName =
+            Store.stacks.find((s) => s.id === stackId)?.name || "";
+        if (newStackName.trim() === "" || newStackName === originalName) {
+            editingStackId = null;
+            newStackName = "";
+            return;
+        }
+        handleRename(stackId);
+    }
+
+    function handleRenameInputKeydown(event, stackId) {
+        if (event.key === "Enter") {
+            handleRenameInputBlur(stackId);
+        } else if (event.key === "Escape") {
+            editingStackId = null;
+            newStackName = "";
+        }
     }
 </script>
 
@@ -107,14 +155,32 @@
                     ondragleave={handleDragLeave}
                     ondrop={(event) => handleDrop(event, stack.id)}
                     class:active={Store.currentStackId === stack.id}
+                    animate:flip={{ duration: 150, easing: quintInOut }}
                 >
                     <div class="icon">
                         <SquareLibrary size={18} />
                     </div>
-                    <div class="text">{trimText(stack.name)}</div>
+                    {#if editingStackId === stack.id}
+                        <input
+                            id="input-{stack.id}"
+                            bind:value={newStackName}
+                            onblur={() => handleRenameInputBlur(stack.id)}
+                            onkeydown={(event) =>
+                                handleRenameInputKeydown(event, stack.id)}
+                            class="edit-input"
+                        />
+                    {:else}
+                        <div class="text">
+                            {trimText(stack.name)}
+                        </div>
+                    {/if}
+
                     <div
                         class="icon"
-                        onclick={(e) => handleContextMenu(e, stack.id)}
+                        onclick={(e) => {
+                            e.stopPropagation();
+                            handleContextMenu(e, stack.id);
+                        }}
                     >
                         <EllipsisVertical size={18} />
                     </div>
@@ -214,5 +280,15 @@
         background-color: transparent;
         border: none;
         cursor: pointer;
+    }
+    .edit-input {
+        border: none;
+        width: 100%;
+        outline: solid 2px var(--accent-color-light);
+        border-radius: 0.3rem;
+        background-color: transparent;
+        color: inherit;
+        font-size: inherit;
+        font-family: inherit;
     }
 </style>

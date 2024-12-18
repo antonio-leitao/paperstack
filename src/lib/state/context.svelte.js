@@ -4,8 +4,15 @@ let paper = $state(null);
 let handleDelete = $state(null);
 let show = $state(false);
 let stack = $state(null);
+let triggerStackRename = $state(null);
 
 export let ContextState = {
+  get triggerStackRename() {
+    return triggerStackRename;
+  },
+  set triggerStackRename(val) {
+    triggerStackRename = val;
+  },
   get show() {
     return show;
   },

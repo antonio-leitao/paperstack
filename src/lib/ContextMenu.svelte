@@ -62,6 +62,11 @@
         }
         ContextState.close();
     }
+    async function handleRenameStack() {
+        if (!ContextState.stack) return;
+        ContextState.triggerStackRename(ContextState.stack.id);
+        ContextState.close();
+    }
 </script>
 
 {#if ContextState.show}
@@ -115,7 +120,7 @@
                 Delete<Trash2 size={18} />
             </div>
         {:else if ContextState.stack}
-            <div class="menu-item" onclick={ContextState.handleDelete}>
+            <div class="menu-item" onclick={handleRenameStack}>
                 Rename<PencilLine size={18} />
             </div>
             <div class="menu-item" onclick={ContextState.handleDelete}>
