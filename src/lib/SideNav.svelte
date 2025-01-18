@@ -24,7 +24,7 @@
     let hoveredItem = $state(null);
     let editingStackId = $state(null);
     let newStackName = $state("");
-    ContextState.triggerStackRename = startEditing;
+    ContextState.stackRename = startEditing;
 
     function trimText(text: string) {
         return text.length > 20 ? text.slice(0, 20) + "..." : text;

@@ -1,11 +1,7 @@
 <script>
     import { Command } from "@tauri-apps/plugin-shell";
     import { ContextState } from "$lib/state/context.svelte";
-    import {
-        Store,
-        createPaper,
-        deleteStack,
-    } from "$lib/state/database.svelte";
+    import { Store } from "$lib/state/database.svelte";
     import Cite from "citation-js";
     import {
         Trash2,
@@ -53,18 +49,23 @@
             return;
         }
         const { id, ...paper } = ContextState.paper;
-        await createPaper(stackId, paper);
+        await Store.createPaper(stackId, paper);
         ContextState.close();
     }
     async function handleDeleteStack() {
         if (ContextState.stack) {
-            deleteStack(ContextState.stack.id);
+            Store.deleteStack(ContextState.stack.id);
         }
         ContextState.close();
     }
     async function handleRenameStack() {
         if (!ContextState.stack) return;
-        ContextState.triggerStackRename(ContextState.stack.id);
+        ContextState.stackRename(ContextState.stack.id);
+        ContextState.close();
+    }
+    async function handleDuplicateStack() {
+        if (!ContextState.stack) return;
+        Store.duplicateStack(ContextState.stack.id);
         ContextState.close();
     }
 </script>
@@ -127,7 +128,7 @@
                 Change Icon<SmilePlus size={18} />
             </div>
             <div class="separator"></div>
-            <div class="menu-item" onclick={ContextState.handleDelete}>
+            <div class="menu-item" onclick={handleDuplicateStack}>
                 Duplicate<BookCopy size={18} />
             </div>
             <div class="menu-item" onclick={ContextState.handleDelete}>

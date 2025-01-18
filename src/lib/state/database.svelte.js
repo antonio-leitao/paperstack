@@ -94,6 +94,34 @@ export async function mergeStacks(sourceStackId, targetStackId) {
   await deleteStack(sourceStackId);
 }
 
+export async function duplicateStack(stackId) {
+  const originalStack = await getStack(stackId);
+  if (!originalStack) {
+    throw new Error("Stack not found");
+  }
+
+  // Create a new stack with a unique ID and modified name
+  const newStackId = generate_unique_id();
+  const newStackName = `${originalStack.name} copy`;
+  const newStack = { id: newStackId, name: newStackName };
+
+  // Duplicate the stack metadata
+  stacks = [...stacks, newStack];
+  await tauriStore.set("stacks", stacks);
+
+  // Duplicate the papers with new IDs
+  const originalPapers = await tauriStore.get(`${stackId}`);
+  const duplicatedPapers = originalPapers.map((paper) => ({
+    ...paper,
+    id: generate_unique_id(),
+  }));
+
+  // Store the duplicated papers in the new stack
+  await tauriStore.set(`${newStackId}`, duplicatedPapers);
+
+  return newStackId;
+}
+
 // --- Paper CRUD Operations ---
 
 // Load papers for a specific stack and set the current stack
@@ -171,6 +199,7 @@ export const Store = {
   createPaper,
   updatePaper,
   deletePaper,
+  duplicateStack,
   // Expose the reactive states:
   get currentStackId() {
     return currentStackId;
