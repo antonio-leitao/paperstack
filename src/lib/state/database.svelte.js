@@ -69,19 +69,35 @@ export async function deleteStack(stackId) {
   await tauriStore.delete(`${stackId}`);
 }
 
-export function reorderStacks(draggedItemId, targetItemId) {
-  const draggedItemIndex = stacks.findIndex(
-    (stack) => stack.id === draggedItemId,
-  );
-  const targetItemIndex = stacks.findIndex(
-    (stack) => stack.id === targetItemId,
-  );
+//export function reorderStacks(draggedItemId, targetItemId) {
+//  const draggedItemIndex = stacks.findIndex(
+//    (stack) => stack.id === draggedItemId,
+//  );
+//  const targetItemIndex = stacks.findIndex(
+//    (stack) => stack.id === targetItemId,
+//  );
+//
+//  if (draggedItemIndex !== -1 && targetItemIndex !== -1) {
+//    const [draggedItem] = stacks.splice(draggedItemIndex, 1);
+//    stacks.splice(targetItemIndex, 0, draggedItem);
+//    stacks = stacks;
+//  }
+//}
 
-  if (draggedItemIndex !== -1 && targetItemIndex !== -1) {
-    const [draggedItem] = stacks.splice(draggedItemIndex, 1);
-    stacks.splice(targetItemIndex, 0, draggedItem);
-    stacks = stacks;
-  }
+export function reorderStacks(finalOrder) {
+  // Create a map of stackId to new index based on finalOrder
+  const newOrderMap = new Map();
+  finalOrder.forEach((orderItem, index) => {
+    newOrderMap.set(orderItem.item, index);
+  });
+
+  // Sort the stacks array based on the newOrderMap
+  const sortedStacks = [...stacks].sort((a, b) => {
+    const indexA = newOrderMap.get(a.id);
+    const indexB = newOrderMap.get(b.id);
+    return indexA - indexB;
+  });
+  stacks = sortedStacks;
 }
 
 export async function mergeStacks(sourceStackId, targetStackId) {

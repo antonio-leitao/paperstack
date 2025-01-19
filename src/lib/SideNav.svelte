@@ -17,14 +17,50 @@
         SquareLibrary,
     } from "lucide-svelte";
     import { goto } from "$app/navigation";
+    import { createSwapy } from "swapy";
+    import { onDestroy, onMount } from "svelte";
 
     let { isOpen = $bindable() } = $props();
-
-    let draggedItem = $state(null);
-    let hoveredItem = $state(null);
     let editingStackId = $state(null);
     let newStackName = $state("");
     ContextState.stackRename = startEditing;
+    let container = null;
+    let swapy = null;
+    let finalOrder = $state(null);
+
+    // Handle initialization
+    $effect(() => {
+        if (isOpen && container && !swapy) {
+            console.log("loading swapy");
+            swapy = createSwapy(container, {
+                autoScrollSpeed: 10,
+                threshold: 0.5,
+            });
+            swapy.onSwapEnd((event) => {
+                if (event.hasChanged) {
+                    finalOrder = event.slotItemMap.asArray;
+                }
+            });
+        }
+    });
+
+    // Handle cleanup
+    $effect(() => {
+        if (!isOpen && swapy) {
+            swapy.destroy();
+            swapy = null;
+            if (finalOrder) {
+                reorderStacks(finalOrder);
+                finalOrder = null; // Reset finalOrder after processing
+            }
+        }
+    });
+    onDestroy(() => {
+        swapy?.destroy();
+        if (finalOrder) {
+            reorderStacks(finalOrder); // Update backend on destroy
+        }
+    });
 
     function trimText(text: string) {
         return text.length > 20 ? text.slice(0, 20) + "..." : text;
@@ -47,33 +83,6 @@
         if (editingStackId !== stackId) {
             goto(`/stack/${stackId}`);
         }
-    }
-
-    function handleDragStart(event, stackId) {
-        draggedItem = stackId;
-        event.dataTransfer.effectAllowed = "move";
-    }
-
-    function handleDragOver(event, stackId) {
-        event.preventDefault();
-        if (draggedItem === stackId) return;
-        hoveredItem = stackId;
-        event.dataTransfer.dropEffect = "move";
-    }
-
-    function handleDragLeave() {
-        hoveredItem = null;
-    }
-
-    function handleDrop(event, stackId) {
-        event.preventDefault();
-        if (draggedItem === null || draggedItem === stackId) {
-            hoveredItem = null;
-            return;
-        }
-        reorderStacks(draggedItem, stackId);
-        draggedItem = null;
-        hoveredItem = null;
     }
 
     function startEditing(stackId) {
@@ -140,49 +149,49 @@
                 <button onclick={newUnnamedStack}><Plus size={18} /></button>
             </div>
         </div>
-        <div class="stack-tray">
+        <div class="stack-tray" bind:this={container}>
             {#each Store.stacks as stack (stack.id)}
                 <div
-                    draggable="true"
-                    class="list-item"
-                    class:dragging={draggedItem === stack.id}
-                    class:hovered={hoveredItem === stack.id}
-                    onclick={() => handleClick(stack.id)}
-                    oncontextmenu={(event) =>
-                        handleContextMenu(event, stack.id)}
-                    ondragstart={(event) => handleDragStart(event, stack.id)}
-                    ondragover={(event) => handleDragOver(event, stack.id)}
-                    ondragleave={handleDragLeave}
-                    ondrop={(event) => handleDrop(event, stack.id)}
-                    class:active={Store.currentStackId === stack.id}
+                    class="slot"
+                    data-swapy-slot={stack.id}
                     animate:flip={{ duration: 150, easing: quintInOut }}
                 >
-                    <div class="icon">
-                        <SquareLibrary size={18} />
-                    </div>
-                    {#if editingStackId === stack.id}
-                        <input
-                            id="input-{stack.id}"
-                            bind:value={newStackName}
-                            onblur={() => handleRenameInputBlur(stack.id)}
-                            onkeydown={(event) =>
-                                handleRenameInputKeydown(event, stack.id)}
-                            class="edit-input"
-                        />
-                    {:else}
-                        <div class="text">
-                            {trimText(stack.name)}
-                        </div>
-                    {/if}
-
                     <div
-                        class="icon"
-                        onclick={(e) => {
-                            e.stopPropagation();
-                            handleContextMenu(e, stack.id);
-                        }}
+                        data-swapy-item={stack.id}
+                        data-stack-id={stack.id}
+                        class="list-item"
+                        onclick={() => handleClick(stack.id)}
+                        oncontextmenu={(event) =>
+                            handleContextMenu(event, stack.id)}
+                        class:active={Store.currentStackId === stack.id}
                     >
-                        <EllipsisVertical size={18} />
+                        <div class="icon">
+                            <SquareLibrary size={18} />
+                        </div>
+                        {#if editingStackId === stack.id}
+                            <input
+                                id="input-{stack.id}"
+                                bind:value={newStackName}
+                                onblur={() => handleRenameInputBlur(stack.id)}
+                                onkeydown={(event) =>
+                                    handleRenameInputKeydown(event, stack.id)}
+                                class="edit-input"
+                            />
+                        {:else}
+                            <div class="text">
+                                {trimText(stack.name)}
+                            </div>
+                        {/if}
+
+                        <div
+                            class="icon"
+                            onclick={(e) => {
+                                e.stopPropagation();
+                                handleContextMenu(e, stack.id);
+                            }}
+                        >
+                            <EllipsisVertical size={18} />
+                        </div>
                     </div>
                 </div>
             {/each}
@@ -190,6 +199,7 @@
     </div>
 {/if}
 
+<!-- Same styles as before -->
 <style>
     .nav-list {
         position: absolute;
@@ -228,6 +238,7 @@
         justify-content: space-between;
         position: relative;
         color: inherit;
+        background-color: var(--platinum);
     }
     .list-item:hover {
         background-color: var(--surfaces);
@@ -261,21 +272,7 @@
         overflow: hidden;
         user-select: none;
     }
-    .list-item.dragging {
-        opacity: 0.5;
-    }
 
-    .list-item.hovered::after {
-        content: "";
-        position: absolute;
-        bottom: 0;
-        left: 50%;
-        width: 80%;
-        height: 2px;
-        background-color: var(--accent-color);
-        transform: translateX(-50%);
-        transition: height 0.2s ease-in-out;
-    }
     button {
         background-color: transparent;
         border: none;
@@ -290,5 +287,11 @@
         color: inherit;
         font-size: inherit;
         font-family: inherit;
+    }
+    .stack-tray [data-swapy-item] {
+        touch-action: none;
+    }
+    [data-swapy-item] {
+        cursor: pointer;
     }
 </style>
