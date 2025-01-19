@@ -33,16 +33,14 @@ export async function generateAnthropicBibTeX(pdfContent) {
     });
 
     //return result.response.text();
-    console.log(msg.content[0].text);
     return msg.content[0].text;
   } catch (error) {
-    console.error("Error querying AI:", error);
     throw new Error("Failed to generate BibTeX entry");
   }
 }
 
 const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
 export async function extractBibFromPDF(pdfContent) {
   try {
@@ -86,7 +84,6 @@ If you are unable to extract certain information from the PDF content, use your 
     let bibtex = extractBibtex(result.response.text());
     return bibtex;
   } catch (error) {
-    console.error("Error querying AI:", error);
     throw new Error("Failed to generate BibTeX entry");
   }
 }

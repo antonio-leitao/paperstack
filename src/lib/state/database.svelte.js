@@ -1,4 +1,3 @@
-// store.js
 import { load } from "@tauri-apps/plugin-store";
 
 function generate_unique_id() {
@@ -146,7 +145,6 @@ export async function loadPapers(stackId) {
     await initializeStore();
   }
   currentStackId = stackId;
-  console.log("loading papers from", stackId);
   //TODO throw error if not found
   papers = await tauriStore.get(`${stackId}`);
 }
@@ -168,17 +166,6 @@ export async function createPaper(stackId, paper) {
     papers = updatedPapers;
   }
 }
-
-//// Create a new paper within a specific stack
-//export async function createPaper(stackId, paper) {
-//  const newPaper = { id: generate_unique_id(), ...paper };
-//  const updatedPapers = [...papers, newPaper];
-//  await tauriStore.set(`${stackId}`, updatedPapers);
-//  // Only update the papers state if it's the current stack
-//  if (currentStackId === stackId) {
-//    papers = updatedPapers;
-//  }
-//}
 
 // Update an existing paper within a specific stack
 export async function updatePaper(stackId, paperId, updatedPaper) {

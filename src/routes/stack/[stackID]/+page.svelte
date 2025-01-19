@@ -1,12 +1,10 @@
 <script lang="ts">
     import { flip } from "svelte/animate";
     import { quintOut } from "svelte/easing";
-    import ProgressStep from "$lib/ProgressStep.svelte";
+    import Dialog from "$lib/Dialog.svelte";
+    import { DialogStore } from "$lib/state/dialog.svelte";
     import FileItem from "$lib/FileItem.svelte";
-    import ConfirmDialog from "$lib/ConfirmDialog.svelte";
-    import { promptUserConfirmation } from "$lib/state/confirmation.svelte.js";
     import { readPaste } from "$lib/services/paste-service.js";
-    import { LoadingState } from "$lib/state/loading.svelte";
     import ContextMenu from "$lib/ContextMenu.svelte";
     import { ContextState } from "$lib/state/context.svelte";
     import InputButton from "$lib/InputButton.svelte";
@@ -19,10 +17,9 @@
     } from "$lib/services/content-service.js";
     import { remove } from "@tauri-apps/plugin-fs";
     import { Store, deletePaper } from "$lib/state/database.svelte";
-    let { data } = $props();
-    const stack_id = data.stackID;
     import GridToggle from "$lib/GridToggle.svelte";
-    // State
+    let { data } = $props();
+    let stack_id = $derived(data.stackID);
     let dragOverGrid = $state(false);
     let drag_id = $state(null);
     let selected_id = $state(null);
@@ -35,7 +32,7 @@
         );
         switch (payload.type) {
             case "PDF": {
-                LoadingState.start("Fetching PDF");
+                DialogStore.showLoading("Fetching PDF");
                 await addPDFContent(stack_id, payload.content, selected_paper);
                 break;
             }
@@ -141,7 +138,7 @@
                 (paper) => paper.id === selected_id,
             );
             if (
-                !(await promptUserConfirmation(
+                !(await DialogStore.confirm(
                     "Confirm Delete",
                     `Are you sure you want to delete ${selected_paper.bib.title}?`,
                 ))
@@ -198,8 +195,7 @@
 <svelte:window onclick={handleClick} onpaste={handlePasteEvent} />
 
 <ContextMenu />
-<ConfirmDialog />
-<ProgressStep />
+<Dialog />
 
 <div>
     <a href="/"> BACK </a>

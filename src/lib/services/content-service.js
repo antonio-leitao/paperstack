@@ -3,10 +3,9 @@ import { extractTextFromPDF } from "$lib/services/pdf-service";
 import { extractBibFromPDF } from "$lib/services/ai-service";
 import { parseBibEntry } from "$lib/services/bib-service";
 import { appDataDir, join } from "@tauri-apps/api/path";
-import { LoadingState } from "$lib/state/loading.svelte";
 import { mkdir, BaseDirectory, remove, writeFile } from "@tauri-apps/plugin-fs";
 import { Store, createPaper, updatePaper } from "$lib/state/database.svelte";
-import { promptUserConfirmation } from "$lib/state/confirmation.svelte";
+import { DialogStore } from "$lib/state/dialog.svelte";
 
 /**
  * Handles confirmation prompt for updating existing file content.
@@ -16,7 +15,7 @@ async function confirmUpdate(selected_file, fieldName, newValue = "") {
   if (newValue) {
     message = `Are you sure you want to replace "${selected_file.bib.title}" ${fieldName} with "${newValue}"?`;
   }
-  return await promptUserConfirmation(message, "This action cannot be undone.");
+  return await DialogStore.confirm(message, "This action cannot be undone.");
 }
 
 /**
@@ -63,9 +62,9 @@ export async function addPDFContent(stack_id, pdfFile, selected_file) {
     }
 
     //process the pdf
-    LoadingState.start("Extracting PDF");
+    DialogStore.showLoading("Fetching PDF");
     const { text, pages, image } = await extractTextFromPDF(pdfFile);
-    LoadingState.lap("Asking AI");
+    DialogStore.updateLoading("Processing PDF");
     const bibtex = await extractBibFromPDF(text);
     let bib = parseBibEntry(bibtex);
     const prefix = selected_file ? selected_file.bib.id : bib.id;
@@ -97,7 +96,7 @@ export async function addPDFContent(stack_id, pdfFile, selected_file) {
   } catch (error) {
     console.error("Error processing PDF:", error);
   } finally {
-    LoadingState.stop();
+    DialogStore.close();
   }
 }
 

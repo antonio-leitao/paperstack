@@ -31,7 +31,6 @@
     // Handle initialization
     $effect(() => {
         if (isOpen && container && !swapy) {
-            console.log("loading swapy");
             swapy = createSwapy(container, {
                 autoScrollSpeed: 10,
                 threshold: 0.5,
