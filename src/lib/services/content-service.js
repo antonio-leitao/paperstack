@@ -1,4 +1,3 @@
-// Content Creation Handlers
 import { extractTextFromPDF } from "$lib/services/pdf-service";
 import { extractBibFromPDF } from "$lib/services/ai-service";
 import { parseBibEntry } from "$lib/services/bib-service";
@@ -7,9 +6,6 @@ import { mkdir, BaseDirectory, remove, writeFile } from "@tauri-apps/plugin-fs";
 import { Store, createPaper, updatePaper } from "$lib/state/database.svelte";
 import { DialogStore } from "$lib/state/dialog.svelte";
 
-/**
- * Handles confirmation prompt for updating existing file content.
- */
 async function confirmUpdate(selected_file, fieldName, newValue = "") {
   let message = `Are you sure you want to replace "${selected_file.bib.title}" ${fieldName}?`;
   if (newValue) {
@@ -18,15 +14,12 @@ async function confirmUpdate(selected_file, fieldName, newValue = "") {
   return await DialogStore.confirm(message, "This action cannot be undone.");
 }
 
-/**
- * Saves a file to the specified directory in AppData.
- */
 async function saveFileToAppData(dirName, file, prefix, oldFilePath = null) {
-  await mkdir(dirName, { baseDir: BaseDirectory.AppData, recursive: true });
   const appDataDirPath = await appDataDir();
   const timestamp = Date.now();
   const extension = file.name.split(".").pop() || "png";
-  const filename = `${prefix}_${timestamp}.${extension}`;
+  const filename = `${prefix}.${extension}`;
+
   const filePath = await join(appDataDirPath, dirName, filename);
 
   if (oldFilePath) {
@@ -40,12 +33,9 @@ async function saveFileToAppData(dirName, file, prefix, oldFilePath = null) {
   return filePath;
 }
 
-/**
- * Adds or updates content for a file based on the provided data.
- */
 async function addOrUpdateContent(stack_id, data, selected_file = null) {
   if (selected_file) {
-    await updatePaper(stack_id, selected_file.id, data);
+    await updatePaper(selected_file.id, data);
   } else {
     await createPaper(stack_id, data);
   }
@@ -53,7 +43,6 @@ async function addOrUpdateContent(stack_id, data, selected_file = null) {
 
 export async function addPDFContent(stack_id, pdfFile, selected_file) {
   try {
-    // Confirmation before processing
     if (
       selected_file &&
       !(await confirmUpdate(selected_file, "PDF", pdfFile.name))
@@ -61,7 +50,6 @@ export async function addPDFContent(stack_id, pdfFile, selected_file) {
       return;
     }
 
-    //process the pdf
     DialogStore.showLoading("Fetching PDF");
     const { text, pages, image } = await extractTextFromPDF(pdfFile);
     DialogStore.updateLoading("Processing PDF");
@@ -69,25 +57,22 @@ export async function addPDFContent(stack_id, pdfFile, selected_file) {
     let bib = parseBibEntry(bibtex);
     const prefix = selected_file ? selected_file.bib.id : bib.id;
 
-    //save the pdf file
     const pdfPath = await saveFileToAppData(
       "pdfs",
       pdfFile,
       prefix,
       selected_file?.pdf,
     );
-    //add image if not present
+
     let imagePath = selected_file?.image || null;
     if (!selected_file || !imagePath) {
       imagePath = await saveFileToAppData("images", image, prefix);
     }
 
-    //add to bib any missing fields from selected_file
     if (selected_file) {
       bib = { ...bib, ...selected_file.bib };
     }
 
-    //save content to database
     await addOrUpdateContent(
       stack_id,
       { pages, bibtex, bib, pdf: pdfPath, image: imagePath },
@@ -101,7 +86,6 @@ export async function addPDFContent(stack_id, pdfFile, selected_file) {
 }
 
 export async function addBibTeXContent(stack_id, bibtex, selected_file) {
-  // Confirmation before processing
   if (selected_file && !(await confirmUpdate(selected_file, "bib entry"))) {
     return;
   }
@@ -110,7 +94,6 @@ export async function addBibTeXContent(stack_id, bibtex, selected_file) {
 }
 
 export async function addURLContent(stack_id, url, selected_file) {
-  // Confirmation before processing
   if (selected_file) {
     if (selected_file.url && !(await confirmUpdate(selected_file, "URL"))) {
       return;
@@ -121,11 +104,9 @@ export async function addURLContent(stack_id, url, selected_file) {
 
 export async function addImageContent(stack_id, imageFile, selected_file) {
   if (selected_file) {
-    // Confirmation before processing
     if (selected_file.image && !(await confirmUpdate(selected_file, "image"))) {
       return;
     }
-
     const prefix = selected_file.bib.id;
     try {
       const imagePath = await saveFileToAppData(

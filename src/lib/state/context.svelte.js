@@ -1,7 +1,6 @@
 let x = $state(0);
 let y = $state(0);
 let paper = $state(null);
-let handleDelete = $state(null);
 let show = $state(false);
 let stack = $state(null);
 let stackRename = $state(null);
@@ -57,19 +56,12 @@ export let ContextState = {
   set y(val) {
     y = val;
   },
-  get handleDelete() {
-    return handleDelete;
-  },
-  set handleDelete(val) {
-    handleDelete = val;
-  },
-  open_paper(xx, yy, ppaper, hhandleDelete) {
+  open_paper(xx, yy, ppaper) {
     show = true;
     x = xx;
     y = yy;
     paper = ppaper;
     stack = null;
-    handleDelete = hhandleDelete;
   },
   open_stack(xx, yy, sstack) {
     show = true;

@@ -110,12 +110,7 @@
         event.stopPropagation();
         selected_id = paperId;
         let paper = Store.papers.find((paper) => paper.id === paperId);
-        ContextState.open_paper(
-            event.clientX,
-            event.clientY,
-            paper,
-            handleDelete,
-        );
+        ContextState.open_paper(event.clientX, event.clientY, paper);
     }
 
     function handleClick(event) {
@@ -132,29 +127,29 @@
         }
     }
 
-    async function handleDelete() {
-        if (selected_id) {
-            let selected_paper = Store.papers.find(
-                (paper) => paper.id === selected_id,
-            );
-            if (
-                !(await DialogStore.confirm(
-                    "Confirm Delete",
-                    `Are you sure you want to delete ${selected_paper.bib.title}?`,
-                ))
-            )
-                return;
-            if (selected_paper.image) {
-                await remove(selected_paper.image);
-            }
-            if (selected_paper.pdf) {
-                await remove(selected_paper.pdf);
-            }
-            await deletePaper(stack_id, selected_paper.id);
-            selected_id = null;
-            ContextState.close();
-        }
-    }
+    //async function handleDelete() {
+    //    if (selected_id) {
+    //        let selected_paper = Store.papers.find(
+    //            (paper) => paper.id === selected_id,
+    //        );
+    //        if (
+    //            !(await DialogStore.confirm(
+    //                "Confirm Delete",
+    //                `Are you sure you want to delete ${selected_paper.bib.title}?`,
+    //            ))
+    //        )
+    //            return;
+    //        if (selected_paper.image) {
+    //            await remove(selected_paper.image);
+    //        }
+    //        if (selected_paper.pdf) {
+    //            await remove(selected_paper.pdf);
+    //        }
+    //        await deletePaper(stack_id, selected_paper.id);
+    //        selected_id = null;
+    //        ContextState.close();
+    //    }
+    //}
 
     function handleDragEnter(event: DragEvent, paperId: string) {
         event.preventDefault();

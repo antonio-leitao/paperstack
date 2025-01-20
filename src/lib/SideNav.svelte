@@ -5,6 +5,7 @@
     import { ContextState } from "$lib/state/context.svelte";
     import {
         Store,
+        getUnsortedStack,
         reorderStacks,
         createStack,
         updateStack,
@@ -15,7 +16,10 @@
         Plus,
         EllipsisVertical,
         SquareLibrary,
+        Files,
+        FileQuestion,
     } from "lucide-svelte";
+    import TooltipButton from "$lib/TooltipButton.svelte";
     import { goto } from "$app/navigation";
     import { createSwapy } from "swapy";
     import { onDestroy, onMount } from "svelte";
@@ -144,8 +148,26 @@
         out:fly={{ x: -250, duration: 300, easing: quintInOut }}
     >
         <div class="info">
-            Stacks <div class="icon">
-                <button onclick={newUnnamedStack}><Plus size={18} /></button>
+            <span>Stacks</span>
+            <div class="button-group">
+                <TooltipButton
+                    icon={Files}
+                    tooltip="All papers"
+                    onClick={() => handleClick("all")}
+                    selected={Store.currentStackId === "all"}
+                />
+                <TooltipButton
+                    icon={FileQuestion}
+                    tooltip="Unsorted papers"
+                    onClick={() => handleClick("unsorted")}
+                    disabled={getUnsortedStack().papers.length < 1}
+                    selected={Store.currentStackId === "unsorted"}
+                />
+                <TooltipButton
+                    icon={Plus}
+                    tooltip="New Stack"
+                    onClick={newUnnamedStack}
+                />
             </div>
         </div>
         <div class="stack-tray" bind:this={container}>
@@ -292,5 +314,18 @@
     }
     [data-swapy-item] {
         cursor: pointer;
+    }
+    .info {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-left: 1rem;
+        padding: 0.3rem 0.7rem;
+    }
+
+    .button-group {
+        display: flex;
+        gap: 0.3rem;
+        align-items: center;
     }
 </style>

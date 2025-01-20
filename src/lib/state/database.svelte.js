@@ -1,4 +1,10 @@
 import { load } from "@tauri-apps/plugin-store";
+import { mkdir, BaseDirectory, remove } from "@tauri-apps/plugin-fs";
+import { appDataDir, join } from "@tauri-apps/api/path";
+
+// Constants
+const UNSORTED_STACK_ID = "unsorted";
+const ALL_STACK_ID = "all";
 
 function generate_unique_id() {
   const timestamp = Date.now();
@@ -7,44 +13,77 @@ function generate_unique_id() {
 }
 
 let tauriStore = $state(null);
-let stacks = $state([]); // Only IDs and names of stacks
-let papers = $state([]); // Papers for the currently active stack
+let stacks = $state([]); // Array of Stack objects (excluding "unsorted")
+let papers = $state([]); // Array of all Paper objects
+let unsortedPapers = $state([]); // Array of IDs of unsorted papers
 let currentStackId = $state(null); // ID of the currently active stack
+let currentPapers = $state([]); // Papers of the current stack
 
-// Initialize the store (only connect to the Tauri store)
+// Initialize the store
 export async function initializeStore() {
   if (!tauriStore) {
     tauriStore = await load("store.json", { autoSave: true });
-    stacks = (await tauriStore.get("stacks")) ?? []; // Load only stack metadata
+    // Ensure base directories exist
+    await mkdir("pdfs", { baseDir: BaseDirectory.AppData, recursive: true });
+    await mkdir("images", { baseDir: BaseDirectory.AppData, recursive: true });
+    // Load data
+    stacks = (await tauriStore.get("stacks")) ?? [];
+    papers = (await tauriStore.get("papers")) ?? [];
+    unsortedPapers = (await tauriStore.get("unsorted")) ?? [];
   }
 }
 
 export async function resetStore() {
   if (tauriStore) {
-    tauriStore.clear();
+    await tauriStore.clear();
+    stacks = [];
+    papers = [];
+    unsortedPapers = [];
+    currentStackId = null;
+    currentPapers = [];
   }
+}
+
+// --- Special Stack Accessors ---
+
+export function getAllStack() {
+  return {
+    id: ALL_STACK_ID,
+    name: "All",
+    papers: papers.map((p) => p.id), // All papers
+  };
+}
+
+export function getUnsortedStack() {
+  return {
+    id: UNSORTED_STACK_ID,
+    name: "Unsorted",
+    papers: unsortedPapers, // Unsorted paper IDs
+  };
 }
 
 // --- Stack CRUD Operations ---
 
 export async function createStack(name) {
   const stackId = generate_unique_id();
-  const newStack = { id: stackId, name };
+  const newStack = { id: stackId, name, papers: [] };
   stacks = [...stacks, newStack];
-  //add metadata
   await tauriStore.set("stacks", stacks);
-  //create empty stack
-  await tauriStore.set(`${stackId}`, []);
   return stackId;
 }
 
-// Get metadata for all stacks (without papers)
 export async function getStacks() {
+  // Exclude "unsorted" from the returned stacks
   return stacks;
 }
 
-// Get a specific stack (without papers) by ID
 export async function getStack(stackId) {
+  if (stackId === ALL_STACK_ID) {
+    return getAllStack();
+  }
+  if (stackId === UNSORTED_STACK_ID) {
+    return getUnsortedStack();
+  }
   return stacks.find((stack) => stack.id === stackId);
 }
 
@@ -56,57 +95,43 @@ export async function updateStack(stackId, name) {
 }
 
 export async function deleteStack(stackId) {
-  //dont delete stack while accessing it
   if (currentStackId === stackId) {
     throw new Error("Cannot delete current stack");
   }
-  // Delete the stack metadata
+
+  // Move papers to unsorted before deleting the stack
+  const stackToDelete = stacks.find((stack) => stack.id === stackId);
+  if (stackToDelete) {
+    unsortedPapers = [...new Set([...unsortedPapers, ...stackToDelete.papers])];
+    await tauriStore.set("unsorted", unsortedPapers);
+  }
+
   stacks = stacks.filter((stack) => stack.id !== stackId);
   await tauriStore.set("stacks", stacks);
-
-  // Delete the associated papers
-  await tauriStore.delete(`${stackId}`);
-}
-
-//export function reorderStacks(draggedItemId, targetItemId) {
-//  const draggedItemIndex = stacks.findIndex(
-//    (stack) => stack.id === draggedItemId,
-//  );
-//  const targetItemIndex = stacks.findIndex(
-//    (stack) => stack.id === targetItemId,
-//  );
-//
-//  if (draggedItemIndex !== -1 && targetItemIndex !== -1) {
-//    const [draggedItem] = stacks.splice(draggedItemIndex, 1);
-//    stacks.splice(targetItemIndex, 0, draggedItem);
-//    stacks = stacks;
-//  }
-//}
-
-export function reorderStacks(finalOrder) {
-  // Create a map of stackId to new index based on finalOrder
-  const newOrderMap = new Map();
-  finalOrder.forEach((orderItem, index) => {
-    newOrderMap.set(orderItem.item, index);
-  });
-
-  // Sort the stacks array based on the newOrderMap
-  const sortedStacks = [...stacks].sort((a, b) => {
-    const indexA = newOrderMap.get(a.id);
-    const indexB = newOrderMap.get(b.id);
-    return indexA - indexB;
-  });
-  stacks = sortedStacks;
 }
 
 export async function mergeStacks(sourceStackId, targetStackId) {
-  const sourceStackPapers = (await tauriStore.get(`${sourceStackId}`)) ?? [];
-  const targetStackPapers = (await tauriStore.get(`${targetStackId}`)) ?? [];
-  // Merge papers
-  const mergedPapers = [...targetStackPapers, ...sourceStackPapers];
-  await tauriStore.set(`${targetStackId}`, mergedPapers);
-  // Delete the source stack
-  await deleteStack(sourceStackId);
+  const sourceStack = stacks.find((s) => s.id === sourceStackId);
+  const targetStack = stacks.find((s) => s.id === targetStackId);
+
+  if (!sourceStack || !targetStack) {
+    throw new Error("Stack not found");
+  }
+
+  const mergedPaperIds = [
+    ...new Set([...targetStack.papers, ...sourceStack.papers]),
+  ];
+
+  stacks = stacks.map((stack) =>
+    stack.id === targetStackId ? { ...stack, papers: mergedPaperIds } : stack,
+  );
+
+  stacks = stacks.filter((stack) => stack.id !== sourceStackId);
+
+  await tauriStore.set("stacks", stacks);
+  if (currentStackId === targetStackId) {
+    updateCurrentPapers();
+  }
 }
 
 export async function duplicateStack(stackId) {
@@ -115,83 +140,176 @@ export async function duplicateStack(stackId) {
     throw new Error("Stack not found");
   }
 
-  // Create a new stack with a unique ID and modified name
   const newStackId = generate_unique_id();
   const newStackName = `${originalStack.name} copy`;
-  const newStack = { id: newStackId, name: newStackName };
+  const newStack = {
+    id: newStackId,
+    name: newStackName,
+    papers: [...originalStack.papers],
+  };
 
-  // Duplicate the stack metadata
   stacks = [...stacks, newStack];
   await tauriStore.set("stacks", stacks);
-
-  // Duplicate the papers with new IDs
-  const originalPapers = await tauriStore.get(`${stackId}`);
-  const duplicatedPapers = originalPapers.map((paper) => ({
-    ...paper,
-    id: generate_unique_id(),
-  }));
-
-  // Store the duplicated papers in the new stack
-  await tauriStore.set(`${newStackId}`, duplicatedPapers);
 
   return newStackId;
 }
 
+export function reorderStacks(finalOrder) {
+  const newOrderMap = new Map();
+  finalOrder.forEach((orderItem, index) => {
+    newOrderMap.set(orderItem.item, index);
+  });
+
+  const sortedStacks = [...stacks].sort((a, b) => {
+    const indexA = newOrderMap.get(a.id);
+    const indexB = newOrderMap.get(b.id);
+    return indexA - indexB;
+  });
+  stacks = sortedStacks;
+}
+
+// Updates currentPapers based on current stack's paper IDs
+function updateCurrentPapers() {
+  if (currentStackId === ALL_STACK_ID) {
+    currentPapers = [...papers].sort(
+      (a, b) => (b.timestamp || 0) - (a.timestamp || 0),
+    );
+  } else if (currentStackId === UNSORTED_STACK_ID) {
+    currentPapers = papers
+      .filter((paper) => unsortedPapers.includes(paper.id))
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  } else {
+    const currentStack = stacks.find((s) => s.id === currentStackId);
+    if (currentStack) {
+      currentPapers = papers
+        .filter((paper) => currentStack.papers.includes(paper.id))
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    } else {
+      currentPapers = [];
+    }
+  }
+}
+
 // --- Paper CRUD Operations ---
 
-// Load papers for a specific stack and set the current stack
+export async function touchPaper(paperId) {
+  papers = papers.map((paper) =>
+    paper.id === paperId ? { ...paper, timestamp: Date.now() } : paper,
+  );
+  await tauriStore.set("papers", papers);
+  if (currentStackId) {
+    updateCurrentPapers();
+  }
+}
+
 export async function loadPapers(stackId) {
   if (!tauriStore) {
     await initializeStore();
   }
   currentStackId = stackId;
-  //TODO throw error if not found
-  papers = await tauriStore.get(`${stackId}`);
+  updateCurrentPapers();
 }
 
-// Create a new paper within a specific stack
 export async function createPaper(stackId, paper) {
-  const newPaper = { id: generate_unique_id(), ...paper };
-  //if it doesnt affect the frontend
-  let updatedPapers = [];
-  if (currentStackId !== stackId) {
-    let other_papers = await tauriStore.get(`${stackId}`);
-    updatedPapers = [...other_papers, newPaper];
+  const newPaper = {
+    id: generate_unique_id(),
+    timestamp: Date.now(),
+    ...paper,
+  };
+
+  papers = [...papers, newPaper];
+  await tauriStore.set("papers", papers);
+
+  if (stackId && stackId !== UNSORTED_STACK_ID) {
+    stacks = stacks.map((stack) =>
+      stack.id === stackId
+        ? { ...stack, papers: [...stack.papers, newPaper.id] }
+        : stack,
+    );
+    await tauriStore.set("stacks", stacks);
   } else {
-    updatedPapers = [...papers, newPaper];
+    // If no stack ID or unsorted, add to unsortedPapers
+    unsortedPapers = [...unsortedPapers, newPaper.id];
+    await tauriStore.set("unsorted", unsortedPapers);
   }
-  await tauriStore.set(`${stackId}`, updatedPapers);
-  // Only update the papers state if it's the current stack
-  if (currentStackId === stackId) {
-    papers = updatedPapers;
+
+  if (currentStackId) {
+    updateCurrentPapers();
   }
+
+  return newPaper.id;
 }
 
-// Update an existing paper within a specific stack
-export async function updatePaper(stackId, paperId, updatedPaper) {
-  const updatedPapers = papers.map((paper) =>
-    paper.id === paperId ? { ...paper, ...updatedPaper } : paper,
+export async function updatePaper(paperId, updatedPaper) {
+  papers = papers.map((paper) =>
+    paper.id === paperId
+      ? { ...paper, ...updatedPaper, timestamp: Date.now() }
+      : paper,
   );
-  await tauriStore.set(`${stackId}`, updatedPapers);
-  // Only update the papers state if it's the current stack
-  if (currentStackId === stackId) {
-    papers = updatedPapers;
+
+  await tauriStore.set("papers", papers);
+  if (currentStackId) {
+    updateCurrentPapers();
   }
 }
 
-// Delete a paper from a specific stack
-export async function deletePaper(stackId, paperId) {
-  const updatedPapers = papers.filter((paper) => paper.id !== paperId);
-  await tauriStore.set(`${stackId}`, updatedPapers);
-  // Only update the papers state if it's the current stack
-  if (currentStackId === stackId) {
-    papers = updatedPapers;
+export async function removePaperFromStack(paperId, stackId) {
+  // Move paper to unsorted
+  unsortedPapers = [...new Set([...unsortedPapers, paperId])];
+  await tauriStore.set("unsorted", unsortedPapers);
+
+  // Remove paper from specified stack
+  stacks = stacks.map((stack) => ({
+    ...stack,
+    papers:
+      stack.id === stackId
+        ? stack.papers.filter((id) => id !== paperId)
+        : stack.papers,
+  }));
+  await tauriStore.set("stacks", stacks);
+
+  if (currentStackId) {
+    updateCurrentPapers();
   }
 }
 
-// --- Accessors ---
+export async function deletePaper(paperId) {
+  const paperToDelete = papers.find((paper) => paper.id === paperId);
+  if (paperToDelete) {
+    // Delete associated files
+    if (paperToDelete.pdf) {
+      await remove(paperToDelete.pdf);
+    }
+    if (paperToDelete.image) {
+      await remove(paperToDelete.image);
+    }
+  }
+
+  // Remove paper from all stacks
+  stacks = stacks.map((stack) => ({
+    ...stack,
+    papers: stack.papers.filter((id) => id !== paperId),
+  }));
+
+  // Remove paper from papers array
+  papers = papers.filter((paper) => paper.id !== paperId);
+
+  // Remove paper from unsorted array
+  unsortedPapers = unsortedPapers.filter((id) => id !== paperId);
+
+  await tauriStore.set("stacks", stacks);
+  await tauriStore.set("papers", papers);
+  await tauriStore.set("unsorted", unsortedPapers);
+
+  if (currentStackId) {
+    updateCurrentPapers();
+  }
+}
+
 export const Store = {
   initializeStore,
+  reorderStacks,
+  duplicateStack,
   getStacks,
   createStack,
   getStack,
@@ -202,8 +320,10 @@ export const Store = {
   createPaper,
   updatePaper,
   deletePaper,
-  duplicateStack,
-  // Expose the reactive states:
+  removePaperFromStack,
+  touchPaper,
+  getAllStack,
+  getUnsortedStack,
   get currentStackId() {
     return currentStackId;
   },
@@ -211,6 +331,6 @@ export const Store = {
     return stacks;
   },
   get papers() {
-    return papers;
+    return currentPapers;
   },
 };

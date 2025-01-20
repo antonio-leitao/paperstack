@@ -1,7 +1,9 @@
 <script>
+    import { onMount } from "svelte";
     import { Command } from "@tauri-apps/plugin-shell";
     import { ContextState } from "$lib/state/context.svelte";
     import { Store } from "$lib/state/database.svelte";
+    import { DialogStore } from "$lib/state/dialog.svelte";
     import Cite from "citation-js";
     import {
         Trash2,
@@ -15,10 +17,15 @@
         ExternalLink,
         BookCopy,
         FilePlus2,
+        CircleX,
     } from "lucide-svelte";
     //let { show = $bindable(), x, y, paper, handleDelete } = $props();
     let link = $derived(ContextState.paper.url || ContextState.paper.bib.URL);
     let showExportSubmenu = $state(false);
+    $inspect(Store.currentStackId);
+    let otherStacks = $derived(
+        Store.stacks.filter((s) => s.id !== Store.currentStackId),
+    );
 
     function handleCopyBibTeX() {
         const cite = new Cite(ContextState.paper.bib);
@@ -68,6 +75,34 @@
         Store.duplicateStack(ContextState.stack.id);
         ContextState.close();
     }
+    // Add this new function
+    async function handlePaperRemove() {
+        if (!ContextState.paper) return;
+        if (
+            Store.currentStackId === "unsorted" ||
+            Store.currentStackId === "all"
+        ) {
+            if (
+                !(await DialogStore.confirm(
+                    "Confirm Delete",
+                    `Are you sure you want to delete ${ContextState.paper.bib.title}?`,
+                ))
+            )
+                return;
+            // In unsorted stack - delete permanently
+            await Store.deletePaper(ContextState.paper.id);
+        } else {
+            // In regular stack - move to unsorted
+            await Store.removePaperFromStack(
+                ContextState.paper.id,
+                Store.currentStackId,
+            );
+        }
+        ContextState.close();
+    }
+    function handleStackIconChange() {}
+    function handleStackMerge() {}
+    function handleNewPaperInput() {}
 </script>
 
 {#if ContextState.show}
@@ -95,43 +130,51 @@
             <div class="menu-item" onclick={handleCopyBibTeX}>
                 Copy BibTeX<BookCopy size={18} />
             </div>
-            <div
-                class="menu-item has-submenu"
-                onmouseenter={() => (showExportSubmenu = true)}
-                onmouseleave={() => (showExportSubmenu = false)}
-            >
-                Copy to Stack <ChevronRight size={18} />
-                {#if showExportSubmenu}
-                    <div class="submenu">
-                        {#each Store.stacks as stack}
-                            {#if stack.id !== Store.currentStackId}
+            {#if otherStacks.length > 0}
+                <div
+                    class="menu-item has-submenu"
+                    onmouseenter={() => (showExportSubmenu = true)}
+                    onmouseleave={() => (showExportSubmenu = false)}
+                >
+                    Add to <ChevronRight size={18} />
+                    {#if showExportSubmenu}
+                        <div class="submenu">
+                            {#each otherStacks as stack}
                                 <div
                                     class="menu-item"
                                     onclick={() => handleSendToStack(stack.id)}
                                 >
                                     {stack.name}
                                 </div>
-                            {/if}
-                        {/each}
-                    </div>
-                {/if}
-            </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
             <div class="separator"></div>
-            <div class="menu-item delete" onclick={ContextState.handleDelete}>
-                Delete<Trash2 size={18} />
-            </div>
+            {#if Store.currentStackId === "unsorted" || Store.currentStackId === "all"}
+                <div class="menu-item delete" onclick={handlePaperRemove}>
+                    Delete
+                    <Trash2 size={18} />
+                </div>
+            {:else}
+                <div class="menu-item delete" onclick={handlePaperRemove}>
+                    Remove
+                    <CircleX size={18} />
+                </div>
+            {/if}
         {:else if ContextState.stack}
             <div class="menu-item" onclick={handleRenameStack}>
                 Rename<PencilLine size={18} />
             </div>
-            <div class="menu-item" onclick={ContextState.handleDelete}>
+            <div class="menu-item" onclick={handleStackIconChange}>
                 Change Icon<SmilePlus size={18} />
             </div>
             <div class="separator"></div>
             <div class="menu-item" onclick={handleDuplicateStack}>
                 Duplicate<BookCopy size={18} />
             </div>
-            <div class="menu-item" onclick={ContextState.handleDelete}>
+            <div class="menu-item" onclick={handleStackMerge}>
                 Merge With<Blend size={18} />
             </div>
             <div class="separator"></div>
@@ -139,7 +182,7 @@
                 Delete<Trash2 size={18} />
             </div>
         {:else}
-            <div class="menu-item" onclick={ContextState.handleDelete}>
+            <div class="menu-item" onclick={handleNewPaperInput}>
                 Add<FilePlus2 size={18} />
             </div>
         {/if}
@@ -167,8 +210,8 @@
         justify-content: space-between;
         align-items: center;
         transition: all 0.3s ease;
-        padding: 6px 8px;
-        border-radius: 5px;
+        padding: 6px 6px;
+        border-radius: 3px;
     }
 
     .menu-item:hover {
@@ -190,11 +233,11 @@
         top: 0;
         background: white;
         border: 1px solid var(--surfaces);
-        border-radius: 5px;
+        border-radius: 3px;
         box-shadow: var(--perfect-shadow);
         min-width: 150px;
         z-index: 1001;
-        padding: 3px 4px;
+        padding: 3px 3px;
     }
     .separator {
         height: 1.3px;
