@@ -1,5 +1,4 @@
 <script>
-    import { onMount } from "svelte";
     import { Command } from "@tauri-apps/plugin-shell";
     import { ContextState } from "$lib/state/context.svelte";
     import { Store } from "$lib/state/database.svelte";

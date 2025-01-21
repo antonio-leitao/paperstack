@@ -15,8 +15,7 @@
         addBibTeXContent,
         addImageContent,
     } from "$lib/services/content-service.js";
-    import { remove } from "@tauri-apps/plugin-fs";
-    import { Store, deletePaper } from "$lib/state/database.svelte";
+    import { Store } from "$lib/state/database.svelte";
     import GridToggle from "$lib/GridToggle.svelte";
     let { data } = $props();
     let stack_id = $derived(data.stackID);
@@ -126,30 +125,6 @@
             selected_id = null;
         }
     }
-
-    //async function handleDelete() {
-    //    if (selected_id) {
-    //        let selected_paper = Store.papers.find(
-    //            (paper) => paper.id === selected_id,
-    //        );
-    //        if (
-    //            !(await DialogStore.confirm(
-    //                "Confirm Delete",
-    //                `Are you sure you want to delete ${selected_paper.bib.title}?`,
-    //            ))
-    //        )
-    //            return;
-    //        if (selected_paper.image) {
-    //            await remove(selected_paper.image);
-    //        }
-    //        if (selected_paper.pdf) {
-    //            await remove(selected_paper.pdf);
-    //        }
-    //        await deletePaper(stack_id, selected_paper.id);
-    //        selected_id = null;
-    //        ContextState.close();
-    //    }
-    //}
 
     function handleDragEnter(event: DragEvent, paperId: string) {
         event.preventDefault();
