@@ -3,7 +3,7 @@
     import { quintOut } from "svelte/easing";
     import Dialog from "$lib/Dialog.svelte";
     import { DialogStore } from "$lib/state/dialog.svelte";
-    import FileItem from "$lib/FileItem.svelte";
+    import Paper from "$lib/Paper.svelte";
     import { readPaste } from "$lib/services/paste-service.js";
     import ContextMenu from "$lib/ContextMenu.svelte";
     import { ContextState } from "$lib/state/context.svelte";
@@ -202,7 +202,7 @@
             tabindex="0"
             animate:flip={{ duration: 250, easing: quintOut }}
         >
-            <FileItem
+            <Paper
                 {...paper}
                 compactView={!layout_grid}
                 isSelected={selected_id === paper.id}

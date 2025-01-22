@@ -30,27 +30,6 @@
 {/if}
 
 <style>
-    .modal-backdrop {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        /*background: rgba(0, 0, 0, 0.5);*/
-        background: rgba(18, 53, 36, 0.2);
-        display: grid;
-        place-items: center;
-        z-index: 1000;
-    }
-
-    .modal-content {
-        background: white;
-        padding: 2rem;
-        border-radius: 8px;
-        min-width: 300px;
-        max-width: 500px;
-    }
-
     .button-group {
         display: flex;
         justify-content: flex-end;

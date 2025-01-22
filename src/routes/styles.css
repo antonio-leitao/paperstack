@@ -1,147 +1,166 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Noto+Serif:wght@400;800&display=swap");
+
 @font-face {
-    font-family: 'Tiempos Headline'; /* Give your font a name */
-    src: url('/fonts/TiemposHeadline-Regular.woff') format('woff'),
-         url('/fonts/TiemposHeadline-Regular.ttf') format('truetype');
+    font-family: "Tiempos Headline";
+    /* Give your font a name */
+    src:
+        url("/fonts/TiemposHeadline-Regular.woff") format("woff"),
+        url("/fonts/TiemposHeadline-Regular.ttf") format("truetype");
     font-weight: normal;
     font-style: normal;
 }
 
 @font-face {
-    font-family: 'Tiempos Headline';
-    src: url('/fonts/TiemposHeadline-Black.woff') format('woff'),
-         url('/fonts/TiemposHeadline-Black.ttf') format('truetype');
+    font-family: "Tiempos Headline";
+    src:
+        url("/fonts/TiemposHeadline-Black.woff") format("woff"),
+        url("/fonts/TiemposHeadline-Black.ttf") format("truetype");
     font-weight: 900;
     font-style: normal;
 }
+
 @font-face {
-    font-family: 'Tiempos Headline';
-    src: url('/fonts/TiemposHeadline-Medium.woff') format('woff'),
-         url('/fonts/TiemposHeadline-Medium.ttf') format('truetype');
+    font-family: "Tiempos Headline";
+    src:
+        url("/fonts/TiemposHeadline-Medium.woff") format("woff"),
+        url("/fonts/TiemposHeadline-Medium.ttf") format("truetype");
     font-weight: 500;
     font-style: normal;
 }
+
 @font-face {
-    font-family: 'Tiempos Text';
-    src: url('/fonts/TiemposText-Regular.woff') format('woff'),
-         url('/fonts/TiemposText-Regular.ttf') format('truetype');
+    font-family: "Tiempos Text";
+    src:
+        url("/fonts/TiemposText-Regular.woff") format("woff"),
+        url("/fonts/TiemposText-Regular.ttf") format("truetype");
     font-weight: 400;
     font-style: normal;
 }
+
 @font-face {
-    font-family: 'Tiempos Text';
-    src: url('/fonts/TiemposText-Bold.woff') format('woff'),
-         url('/fonts/TiemposText-Bold.ttf') format('truetype');
+    font-family: "Tiempos Text";
+    src:
+        url("/fonts/TiemposText-Bold.woff") format("woff"),
+        url("/fonts/TiemposText-Bold.ttf") format("truetype");
     font-weight: 600;
     font-style: normal;
 }
 
 :root {
-  --hookers-green: #2e6558ff;
-  --dark-green: #123524ff;
-  --lion: #bf9f7cff;
-  --dark-purple: #351223ff;
-  --tyrian-purple: #72274bff;
-  /* Background color */
-  --platinum: #f8f8f8;
-  --surfaces: #e0e0e0; /* A bit darker */
-  --shades: #bdbdbd; /* Even darker */
-  
-  /* Text color */
-  --prussian-blue: #0f2b3d;
-  --prussian-blue-dark: #08161f;
-  --text-subdued: #4f6b7d; /* Lighter shade of prussian-blue */
-  --text-muted: #7f8b9d; /* Even lighter shade */
+    --hookers-green: #2e6558ff;
+    --dark-green: #123524ff;
+    --lion: #bf9f7cff;
+    --dark-purple: #351223ff;
+    --tyrian-purple: #72274bff;
+    /* Background color */
+    --platinum: #f8f8f8;
+    --surfaces: #e0e0e0;
+    /* A bit darker */
+    --shades: #bdbdbd;
+    /* Even darker */
 
-  --text-color: var(--prussian-blue);
-  --accent-color: var(--dark-green);
-  --accent-color-light: var(--hookers-green);
-  --accent-color-translucent: rgba(18, 53, 36, 0.3);
-  --secondary-color: var(--dark-purple);
-  --secondary-color-light: var(--tyrian-purple);
-  --tertiary-color: var(--lion);
-  --tertiary-translucent: rgba(191, 159, 124, 0.3);
-  --sans-font: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji";
-  --serif-font: "Tiempos Text", "Noto Serif", ui-serif, Georgia, Cambria, Times New Roman, Times, serif;
-  --headline-font: "Tiempos Headline", "Noto Serif", ui-serif, Georgia, Cambria, Times New Roman, Times, serif;
+    /* Text color */
+    --prussian-blue: #0f2b3d;
+    --prussian-blue-dark: #08161f;
+    --text-subdued: #4f6b7d;
+    /* Lighter shade of prussian-blue */
+    --text-muted: #7f8b9d;
+    /* Even lighter shade */
 
-  background-color: var(--platinum);
-  color: var(--text-color);
-  font-family: var(--sans-font);
+    --text-color: var(--prussian-blue);
+    --accent-color: var(--dark-green);
+    --accent-color-light: var(--hookers-green);
+    --accent-color-translucent: rgba(18, 53, 36, 0.3);
+    --secondary-color: var(--dark-purple);
+    --secondary-color-light: var(--tyrian-purple);
+    --tertiary-color: var(--lion);
+    --tertiary-translucent: rgba(191, 159, 124, 0.3);
+    --sans-font: "Inter", ui-sans-serif, system-ui, -apple-system,
+        BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans,
+        sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol,
+        "Noto Color Emoji";
+    --serif-font: "Tiempos Text", "Noto Serif", ui-serif, Georgia, Cambria,
+        Times New Roman, Times, serif;
+    --headline-font: "Tiempos Headline", "Noto Serif", ui-serif, Georgia, Cambria,
+        Times New Roman, Times, serif;
 
-  --tint: 214;
-  --alpha: 4;
-  --base: hsl(var(--tint, 214) 80% 27% / calc(var(--alpha, 4) * 1%));
-  --shade: hsl(from var(--base) calc(h + 8) 25 calc(l - 5));
-  --perfect-shadow: 0 0 0 1px var(--base), 0 1px 1px -0.5px var(--shade),
-      0 3px 3px -1.5px var(--shade), 0 6px 6px -3px var(--shade),
-      0 12px 12px -6px var(--base), 0 24px 24px -12px var(--base);
+    background-color: var(--platinum);
+    color: var(--text-color);
+    font-family: var(--sans-font);
 
+    --tint: 214;
+    --alpha: 4;
+    --base: hsl(var(--tint, 214) 80% 27% / calc(var(--alpha, 4) * 1%));
+    --shade: hsl(from var(--base) calc(h + 8) 25 calc(l - 5));
+    --perfect-shadow: 0 0 0 1px var(--base), 0 1px 1px -0.5px var(--shade),
+        0 3px 3px -1.5px var(--shade), 0 6px 6px -3px var(--shade),
+        0 12px 12px -6px var(--base), 0 24px 24px -12px var(--base);
 }
 
 h2 {
-  font-family: var(--headline-font);
-  font-weight: 900;
-  font-size: 1.5rem;
-  margin-bottom: 0.5rem; 
-  margin-top: 0rem;
+    font-family: var(--headline-font);
+    font-weight: 900;
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    margin-top: 0rem;
 }
 
 h3 {
-  font-family: var(--sans-font);
-  font-weight: 600;
-  font-size: 12px;
-  line-height: 15px;
-  margin-bottom: 2px;
-  margin-top: 0rem;
+    font-family: var(--sans-font);
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 15px;
+    margin-bottom: 2px;
+    margin-top: 0rem;
 }
 
 p {
-  font-family: var(--serif-font);
-  font-weight: 400;
-  font-size: 1rem;
-  line-height: 1.5;
-  letter-spacing: 0.02em;
-  margin-bottom: 0.5rem;
+    font-family: var(--serif-font);
+    font-weight: 400;
+    font-size: 1rem;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.5rem;
 }
 
 .info {
-  font-family: var(--sans-font);
-  color: var(--text-subdued);
-  font-weight: 400;
-  font-size: 12px;
-  line-height: 15px;
-  margin-bottom: 2px;
+    font-family: var(--sans-font);
+    color: var(--text-subdued);
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 15px;
+    margin-bottom: 2px;
 }
+
 .subinfo {
-  font-family: var(--sans-font);
-  color: var(--text-subdued);
-  font-weight: 400;
-  font-size: 10.56px;
-  line-height: 13.2px;
-  margin-bottom: 2px;
+    font-family: var(--sans-font);
+    color: var(--text-subdued);
+    font-weight: 400;
+    font-size: 10.56px;
+    line-height: 13.2px;
+    margin-bottom: 2px;
 }
 
 .modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    backdrop-filter: blur(5px);
+    display: grid;
+    place-items: center;
+    z-index: 1000;
 }
 
 .modal-content {
-  text-align: center;
-  background-color: white;
-  align-self: center;
-  padding: 2rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  max-width: 400px;
-  width: 90%;
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+    min-width: 300px;
+    max-width: 500px;
+    /* Add a bit of box shadow for better visibility */
+    box-shadow:
+        0 4px 6px -1px rgba(0, 0, 0, 0.1),
+        0 2px 4px -2px rgba(0, 0, 0, 0.1);
 }
