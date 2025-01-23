@@ -9,7 +9,10 @@
         PencilLine,
         SmilePlus,
         Blend,
-        Paperclip,
+        MessageSquareText,
+        MessageSquarePlus,
+        MessageSquareX,
+        Sparkles,
         FileText,
         GraduationCap,
         ChevronRight,
@@ -54,8 +57,8 @@
         if (!ContextState.paper) {
             return;
         }
-        const { id, ...paper } = ContextState.paper;
-        await Store.createPaper(stackId, paper);
+        const { id } = ContextState.paper;
+        await Store.movePaper(stackId, id);
         ContextState.close();
     }
     async function handleDeleteStack() {
@@ -120,15 +123,28 @@
                     Open PDF <FileText size={18} />
                 </div>
             {/if}
-            <div class="menu-item">
-                Add Notes<Paperclip size={18} />
-            </div>
             <div class="menu-item" onclick={handleCopyCite}>
                 Cite<GraduationCap size={18} />
             </div>
             <div class="menu-item" onclick={handleCopyBibTeX}>
                 Copy BibTeX<BookCopy size={18} />
             </div>
+            <div class="separator"></div>
+            {#if ContextState.paper.summary}
+                <div class="menu-item">
+                    Edit Note<MessageSquareText size={18} />
+                </div>
+                <div class="menu-item">
+                    Remove Note<MessageSquareX size={18} />
+                </div>
+            {:else}
+                <div class="menu-item">
+                    Add Note<MessageSquarePlus size={18} />
+                </div>
+                <div class="menu-item">
+                    Ai Note<Sparkles size={18} />
+                </div>
+            {/if}
             {#if otherStacks.length > 0}
                 <div
                     class="menu-item has-submenu"

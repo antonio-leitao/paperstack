@@ -239,6 +239,19 @@ export async function createPaper(stackId, paper) {
 
   return newPaper.id;
 }
+export async function movePaper(stackId, paperId) {
+  if (stackId && stackId !== UNSORTED_STACK_ID) {
+    stacks = stacks.map((stack) =>
+      stack.id === stackId
+        ? { ...stack, papers: [...stack.papers, paperId] }
+        : stack,
+    );
+    await tauriStore.set("stacks", stacks);
+  }
+  if (currentStackId) {
+    updateCurrentPapers();
+  }
+}
 
 export async function updatePaper(paperId, updatedPaper) {
   papers = papers.map((paper) =>
@@ -276,25 +289,31 @@ export async function removePaperFromStack(paperId, stackId) {
 export async function deletePaper(paperId) {
   const paperToDelete = papers.find((paper) => paper.id === paperId);
   if (paperToDelete) {
-    // Delete associated files
-    if (paperToDelete.pdf) {
-      await remove(paperToDelete.pdf);
+    // Delete associated files with error handling
+    try {
+      if (paperToDelete.pdf) {
+        await remove(paperToDelete.pdf);
+      }
+    } catch (error) {
+      console.warn(`Failed to delete PDF for paper ${paperId}:`, error);
     }
-    if (paperToDelete.image) {
-      await remove(paperToDelete.image);
+
+    try {
+      if (paperToDelete.image) {
+        await remove(paperToDelete.image);
+      }
+    } catch (error) {
+      console.warn(`Failed to delete image for paper ${paperId}:`, error);
     }
   }
 
-  // Remove paper from all stacks
+  // Rest of the function remains the same
   stacks = stacks.map((stack) => ({
     ...stack,
     papers: stack.papers.filter((id) => id !== paperId),
   }));
 
-  // Remove paper from papers array
   papers = papers.filter((paper) => paper.id !== paperId);
-
-  // Remove paper from unsorted array
   unsortedPapers = unsortedPapers.filter((id) => id !== paperId);
 
   await tauriStore.set("stacks", stacks);
@@ -319,6 +338,7 @@ export const Store = {
   loadPapers,
   createPaper,
   updatePaper,
+  movePaper,
   deletePaper,
   removePaperFromStack,
   touchPaper,

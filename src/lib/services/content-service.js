@@ -1,5 +1,8 @@
 import { extractTextFromPDF } from "$lib/services/pdf-service";
-import { extractBibFromPDF } from "$lib/services/ai-service";
+import {
+  extractBibFromPDF,
+  extractSummaryFromPDF,
+} from "$lib/services/ai-service";
 import { parseBibEntry } from "$lib/services/bib-service";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { mkdir, BaseDirectory, remove, writeFile } from "@tauri-apps/plugin-fs";
@@ -53,7 +56,10 @@ export async function addPDFContent(stack_id, pdfFile, selected_file) {
     DialogStore.showLoading("Fetching PDF");
     const { text, pages, image } = await extractTextFromPDF(pdfFile);
     DialogStore.updateLoading("Processing PDF");
-    const bibtex = await extractBibFromPDF(text);
+    const [bibtex, summary] = await Promise.all([
+      extractBibFromPDF(text),
+      extractSummaryFromPDF(text),
+    ]);
     let bib = parseBibEntry(bibtex);
     const prefix = selected_file ? selected_file.bib.id : bib.id;
 
@@ -65,17 +71,17 @@ export async function addPDFContent(stack_id, pdfFile, selected_file) {
     );
 
     let imagePath = selected_file?.image || null;
+    //add image if there is none
     if (!selected_file || !imagePath) {
       imagePath = await saveFileToAppData("images", image, prefix);
     }
-
+    //update the bib if there is one
     if (selected_file) {
       bib = { ...bib, ...selected_file.bib };
     }
-
     await addOrUpdateContent(
       stack_id,
-      { pages, bibtex, bib, pdf: pdfPath, image: imagePath },
+      { pages, bibtex, bib, summary, pdf: pdfPath, image: imagePath },
       selected_file,
     );
   } catch (error) {
