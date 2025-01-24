@@ -210,6 +210,24 @@ export async function loadPapers(stackId) {
   updateCurrentPapers();
 }
 
+export async function findPotentialDuplicate(newPaper) {
+  return papers.find((paper) => {
+    // Check for matching title if available
+    if (newPaper.bib?.title && paper.bib?.title) {
+      if (paper.bib.title.toLowerCase() === newPaper.bib.title.toLowerCase()) {
+        return paper;
+      }
+    }
+    // Check for matching DOI if available
+    if (newPaper.bib?.doi && paper.bib?.doi) {
+      if (paper.bib.doi === paper.bib.doi) {
+        return paper;
+      }
+    }
+    return null;
+  });
+}
+
 export async function createPaper(stackId, paper) {
   const newPaper = {
     id: generate_unique_id(),
@@ -336,6 +354,7 @@ export const Store = {
   deleteStack,
   mergeStacks,
   loadPapers,
+  findPotentialDuplicate,
   createPaper,
   updatePaper,
   movePaper,

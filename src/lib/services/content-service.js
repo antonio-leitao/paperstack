@@ -37,11 +37,48 @@ async function saveFileToAppData(dirName, file, prefix, oldFilePath = null) {
 }
 
 async function addOrUpdateContent(stack_id, data, selected_file = null) {
+  // If we're updating an existing file, proceed as normal
   if (selected_file) {
     await updatePaper(selected_file.id, data);
-  } else {
-    await createPaper(stack_id, data);
+    return;
   }
+
+  // Check for potential duplicates only for new papers with bib data
+  if (data.bib) {
+    const duplicate = await Store.findPotentialDuplicate({ bib: data.bib });
+    if (duplicate) {
+      const action = await DialogStore.handleDuplicate({ bib: data.bib }, duplicate);
+      
+      switch (action) {
+        case DialogActions.CANCEL:
+          return; // Don't add anything
+        
+        case DialogActions.KEEP:
+          // Proceed with creating new paper
+          await createPaper(stack_id, data);
+          break;
+        
+        case DialogActions.UPDATE:
+          // Update existing paper with new data
+          await updatePaper(duplicate.id, {
+            ...duplicate,
+            ...data,
+            timestamp: Date.now()
+          });
+          break;
+        
+        case DialogActions.REPLACE:
+          // Delete old paper and create new one
+          await Store.deletePaper(duplicate.id);
+          await createPaper(stack_id, data);
+          break;
+      }
+      return;
+    }
+  }
+
+  // No duplicate found, create new paper
+  await createPaper(stack_id, data);
 }
 
 export async function addPDFContent(stack_id, pdfFile, selected_file) {
@@ -53,9 +90,10 @@ export async function addPDFContent(stack_id, pdfFile, selected_file) {
       return;
     }
 
-    DialogStore.showLoading("Fetching PDF");
+    DialogStore.start("Fetching PDF");
+    console.log("Should have turned on")
     const { text, pages, image } = await extractTextFromPDF(pdfFile);
-    DialogStore.updateLoading("Processing PDF");
+    DialogStore.lap("Processing PDF");
     const [bibtex, summary] = await Promise.all([
       extractBibFromPDF(text),
       extractSummaryFromPDF(text),

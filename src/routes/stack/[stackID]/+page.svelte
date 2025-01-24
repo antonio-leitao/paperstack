@@ -1,13 +1,13 @@
 <script lang="ts">
     import { flip } from "svelte/animate";
     import { quintOut } from "svelte/easing";
-    import Dialog from "$lib/Dialog.svelte";
-    import { DialogStore } from "$lib/state/dialog.svelte";
-    import Paper from "$lib/Paper.svelte";
+    import Dialog from "$lib/components/dialog/Dialog.svelte";
+    import { DialogStore } from "$lib/state/dialog.svelte.js";
+    import Paper from "$lib/components/Paper.svelte";
     import { readPaste } from "$lib/services/paste-service.js";
-    import ContextMenu from "$lib/ContextMenu.svelte";
+    import ContextMenu from "$lib/components/ContextMenu.svelte";
     import { ContextState } from "$lib/state/context.svelte";
-    import InputButton from "$lib/InputButton.svelte";
+    import InputButton from "$lib/components/InputButton.svelte";
     import { FileUp } from "lucide-svelte";
     import {
         addPDFContent,
@@ -16,13 +16,14 @@
         addImageContent,
     } from "$lib/services/content-service.js";
     import { Store } from "$lib/state/database.svelte";
-    import GridToggle from "$lib/GridToggle.svelte";
+    import GridToggle from "$lib/components/GridToggle.svelte";
     let { data } = $props();
     let stack_id = $derived(data.stackID);
     let dragOverGrid = $state(false);
     let drag_id = $state(null);
     let selected_id = $state(null);
     let layout_grid = $state(true);
+    $inspect(DialogStore.state);
     // Input Event Handlers
     async function handlePasteEvent(event: ClipboardEvent) {
         const payload = await readPaste(event);
@@ -31,7 +32,7 @@
         );
         switch (payload.type) {
             case "PDF": {
-                DialogStore.showLoading("Fetching PDF");
+                DialogStore.start("Fetching PDF");
                 await addPDFContent(stack_id, payload.content, selected_paper);
                 break;
             }

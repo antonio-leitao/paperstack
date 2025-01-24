@@ -155,10 +155,10 @@ p {
 
 .modal-content {
     background: white;
-    padding: 1rem;
     border-radius: 8px;
     min-width: 300px;
     max-width: 500px;
+    padding:1rem;
     /* Add a bit of box shadow for better visibility */
     box-shadow:
         0 4px 6px -1px rgba(0, 0, 0, 0.1),

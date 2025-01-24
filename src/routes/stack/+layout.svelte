@@ -1,5 +1,5 @@
 <script lang="ts">
-  import SideNav from "$lib/SideNav.svelte";
+  import SideNav from "$lib/components/SideNav.svelte";
   let { children } = $props();
   let isNavOpen = $state(true);
 </script>

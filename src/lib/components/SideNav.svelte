@@ -19,7 +19,7 @@
         Files,
         FileQuestion,
     } from "lucide-svelte";
-    import TooltipButton from "$lib/TooltipButton.svelte";
+    import TooltipButton from "$lib/components/TooltipButton.svelte";
     import { goto } from "$app/navigation";
     import { createSwapy } from "swapy";
     import { onDestroy, onMount } from "svelte";
