@@ -7,19 +7,20 @@ import { parseBibEntry } from "$lib/services/bib-service";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { mkdir, BaseDirectory, remove, writeFile } from "@tauri-apps/plugin-fs";
 import { Store, createPaper, updatePaper } from "$lib/state/database.svelte";
-import { DialogStore } from "$lib/state/dialog.svelte";
+import { DialogStore,DialogActions } from "$lib/state/dialog.svelte";
 
 async function confirmUpdate(selected_file, fieldName, newValue = "") {
-  let message = `Are you sure you want to replace "${selected_file.bib.title}" ${fieldName}?`;
-  if (newValue) {
-    message = `Are you sure you want to replace "${selected_file.bib.title}" ${fieldName} with "${newValue}"?`;
-  }
-  return await DialogStore.confirm(message, "This action cannot be undone.");
+
+  let permission = await DialogStore.confirm({
+    title: selected_file.bib.title,
+    field: fieldName,
+    value: newValue
+  });
+  return permission !== DialogActions.CANCEL;
 }
 
 async function saveFileToAppData(dirName, file, prefix, oldFilePath = null) {
   const appDataDirPath = await appDataDir();
-  const timestamp = Date.now();
   const extension = file.name.split(".").pop() || "png";
   const filename = `${prefix}.${extension}`;
 
@@ -93,7 +94,7 @@ export async function addPDFContent(stack_id, pdfFile, selected_file) {
     DialogStore.start("Fetching PDF");
     console.log("Should have turned on")
     const { text, pages, image } = await extractTextFromPDF(pdfFile);
-    DialogStore.lap("Processing PDF");
+    DialogStore.start("Processing PDF");
     const [bibtex, summary] = await Promise.all([
       extractBibFromPDF(text),
       extractSummaryFromPDF(text),

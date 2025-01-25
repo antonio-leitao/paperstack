@@ -5,12 +5,20 @@ const DialogActions = {
   UPDATE: 'update'
 };
 
+// Base dialog state with proper structure for each dialog type
 let dialogState = $state({
-  type: "loading",
-  title: "",
-  message: "",
   isOpen: false,
-  data: null,
+  type: null,
+  // Loading dialog fields
+  message: '',
+  // Confirmation dialog fields
+  title: '',
+  field: '',
+  value: '',
+  // Duplicate dialog fields
+  duplicatePaper: null,
+  newPaper: null,
+  // Common fields
   resolve: null
 });
 
@@ -21,32 +29,22 @@ export const DialogStore = {
 
   start(message) {
     dialogState = {
+      ...dialogState,
       type: "loading",
-      title: "Loading",
-      message,
-      isOpen: true,
-      data: null,
-      resolve: null
+      message: message,
+      isOpen: true
     };
   },
 
-  lap(message) {
-    if (dialogState.type === "loading") {
-      dialogState = {
-        ...dialogState,
-        message
-      };
-    }
-  },
-
-  async confirm(title, message) {
+  async confirm({ title, field, value = '' }) {
     return new Promise((resolve) => {
       dialogState = {
+        ...dialogState,
         type: "confirmation",
-        title,
-        message,
+        title: title,
+        field: field,
+        value: value,
         isOpen: true,
-        data: null,
         resolve
       };
     });
@@ -55,11 +53,11 @@ export const DialogStore = {
   async handleDuplicate(paper, duplicatePaper) {
     return new Promise((resolve) => {
       dialogState = {
+        ...dialogState,
         type: "duplicate",
-        title: "Duplicate Entry",
-        message: `A paper with similar details was found: "${duplicatePaper.bib.title}"`,
+        newPaper: paper,
+        duplicatePaper,
         isOpen: true,
-        data: { paper, duplicatePaper },
         resolve
       };
     });

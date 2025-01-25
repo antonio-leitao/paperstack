@@ -4,10 +4,10 @@
     import { Store } from "$lib/state/database.svelte";
     import { X, Copy, Replace, RefreshCw } from "lucide-svelte";
 
-    $: duplicatePaper = DialogStore.state.data?.duplicatePaper;
-    $: duplicateStacks = Store.stacks.filter(stack => 
+    let duplicatePaper = $derived(DialogStore.state.duplicatePaper);
+    let duplicateStacks = $derived(Store.stacks.filter(stack => 
         stack.papers.includes(duplicatePaper?.id)
-    );
+    ));
 </script>
 
 <div class="duplicate-dialog">
