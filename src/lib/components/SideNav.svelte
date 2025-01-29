@@ -1,7 +1,7 @@
+<!-- SideNav.svelte -->
 <script lang="ts">
     import { flip } from "svelte/animate";
     import { quintInOut } from "svelte/easing";
-    import { fly } from "svelte/transition";
     import { ContextState } from "$lib/state/context.svelte";
     import {
         Store,
@@ -10,31 +10,34 @@
         createStack,
         updateStack,
     } from "$lib/state/database.svelte";
+    // Add Search to imports
     import {
         ArrowLeft,
         Layers,
         Plus,
-        EllipsisVertical,
-        SquareLibrary,
+        Ellipsis,
         Files,
         FileQuestion,
+        SquareLibrary,
+        Search, // Add this
     } from "lucide-svelte";
     import TooltipButton from "$lib/components/TooltipButton.svelte";
     import { goto } from "$app/navigation";
     import { createSwapy } from "swapy";
-    import { onDestroy, onMount } from "svelte";
+    import { onDestroy } from "svelte";
 
     let { isOpen = $bindable() } = $props();
     let editingStackId = $state(null);
     let newStackName = $state("");
-    ContextState.stackRename = startEditing;
-    let container = null;
-    let swapy = null;
+    let container = $state(null);
+    let swapy = $state(null);
     let finalOrder = $state(null);
+    
+    ContextState.stackRename = startEditing;
 
-    // Handle initialization
+    // Initialize swapy once when the container is available
     $effect(() => {
-        if (isOpen && container && !swapy) {
+        if (container && !swapy) {
             swapy = createSwapy(container, {
                 autoScrollSpeed: 10,
                 threshold: 0.5,
@@ -47,38 +50,28 @@
         }
     });
 
-    // Handle cleanup
-    $effect(() => {
-        if (!isOpen && swapy) {
+    // Cleanup only on component destroy
+    onDestroy(() => {
+        if (swapy) {
+            reorderStacks(finalOrder);
             swapy.destroy();
             swapy = null;
-            if (finalOrder) {
-                reorderStacks(finalOrder);
-                finalOrder = null; // Reset finalOrder after processing
-            }
-        }
-    });
-    onDestroy(() => {
-        swapy?.destroy();
-        if (finalOrder) {
-            reorderStacks(finalOrder); // Update backend on destroy
+            // Update the order immediately when changed
         }
     });
 
-    function trimText(text: string) {
-        return text.length > 20 ? text.slice(0, 20) + "..." : text;
-    }
+    const trimText = (text: string) => text.length > 20 ? text.slice(0, 20) + "..." : text;
 
     async function newUnnamedStack() {
         const name = `Stack #${Store.stacks.length + 1}`;
-        let stackId = await createStack(name);
+        const stackId = await createStack(name);
         goto(`/stack/${stackId}`);
     }
 
     function handleContextMenu(event, stackId) {
         event.preventDefault();
         event.stopPropagation();
-        let stack = Store.stacks.find((stack) => stack.id === stackId);
+        const stack = Store.stacks.find((stack) => stack.id === stackId);
         ContextState.open_stack(event.clientX, event.clientY, stack);
     }
 
@@ -91,13 +84,10 @@
     function startEditing(stackId) {
         editingStackId = stackId;
         newStackName = Store.stacks.find((s) => s.id === stackId)?.name || "";
-        // Focus and select text in the input field after a slight delay
         setTimeout(() => {
             const inputField = document.getElementById(`input-${stackId}`);
-            if (inputField) {
-                inputField.focus();
-                inputField.select();
-            }
+            inputField?.focus();
+            inputField?.select();
         }, 0);
     }
 
@@ -108,9 +98,7 @@
     }
 
     function handleRenameInputBlur(stackId) {
-        // Prevent renaming if the new name is empty or the same as the old name
-        let originalName =
-            Store.stacks.find((s) => s.id === stackId)?.name || "";
+        const originalName = Store.stacks.find((s) => s.id === stackId)?.name || "";
         if (newStackName.trim() === "" || newStackName === originalName) {
             editingStackId = null;
             newStackName = "";
@@ -129,48 +117,71 @@
     }
 </script>
 
-<div class="header">
-    <button class="toggle-btn" onclick={() => (isOpen = !isOpen)}>
-        <div class="icon">
+<nav class="nav-container" class:collapsed={!isOpen}>
+
+    <div class="nav-content">
+    <div class="section-header">
+        <button class="toggle-btn" onclick={() => isOpen = !isOpen}>
             {#if isOpen}
                 <ArrowLeft size={18} />
             {:else}
-                <Layers size={18} /> {Store.stacks.length}
+                <Layers size={18} />
+            {/if}
+        </button>
+        
+        {#if isOpen}
+            <Search size={18} />
+        {/if}
+    </div>
+        <!-- Fixed Items Section -->
+        <div class="nav-section">
+            <div 
+                class="nav-item"
+                class:active={Store.currentStackId === "all"}
+                onclick={() => handleClick("all")}
+            >
+                <TooltipButton tooltip="All" enableTooltip={!isOpen}>
+                <div class="icon">
+                    <Files size={18}/>
+                </div>
+                </TooltipButton>
+                {#if isOpen}
+                    <span class="label">All</span>
+                {/if}
+            </div>
+
+            {#if getUnsortedStack().papers.length > 0}
+                <div 
+                    class="nav-item"
+                    class:active={Store.currentStackId === "unsorted"}
+                    onclick={() => handleClick("unsorted")}
+                >
+                <TooltipButton tooltip="Unsorted" enableTooltip={!isOpen}>
+                    <div class="icon">
+                        <FileQuestion size={18}/>
+                    </div>
+                    </TooltipButton>
+                    {#if isOpen}
+                        <span class="label">Unsorted</span>
+                    {/if}
+                </div>
             {/if}
         </div>
-    </button>
-</div>
-{#if isOpen}
-    <div
-        class="nav-list"
-        class:open={isOpen}
-        in:fly={{ x: -250, duration: 300, easing: quintInOut }}
-        out:fly={{ x: -250, duration: 300, easing: quintInOut }}
-    >
-        <div class="info">
-            <span>Stacks</span>
-            <div class="button-group">
-                <TooltipButton
-                    icon={Files}
-                    tooltip="All papers"
-                    onClick={() => handleClick("all")}
-                    selected={Store.currentStackId === "all"}
-                />
-                <TooltipButton
-                    icon={FileQuestion}
-                    tooltip="Unsorted papers"
-                    onClick={() => handleClick("unsorted")}
-                    disabled={getUnsortedStack().papers.length < 1}
-                    selected={Store.currentStackId === "unsorted"}
-                />
-                <TooltipButton
-                    icon={Plus}
-                    tooltip="New Stack"
-                    onClick={newUnnamedStack}
-                />
+
+        <!-- Stacks Section Header -->
+        <div class="section-header">
+            {#if isOpen}
+                <span class="label info">Stacks</span>
+            {/if}
+            <div class="icon plus-icon" onclick={newUnnamedStack}>
+                <TooltipButton tooltip="New stack" enableTooltip={!isOpen}>
+                    <Plus size={18}/>
+                </TooltipButton>
             </div>
         </div>
-        <div class="stack-tray" bind:this={container}>
+
+        <!-- Stacks List -->
+        <div class="nav-section" bind:this={container}>
             {#each Store.stacks as stack (stack.id)}
                 <div
                     class="slot"
@@ -179,153 +190,188 @@
                 >
                     <div
                         data-swapy-item={stack.id}
-                        data-stack-id={stack.id}
-                        class="list-item"
-                        onclick={() => handleClick(stack.id)}
-                        oncontextmenu={(event) =>
-                            handleContextMenu(event, stack.id)}
+                        class="nav-item"
                         class:active={Store.currentStackId === stack.id}
+                        onclick={() => handleClick(stack.id)}
+                        oncontextmenu={(event) => handleContextMenu(event, stack.id)}
                     >
                         <div class="icon">
                             <SquareLibrary size={18} />
                         </div>
-                        {#if editingStackId === stack.id}
-                            <input
-                                id="input-{stack.id}"
-                                bind:value={newStackName}
-                                onblur={() => handleRenameInputBlur(stack.id)}
-                                onkeydown={(event) =>
-                                    handleRenameInputKeydown(event, stack.id)}
-                                class="edit-input"
-                            />
-                        {:else}
-                            <div class="text">
-                                {trimText(stack.name)}
+                        
+                        {#if isOpen}
+                            {#if editingStackId === stack.id}
+                                <input
+                                    id="input-{stack.id}"
+                                    bind:value={newStackName}
+                                    onblur={() => handleRenameInputBlur(stack.id)}
+                                    onkeydown={(event) => handleRenameInputKeydown(event, stack.id)}
+                                    class="edit-input"
+                                />
+                            {:else}
+                                <span class="label">{trimText(stack.name)}</span>
+                            {/if}
+
+                            <div
+                                class="icon action-icon"
+                                onclick={(e) => {
+                                    e.stopPropagation();
+                                    handleContextMenu(e, stack.id);
+                                }}
+                            >
+                                <Ellipsis size={18} />
                             </div>
                         {/if}
-
-                        <div
-                            class="icon"
-                            onclick={(e) => {
-                                e.stopPropagation();
-                                handleContextMenu(e, stack.id);
-                            }}
-                        >
-                            <EllipsisVertical size={18} />
-                        </div>
                     </div>
                 </div>
             {/each}
         </div>
     </div>
-{/if}
+</nav>
 
-<!-- Same styles as before -->
 <style>
-    .nav-list {
-        position: absolute;
-        top: 3rem;
+    .nav-container {
+        position: fixed;
         left: 0;
+        top: 0;
         height: 100vh;
+        background-color: white;
         width: 15rem;
-        overflow-x: hidden;
-        z-index: 10; /* Ensure it's above other content */
+        transition: width 0.3s cubic-bezier(0.86, 0, 0.07, 1);
         display: flex;
         flex-direction: column;
-        overflow: hidden;
+        z-index:100;
+        border-right:1.5px solid rgba(0,0,0,0.08);
+        box-shadow: 0 0 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .nav-container.collapsed {
+        width: 3.5rem;
+    }
+
+    .toggle-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: inherit;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.5rem;
+        width: 2rem;
+        height: 2rem;
+    }
+
+    .nav-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
         padding: 0.5rem;
     }
-    .info {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-left: 1rem;
-        padding: 0.3rem 0.7rem;
-    }
-    .stack-tray {
+
+    .nav-section {
         display: flex;
         flex-direction: column;
-        align-items: left;
-        padding: 0; /* Remove padding */
-        margin: 0; /* Remove margins */
+        gap: 0.25rem;
     }
-    .list-item {
-        padding: 0.7rem;
-        border-radius: 0.7rem;
-        cursor: pointer;
+
+    .nav-item {
         display: flex;
         align-items: center;
-        text-decoration: none;
-        justify-content: space-between;
-        position: relative;
-        color: inherit;
-        background-color: var(--platinum);
-    }
-    .list-item:hover {
-        background-color: var(--surfaces);
-    }
-    .active {
-        background-color: var(--accent-color-translucent);
-    }
-    .list-item.active:hover {
-        background-color: var(--accent-color-translucent);
-    }
-    .icon {
-        border-radius: 50%;
-        display: grid;
-        place-items: center;
-        width: 1.5rem;
-        height: 1.5rem; /* Or as needed */
-    }
-    .list-item .icon {
-        display: grid;
-        place-items: center;
-        width: 1.5rem;
-        height: 1.5rem; /* Or as needed */
-    }
-    .icon:hover {
-        background-color: var(--surfaces);
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        background-color: white;
+        gap: 0.25rem;
+        transition: background-color 0.2s;
     }
 
-    .list-item .text {
-        flex-grow: 1;
+    .nav-item:hover {
+        background-color: var(--surfaces);
+    }
+    .nav-container.collapsed .nav-item:hover{
+        color:var(--accent-color);
+        background-color:white;
+    }
+
+    .nav-item.active {
+        background-color: var(--accent-color-translucent);
+    }
+    .nav-container.collapsed .nav-item{
+        color:var(--shades)
+    }
+    .nav-container.collapsed .nav-item.active{
+        color:var(--accent-color);
+        background-color:white;
+    }
+
+
+    .icon {
+        cursor:pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+    }
+
+    .label {
+        flex: 1;
         white-space: nowrap;
         overflow: hidden;
-        user-select: none;
+        text-overflow: ellipsis;
+        font-size: 0.9rem;
+    }
+    .info{
+        font-size:0.75rem;
     }
 
-    button {
-        background-color: transparent;
-        border: none;
-        cursor: pointer;
+    .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem;
+        margin-top: 1rem;
     }
+
     .edit-input {
+        flex: 1;
         border: none;
-        width: 100%;
         outline: solid 2px var(--accent-color-light);
         border-radius: 0.3rem;
         background-color: transparent;
         color: inherit;
-        font-size: inherit;
+        font-size: 0.9rem;
         font-family: inherit;
-    }
-    .stack-tray [data-swapy-item] {
-        touch-action: none;
-    }
-    [data-swapy-item] {
-        cursor: pointer;
-    }
-    .info {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-left: 1rem;
-        padding: 0.3rem 0.7rem;
+        width:100%;
+        margin:0;
     }
 
-    .button-group {
-        display: flex;
-        gap: 0.3rem;
-        align-items: center;
+    .action-icon {
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+
+    .nav-item:hover .action-icon {
+        opacity: 1;
+    }
+
+    .plus-icon {
+        margin-left: auto;
+    }
+    .nav-container.collapsed .nav-item {
+        min-width: 2rem; /* Ensure there's enough grab area when collapsed */
+    }
+
+    .nav-container.collapsed .slot {
+        width: 100%;
+    }
+
+    /* Make sure the drag handle area is accessible in both states */
+    [data-swapy-item] {
+        width: 100%;
+    }
+
+    [data-swapy-item]:active {
+        cursor: grabbing;
     }
 </style>

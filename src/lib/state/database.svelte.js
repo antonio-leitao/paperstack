@@ -94,11 +94,7 @@ export async function updateStack(stackId, name) {
   await tauriStore.set("stacks", stacks);
 }
 
-export async function deleteStack(stackId) {
-  if (currentStackId === stackId) {
-    throw new Error("Cannot delete current stack");
-  }
-
+async function deleteStack(stackId) {
   // Move papers to unsorted before deleting the stack
   const stackToDelete = stacks.find((stack) => stack.id === stackId);
   if (stackToDelete) {
@@ -106,8 +102,16 @@ export async function deleteStack(stackId) {
     await tauriStore.set("unsorted", unsortedPapers);
   }
 
+  // If deleting current stack, switch to "all" view
+  if (currentStackId === stackId) {
+    currentStackId = ALL_STACK_ID;
+  }
+
   stacks = stacks.filter((stack) => stack.id !== stackId);
   await tauriStore.set("stacks", stacks);
+  
+  // Update current papers if needed
+  updateCurrentPapers();
 }
 
 export async function mergeStacks(sourceStackId, targetStackId) {

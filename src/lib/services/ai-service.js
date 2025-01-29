@@ -103,49 +103,70 @@ function extractSummary(inputString) {
 
 export async function extractSummaryFromPDF(pdfContent) {
   try {
-    const prompt = `You are an expert in distilling complex scientific research into clear, concise summaries. Your task is to create an extremely brief summary of a scientific paper, focusing exclusively on its main findings and novel contributions.
+    const prompt = `You are an expert scientific summarizer tasked with creating extremely concise summaries of research papers for other experts in the field. Your goal is to distill the paper's key innovation into 2-3 short sentences, focusing solely on what's novel about the research.
 
-Here's the full text of the research article you need to summarize:
+First, carefully read the following scientific paper:
 
-<article_text>
+<scientific_paper>
 ${pdfContent}
-</article_text>
+</scientific_paper>
 
-Your goal is to produce a summary that meets the following criteria:
-1. Extremely brief (2-3 sentences maximum)
-2. Focused solely on the research findings and novel contributions
-3. Written in active voice with direct, declarative statements
-4. Free from academic jargon
-5. Does not mention the paper, its authors, or use phrases like "this study shows"
+After reading the paper, follow these steps to create your summary:
 
-Follow these steps to create your summary:
+1. Extract key sentences: Quote 3-5 sentences from the paper that best highlight the main innovation.
 
-1. Carefully read the article, paying special attention to the abstract, introduction, and conclusion.
+2. List potential innovations: Identify 2-3 potential key innovations from the paper and rank them in order of importance.
 
-2. Wrap your work inside <research_breakdown> tags, performing the following analysis:
-   a) Extract and quote key sentences from the abstract, introduction, and conclusion that highlight the main findings and contributions.
-   b) Clearly state the central research question or objective.
-   c) List potential novel contributions, numbering them for clarity.
-   d) Identify how this research advances the field compared to previous work.
-   e) Determine the most significant finding or contribution.
-   f) Note any groundbreaking methodologies, but only if they are central to the research's novelty.
-   g) Draft 2-3 alternative summaries based on your analysis.
-   h) Evaluate each draft summary against the given criteria, noting strengths and weaknesses.
-   i) Revise your best draft to ensure it:
-      - Is as concise as possible without losing essential information
-      - Focuses on what was discovered, not how it was discovered (unless the method is the main contribution)
-      - Clearly states the research's main finding and its significance
-      - Uses active voice and direct statements
-      - Does not mention the paper, study, or researchers at all
+3. Identify the key innovation: What is the single most important novel aspect of this research?
 
-3. Present your final summary in <summary> tags.
+4. Draft a summary that:
+   - Focuses exclusively on this key innovation
+   - Is clear and direct
+   - Does not refer to the paper or its authors
+   - Does not explain terms or simplify concepts
+   - Does not discuss broader impacts
+   - Is very short (aim for 2-3 short sentences)
 
-Remember, your goal is to provide a clear, ultra-concise overview that captures the essence of the research in a way that a general audience can quickly grasp. Focus on the "what" and "why" of the findings, not the "how" unless the methodology is the primary contribution. Most importantly, do not refer to the paper or study itself; present the findings as standalone facts.`;
+5. Revise your summary to ensure it is as concise and informative as possible for an expert in the field.
+
+6. Check the word count of your summary to ensure it's between 30-50 words.
+
+Work through these steps inside <analysis> tags. Then, present your final summary within <summary> tags.
+
+Example output structure (note that this is a generic example and should not influence the content of your analysis or summary):
+
+<analysis>
+1. Key sentences:
+   - [Quote 1]
+   - [Quote 2]
+   - [Quote 3]
+
+2. Potential innovations:
+   a) [Innovation 1]
+   b) [Innovation 2]
+   c) [Innovation 3]
+
+3. Key innovation identified: [Brief statement of the core novel aspect]
+
+4. Initial draft:
+[2-3 sentence summary focusing on the innovation]
+
+5. Revision for conciseness:
+[Refined 2-3 sentence summary, eliminating any unnecessary words or concepts]
+
+6. Word count: [Number] words
+</analysis>
+
+<summary>
+[Final 2-3 sentence summary of the paper's key innovation]
+</summary>
+
+Remember, your goal is to pinpoint the core innovation as precisely as possible. Avoid broad statements and focus on the specific, novel contribution of the paper.`;
 
     const result = await model.generateContent(prompt);
     let summary = extractSummary(result.response.text());
     return summary;
   } catch (error) {
-    throw new Error("Failed to generate BibTeX entry");
+    throw new Error("Failed to generate Summary entry");
   }
 }

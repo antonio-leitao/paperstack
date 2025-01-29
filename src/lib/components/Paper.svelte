@@ -319,19 +319,19 @@
         transform: translateY(-50%);
         width: 200px;
         background-color: rgba(255, 255, 255, 0.9);
-        padding: 0px 10px 10px 30px;
+        padding: 5px 5px 5px 30px;
         border-radius: 5px;
         backdrop-filter: blur(5px);
         -webkit-backdrop-filter: blur(5px);
         opacity: 0.9;
-        right: -240px;
+        right: -200px;
         pointer-events: none; /* Prevent the tray from intercepting mouse events */
     }
 
     .summary-tray.left {
         right: auto;
-        left: -240px;
-        padding: 0px 30px 10px 10px;
+        left: -200px;
+        padding: 5px 30px 5px 5px;
     }
 
     .stack:hover {

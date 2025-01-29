@@ -45,6 +45,10 @@
     font-weight: 600;
     font-style: normal;
 }
+*{
+    margin:0;
+    box-sizing: border-box;
+}
 
 :root {
     --hookers-green: #2e6558ff;

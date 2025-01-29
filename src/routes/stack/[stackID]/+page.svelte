@@ -183,7 +183,6 @@
     ondragover={handleGridDragOver}
     ondragleave={handleGridDragLeave}
     oncontextmenu={(event) => handleContextMenu(event, null)}
-    style="border: 2px dashed {dragOverGrid ? 'blue' : 'gray'};"
 >
     {#each Store.papers as paper (paper.id)}
         <div

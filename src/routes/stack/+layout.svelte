@@ -5,10 +5,8 @@
 </script>
 
 <div class="layout">
-  <nav class:open={isNavOpen}>
-    <SideNav bind:isOpen={isNavOpen} />
-  </nav>
-  <main>
+  <SideNav bind:isOpen={isNavOpen} />
+  <main class:nav-open={isNavOpen}>
     {@render children()}
   </main>
 </div>
@@ -18,16 +16,15 @@
     display: flex;
     min-height: 100vh;
   }
-  nav {
-    height: 100vh;
-    width: 2rem;
-    transition: width 0.3s cubic-bezier(0.86, 0, 0.07, 1);
-  }
-  nav.open {
-    width: 15rem;
-  }
+  
   main {
+    margin-left: 3rem;
     flex-grow: 1;
     padding: 2rem 1rem;
+    transition: margin-left 0.3s cubic-bezier(0.86, 0, 0.07, 1);
+  }
+
+  main.nav-open {
+    margin-left: 15rem;
   }
 </style>

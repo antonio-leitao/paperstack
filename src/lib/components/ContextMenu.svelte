@@ -63,7 +63,10 @@
     }
     async function handleDeleteStack() {
         if (ContextState.stack) {
-            Store.deleteStack(ContextState.stack.id);
+            await Store.deleteStack(ContextState.stack.id);
+            if (Store.currentStackId === ContextState.stack.id) {
+                goto('/stack/all');
+            }
         }
         ContextState.close();
     }
@@ -102,7 +105,6 @@
         }
         ContextState.close();
     }
-    function handleStackIconChange() {}
     function handleStackMerge() {}
     function handleNewPaperInput() {}
 </script>
@@ -182,9 +184,6 @@
             <div class="menu-item" onclick={handleRenameStack}>
                 Rename<PencilLine size={18} />
             </div>
-            <div class="menu-item" onclick={handleStackIconChange}>
-                Change Icon<SmilePlus size={18} />
-            </div>
             <div class="separator"></div>
             <div class="menu-item" onclick={handleDuplicateStack}>
                 Duplicate<BookCopy size={18} />
@@ -227,6 +226,7 @@
         transition: all 0.3s ease;
         padding: 6px 6px;
         border-radius: 3px;
+        text-overflow: ellipsis;
     }
 
     .menu-item:hover {
