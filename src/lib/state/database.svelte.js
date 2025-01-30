@@ -1,6 +1,6 @@
 import { load } from "@tauri-apps/plugin-store";
 import { mkdir, BaseDirectory, remove } from "@tauri-apps/plugin-fs";
-import { appDataDir, join } from "@tauri-apps/api/path";
+import { goto } from "$app/navigation";
 
 // Constants
 const UNSORTED_STACK_ID = "unsorted";
@@ -87,9 +87,9 @@ export async function getStack(stackId) {
   return stacks.find((stack) => stack.id === stackId);
 }
 
-export async function updateStack(stackId, name) {
+export async function updateStack(stackId, updates) {
   stacks = stacks.map((stack) =>
-    stack.id === stackId ? { ...stack, name } : stack,
+    stack.id === stackId ? { ...stack, ...updates } : stack,
   );
   await tauriStore.set("stacks", stacks);
 }
@@ -263,13 +263,25 @@ export async function createPaper(stackId, paper) {
 }
 export async function movePaper(stackId, paperId) {
   if (stackId && stackId !== UNSORTED_STACK_ID) {
+    // Add to the target stack
     stacks = stacks.map((stack) =>
       stack.id === stackId
         ? { ...stack, papers: [...stack.papers, paperId] }
         : stack,
     );
     await tauriStore.set("stacks", stacks);
+
+    // Remove from unsorted if it's there
+    unsortedPapers = unsortedPapers.filter(id => id !== paperId);
+    await tauriStore.set("unsorted", unsortedPapers);
+
+    // If unsorted becomes empty and we're viewing it, switch to "all"
+    if (unsortedPapers.length === 0 && currentStackId === UNSORTED_STACK_ID) {
+      currentStackId = ALL_STACK_ID;
+      goto('/stack/all');
+    }
   }
+  
   if (currentStackId) {
     updateCurrentPapers();
   }
@@ -329,7 +341,6 @@ export async function deletePaper(paperId) {
     }
   }
 
-  // Rest of the function remains the same
   stacks = stacks.map((stack) => ({
     ...stack,
     papers: stack.papers.filter((id) => id !== paperId),
@@ -341,6 +352,12 @@ export async function deletePaper(paperId) {
   await tauriStore.set("stacks", stacks);
   await tauriStore.set("papers", papers);
   await tauriStore.set("unsorted", unsortedPapers);
+
+  if (unsortedPapers.length === 0 && currentStackId === UNSORTED_STACK_ID) {
+    currentStackId = ALL_STACK_ID;
+    goto('/stack/all');
+  }
+
 
   if (currentStackId) {
     updateCurrentPapers();

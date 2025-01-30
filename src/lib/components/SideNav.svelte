@@ -25,6 +25,7 @@
     import { goto } from "$app/navigation";
     import { createSwapy } from "swapy";
     import { onDestroy } from "svelte";
+    import { Icons } from "$lib/utils/stackIcons.js";
 
     let { isOpen = $bindable() } = $props();
     let editingStackId = $state(null);
@@ -92,7 +93,7 @@
     }
 
     async function handleRename(stackId) {
-        await updateStack(stackId, newStackName);
+        await updateStack(stackId, { name: newStackName });
         editingStackId = null;
         newStackName = "";
     }
@@ -115,6 +116,7 @@
             newStackName = "";
         }
     }
+    let unsortedActive = $derived(getUnsortedStack().papers.length>0);
 </script>
 
 <nav class="nav-container" class:collapsed={!isOpen}>
@@ -150,11 +152,11 @@
                 {/if}
             </div>
 
-            {#if getUnsortedStack().papers.length > 0}
                 <div 
                     class="nav-item"
                     class:active={Store.currentStackId === "unsorted"}
-                    onclick={() => handleClick("unsorted")}
+                    onclick={() => {if(unsortedActive) {handleClick("unsorted")}}}
+                    class:disabled={!unsortedActive}
                 >
                 <TooltipButton tooltip="Unsorted" enableTooltip={!isOpen}>
                     <div class="icon">
@@ -165,7 +167,6 @@
                         <span class="label">Unsorted</span>
                     {/if}
                 </div>
-            {/if}
         </div>
 
         <!-- Stacks Section Header -->
@@ -195,9 +196,16 @@
                         onclick={() => handleClick(stack.id)}
                         oncontextmenu={(event) => handleContextMenu(event, stack.id)}
                     >
-                        <div class="icon">
-                            <SquareLibrary size={18} />
-                        </div>
+
+                        <TooltipButton tooltip={stack.name} enableTooltip={!isOpen}>
+                            <div class="icon">
+                                {#if stack.icon && Icons[stack.icon]}
+                                    <svelte:component this={Icons[stack.icon]} size={18} />
+                                {:else}
+                                    <SquareLibrary size={18} />
+                                {/if}
+                            </div>
+                        </TooltipButton>
                         
                         {#if isOpen}
                             {#if editingStackId === stack.id}
@@ -241,8 +249,13 @@
         display: flex;
         flex-direction: column;
         z-index:100;
-        border-right:1.5px solid rgba(0,0,0,0.08);
         box-shadow: 0 0 8px rgba(0, 0, 0, 0.05);
+        --order:3;
+        --shadow: calc(var(--order) * 1px);
+        box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 10px)
+            rgba(0, 0, 0, 0.25);
+        box-shadow: 0px calc(var(--order) * 0.2px) min(var(--shadow), 5px)
+            rgba(0, 0, 0, 0.25);
     }
 
     .nav-container.collapsed {
@@ -284,6 +297,11 @@
         background-color: white;
         gap: 0.25rem;
         transition: background-color 0.2s;
+    }
+    .nav-item.disabled{
+        pointer-events:none;
+        cursor:not-allowed;
+        color:var(--shades)
     }
 
     .nav-item:hover {

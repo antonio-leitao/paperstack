@@ -3,6 +3,7 @@
     import { ContextState } from "$lib/state/context.svelte";
     import { Store } from "$lib/state/database.svelte";
     import { DialogStore } from "$lib/state/dialog.svelte";
+    import { categories, Icons } from "$lib/utils/stackIcons.js";
     import Cite from "citation-js";
     import {
         Trash2,
@@ -20,6 +21,7 @@
         BookCopy,
         FilePlus2,
         CircleX,
+        ArrowLeft,
     } from "lucide-svelte";
     //let { show = $bindable(), x, y, paper, handleDelete } = $props();
     let link = $derived(ContextState.paper.url || ContextState.paper.bib.URL);
@@ -107,6 +109,29 @@
     }
     function handleStackMerge() {}
     function handleNewPaperInput() {}
+    let showingIconSelector = $state(false);
+
+    function handleStackIconChange(event) {
+        event.stopPropagation();
+        showingIconSelector = true;
+    }
+
+    $effect(() => {
+    if (!ContextState.show) {
+        showingIconSelector = false;
+    }
+    });
+    function handleBackToMenu(event) {
+    event.stopPropagation();
+    showingIconSelector = false;
+}
+
+    async function selectIcon(iconName) {
+        if (!ContextState.stack) return;
+        await Store.updateStack(ContextState.stack.id, {icon:iconName});
+        showingIconSelector = false;
+        ContextState.close();
+    }
 </script>
 
 {#if ContextState.show}
@@ -181,8 +206,30 @@
                 </div>
             {/if}
         {:else if ContextState.stack}
+            {#if showingIconSelector}
+            <div class="icon-grid">
+                <div class="menu-item back-button" onclick={handleBackToMenu}>
+                    <ArrowLeft size={18} />Back
+                </div>
+                {#each categories as category}
+                    <div class="category-section">
+                        <div class="subinfo">{category.name}</div>
+                        <div class="icon-options">
+                            {#each Object.entries(category.icons) as [name, component]}
+                                <div class="icon-option" onclick={() => selectIcon(name)}>
+                                    <svelte:component this={component} size={14} />
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                {/each}
+            </div>
+            {:else}
             <div class="menu-item" onclick={handleRenameStack}>
                 Rename<PencilLine size={18} />
+            </div>
+            <div class="menu-item" onclick={handleStackIconChange}>
+                Change Icon<SmilePlus size={18} />
             </div>
             <div class="separator"></div>
             <div class="menu-item" onclick={handleDuplicateStack}>
@@ -195,6 +242,7 @@
             <div class="menu-item delete" onclick={handleDeleteStack}>
                 Delete<Trash2 size={18} />
             </div>
+        {/if}
         {:else}
             <div class="menu-item" onclick={handleNewPaperInput}>
                 Add<FilePlus2 size={18} />
@@ -259,5 +307,50 @@
         background-color: var(--surfaces);
         margin: 4px 0;
         border-radius: 10px;
+    }
+    .icon-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 4px;
+    }
+
+    .back-button {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 6px;
+        border-bottom: 1px solid var(--surfaces);
+        margin-bottom: 4px;
+    }
+    .category-section {
+        margin-bottom: 8px;
+    }
+
+    .category-title {
+        font-size: 0.8rem;
+        color: var(--shades);
+        padding: 4px 6px;
+        margin-bottom: 4px;
+    }
+
+    .icon-options {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 5px;
+    }
+
+    .icon-option {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 5px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .icon-option:hover {
+        background-color: var(--surfaces);
     }
 </style>
