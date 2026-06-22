@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { PageSize, Reference } from "./types";
+  import { copyToClipboard } from "./copyToClipboard";
   import { openExternal } from "./openExternal";
+  import { hasTrustedBibtex } from "./referenceBibtex";
 
   let {
     page,
@@ -15,6 +17,8 @@
   } = $props();
 
   let activeKey = $state<string | null>(null);
+  let copiedBibtexId = $state<string | null>(null);
+  let failedBibtexId = $state<string | null>(null);
 
   const pageCallouts = $derived(
     references.flatMap((reference) =>
@@ -33,6 +37,21 @@
     const container = event.currentTarget as HTMLElement;
     if (!(nextTarget instanceof Node) || !container.contains(nextTarget)) {
       if (activeKey === key) activeKey = null;
+    }
+  }
+
+  async function copyBibtex(event: MouseEvent, reference: Reference) {
+    event.stopPropagation();
+    try {
+      await copyToClipboard(reference.bibtex);
+      copiedBibtexId = reference.id;
+      failedBibtexId = null;
+      window.setTimeout(() => {
+        if (copiedBibtexId === reference.id) copiedBibtexId = null;
+      }, 1500);
+    } catch {
+      copiedBibtexId = null;
+      failedBibtexId = reference.id;
     }
   }
 </script>
@@ -99,6 +118,19 @@
                 void openExternal(event, callout.reference.openAccessPdf!);
               }}
             >Open PDF</a>
+          {/if}
+          {#if hasTrustedBibtex(callout.reference)}
+            <button
+              type="button"
+              aria-label={`Copy BibTeX for ${referenceLabel(callout.reference)}`}
+              onclick={(event) => void copyBibtex(event, callout.reference)}
+            >
+              {failedBibtexId === callout.reference.id
+                ? "Copy failed"
+                : copiedBibtexId === callout.reference.id
+                  ? "Copied"
+                  : "Copy BibTeX"}
+            </button>
           {/if}
         </div>
       {/if}

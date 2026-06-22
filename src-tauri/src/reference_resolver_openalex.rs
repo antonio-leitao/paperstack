@@ -72,6 +72,10 @@ pub(super) struct OpenAlexBiblio {
     pub last_page: Option<String>,
 }
 
+pub(super) fn is_configured() -> bool {
+    api_key().is_some()
+}
+
 pub(super) async fn lookup_dois(
     client: &Client,
     dois: &[String],
@@ -240,14 +244,19 @@ fn extract_arxiv_id(url: &str) -> Option<String> {
 }
 
 fn openalex_request(mut request: RequestBuilder) -> RequestBuilder {
-    if let Ok(api_key) = std::env::var("OPENALEX_API_KEY") {
-        if !api_key.trim().is_empty() {
-            request = request.query(&[("api_key", api_key.trim())]);
-        }
+    if let Some(api_key) = api_key() {
+        request = request.query(&[("api_key", api_key)]);
     }
     request
         .timeout(OPENALEX_TIMEOUT)
         .header(USER_AGENT, OPENALEX_USER_AGENT)
+}
+
+fn api_key() -> Option<String> {
+    std::env::var("OPENALEX_API_KEY")
+        .ok()
+        .map(|key| key.trim().to_owned())
+        .filter(|key| !key.is_empty())
 }
 
 async fn send_with_retries(request: RequestBuilder) -> Result<Response, String> {

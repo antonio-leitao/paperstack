@@ -312,6 +312,7 @@ fn upsert_reference(connection: &Connection, reference: &Reference) -> Result<St
                 .unwrap_or(0.0)
                 .max(reference.resolution_confidence.unwrap_or(0.0)),
         );
+        merged.clear_untrusted_bibtex();
         write_reference(
             connection,
             &reference_id,
@@ -625,6 +626,14 @@ impl ReferenceKeys {
 
 impl ReferenceData {
     fn from_reference(reference: &Reference) -> Self {
+        let bibtex = if trusted_bibtex_source(
+            &reference.resolution_status,
+            reference.resolution_source.as_deref(),
+        ) {
+            reference.bibtex.clone()
+        } else {
+            String::new()
+        };
         Self {
             canonical_id: reference.canonical_id.clone(),
             title: reference.title.clone(),
@@ -637,7 +646,7 @@ impl ReferenceData {
             doi: reference.doi.clone(),
             arxiv_id: reference.arxiv_id.clone(),
             pmid: reference.pmid.clone(),
-            bibtex: reference.bibtex.clone(),
+            bibtex,
             link: reference.link.clone(),
             resolution_status: reference.resolution_status.clone(),
             resolution_confidence: reference.resolution_confidence,
@@ -705,6 +714,21 @@ impl ReferenceData {
             .is_some_and(|id| id.starts_with("doi:"))
             && self.resolution_status == "resolved"
     }
+
+    fn clear_untrusted_bibtex(&mut self) {
+        if !trusted_bibtex_source(&self.resolution_status, self.resolution_source.as_deref()) {
+            self.bibtex.clear();
+        }
+    }
+}
+
+fn trusted_bibtex_source(status: &str, source: Option<&str>) -> bool {
+    status == "resolved"
+        && source.is_some_and(|source| {
+            ["crossref-", "arxiv-", "openalex-", "semantic-scholar-"]
+                .iter()
+                .any(|prefix| source.starts_with(prefix))
+        })
 }
 
 fn fill_option<T: Clone>(target: &mut Option<T>, source: &Option<T>) {
@@ -929,6 +953,33 @@ mod tests {
             Some("doi:10.1234/useful")
         );
         assert_eq!(new_references[0].id, "new_occurrence");
+    }
+
+    #[test]
+    fn untrusted_fallback_bibtex_is_not_persisted() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        initialize(&connection).unwrap();
+        let unresolved = analysis(reference("unresolved", "An Unknown Paper", 0.4));
+        store_pdf_with_connection(
+            &mut connection,
+            "unknown_pdf",
+            EXTRACTION_VERSION,
+            "resolver-v1",
+            &unresolved,
+            &unresolved,
+        )
+        .unwrap();
+
+        let CacheLookup::Fresh(cached) = load_pdf_from_connection(
+            &connection,
+            "unknown_pdf",
+            EXTRACTION_VERSION,
+            "resolver-v1",
+        )
+        .unwrap() else {
+            panic!("expected a fresh cache hit");
+        };
+        assert!(cached.references[0].bibtex.is_empty());
     }
 
     #[test]

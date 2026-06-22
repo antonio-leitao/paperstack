@@ -25,6 +25,18 @@ npm install
 npm run tauri dev
 ```
 
+## Provider configuration
+
+OpenAlex and Semantic Scholar can be used anonymously, but keys provide more predictable quotas and avoid shared anonymous throttling. Get a free OpenAlex key from [OpenAlex settings](https://openalex.org/settings/api) and request a Semantic Scholar key from the [Semantic Scholar API page](https://www.semanticscholar.org/product/api). Optional keys can go in a project-root `.env` file (see `.env.example`) or in the environment that launches the app:
+
+```sh
+OPENALEX_API_KEY=your_openalex_key
+SEMANTIC_SCHOLAR_API_KEY=your_semantic_scholar_key
+CROSSREF_MAILTO=you@example.com
+```
+
+Use one `NAME=value` entry per line with no spaces around `=`. Quotes are optional for these values, so both `CROSSREF_MAILTO=you@example.com` and `CROSSREF_MAILTO="you@example.com"` work. Enter the address itself, without `mailto:` or angle brackets, and restart the app after changing `.env`. Real environment variables take precedence over `.env`, and the `.env` file is ignored by Git. When `OPENALEX_API_KEY` or `SEMANTIC_SCHOLAR_API_KEY` is absent, the provider is still queried without authentication. Crossref and arXiv also work without keys. When `CROSSREF_MAILTO` is set, its value is added as `mailto` to every Crossref request, activating Crossref's polite pool; the startup log should say `crossref_polite_pool=true` without exposing the email.
+
 Opening a PDF immediately renders it. The app checks `http://127.0.0.1:8070` first and uses it without contacting a hosted GROBID when healthy. Otherwise it wakes and waits up to three minutes for the official full GROBID Space at `https://grobidorg-grobid-full.hf.space` or its official `full2` mirror. In that fallback case, the PDF is uploaded to the public hosted service.
 
 Completed analyses are cached in `research-pdf-cache.sqlite3` under the platform app-data directory. The cache has two tables: `pdf_cache`, keyed by the PDF SHA-256 and extraction version, and `references`, containing shared canonical reference records with stable UUIDs. A cache hit happens before any GROBID health check or network request. PDF-local citation text and coordinates remain in the cached extraction, while current metadata is joined from the shared reference row whenever the PDF is opened. Resolver-version changes reuse that raw extraction and rerun only reference matching, so matcher improvements do not require another GROBID upload.
@@ -33,11 +45,11 @@ Newly extracted references consult the shared database before any metadata provi
 
 References first receive deterministic document-scoped IDs and valid locally rendered BibTeX. DOI-bearing references are validated directly with Crossref; remaining references are searched using Crossref's bibliographic metadata search and are accepted only when title agreement, corroborating metadata, and the lead over the next candidate pass strict thresholds. Citation author lists are treated as partial observations: `et al.` placeholders are discarded and unobserved provider coauthors never reduce a match score. Ambiguous or failed lookups keep the original GROBID metadata instead of guessing.
 
-Repeated citations are resolved once, and independent references are processed with bounded concurrency. Explicit DOI fallbacks are collected into OpenAlex OR batches of up to 100, and explicit arXiv IDs are collected into comma-delimited API batches. References that do not resolve to a published Crossref record validate any explicit arXiv ID, then use OpenAlex's fast works search, and only unresolved items enter the slower direct arXiv title-search queue. OpenAlex matches use the same strict title plus author/year checks and can supply a DOI or arXiv identity, bibliographic metadata, an abstract, and an open-access PDF. Set `OPENALEX_API_KEY` for normal OpenAlex use; anonymous access is limited to its small testing allowance.
+Repeated citations are resolved once, and independent references are processed with bounded concurrency. Explicit DOI fallbacks are collected into OpenAlex OR batches of up to 100, and explicit arXiv IDs are collected into comma-delimited API batches. References that do not resolve to a published Crossref record validate any explicit arXiv ID, then use OpenAlex's fast works search, and only unresolved items enter the slower direct arXiv title-search queue. OpenAlex matches use the same strict title plus author/year checks and can supply a DOI or arXiv identity, bibliographic metadata, an abstract, and an open-access PDF. The API key is attached when configured; otherwise OpenAlex is queried anonymously.
 
 Direct arXiv matches return a stable `arxiv:` identifier, locally rendered BibTeX, and an arXiv abstract link. arXiv API calls retain the recommended process-wide three-second spacing.
 
-Resolved DOI, arXiv, and PMID references that still have neither an abstract nor an open-access PDF are sent to Semantic Scholar in background batches of up to 100. The initial resolved bibliography returns without waiting; enrichment updates SQLite and the open viewer when it completes. Ambiguous references are skipped, duplicate identifiers are queried once, and accepted Crossref/arXiv/OpenAlex metadata is never replaced. Crossref, OpenAlex, and Semantic Scholar use provider-wide concurrency gates, cooldowns, jittered retries, and short request timeouts. Set `SEMANTIC_SCHOLAR_API_KEY` when a key is available, and set `CROSSREF_MAILTO` to identify every Crossref request with the polite pool.
+Semantic Scholar is the final resolver. It first performs batched DOI, arXiv, and PMID lookups, then applies the same conservative title/author/year candidate checks to unresolved references. Resolved references still missing both an abstract and an open-access PDF are enriched through the same shared batch client in the background. The initial bibliography returns without waiting; enrichment updates SQLite and the open viewer when it completes. Crossref, OpenAlex, and Semantic Scholar use provider-wide concurrency gates, cooldowns, jittered retries, and short request timeouts. The Semantic Scholar key is attached when configured; otherwise requests use its anonymous tier.
 
 ## Prototype limits
 

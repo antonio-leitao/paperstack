@@ -8,21 +8,16 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     path::Path,
-    sync::OnceLock,
     time::{Duration, Instant},
 };
 use tauri::Emitter;
-use tokio::sync::{Mutex as AsyncMutex, Semaphore};
 
 const LOCAL_GROBID_URL: &str = "http://127.0.0.1:8070";
 const FULL_GROBID_URL: &str = "https://grobidorg-grobid-full.hf.space";
 const FULL_GROBID_MIRROR_URL: &str = "https://grobidorg-grobid-full2.hf.space";
 const HOSTED_WAKE_TIMEOUT: Duration = Duration::from_secs(180);
 const HOSTED_POLL_INTERVAL: Duration = Duration::from_secs(3);
-const SEMANTIC_SCHOLAR_BATCH_SIZE: usize = 100;
-const SEMANTIC_SCHOLAR_BATCH_DELAY: Duration = Duration::from_millis(1100);
-const SEMANTIC_SCHOLAR_MAX_ATTEMPTS: usize = 3;
-const REFERENCE_RESOLVER_VERSION: &str = "resolver-v3-batched-cache-first";
+const REFERENCE_RESOLVER_VERSION: &str = "resolver-v7-validated-identifiers";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,28 +92,6 @@ enum HealthStatus {
     Ready,
     Responded,
     Unreachable(String),
-}
-
-#[derive(Debug, Deserialize)]
-struct SemanticScholarAuthor {
-    name: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SemanticScholarOpenAccessPdf {
-    url: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SemanticScholarPaper {
-    title: Option<String>,
-    r#abstract: Option<String>,
-    year: Option<u32>,
-    authors: Option<Vec<SemanticScholarAuthor>>,
-    url: Option<String>,
-    open_access_pdf: Option<SemanticScholarOpenAccessPdf>,
 }
 
 #[tauri::command]
@@ -548,6 +521,7 @@ fn apply_resolutions(references: &mut [Reference], resolutions: Vec<ReferenceRes
         reference.canonical_id = resolution.canonical_id;
         reference.doi = resolution.doi.or_else(|| reference.doi.clone());
         reference.arxiv_id = resolution.arxiv_id.or_else(|| reference.arxiv_id.clone());
+        reference.pmid = resolution.pmid.or_else(|| reference.pmid.clone());
         reference.bibtex = resolution.bibtex;
         reference.link = resolution.link;
         reference.resolution_status = resolution.status.as_str().to_owned();
@@ -722,6 +696,10 @@ fn needs_semantic_enrichment(references: &[Reference]) -> bool {
             "resolved" | "identified"
         ) && reference.abstract_text.is_none()
             && reference.open_access_pdf.is_none()
+            && !reference
+                .resolution_source
+                .as_deref()
+                .is_some_and(|source| source.starts_with("semantic-scholar"))
             && (reference.doi.is_some() || reference.arxiv_id.is_some() || reference.pmid.is_some())
     })
 }
@@ -738,20 +716,29 @@ async fn enrich_references(
             "resolved" | "identified"
         ) || reference.abstract_text.is_some()
             || reference.open_access_pdf.is_some()
+            || reference
+                .resolution_source
+                .as_deref()
+                .is_some_and(|source| source.starts_with("semantic-scholar"))
         {
             continue;
         }
         let identifier = reference
             .doi
             .as_ref()
-            .map(|doi| format!("DOI:{doi}"))
-            .or_else(|| {
-                reference
-                    .arxiv_id
-                    .as_ref()
-                    .map(|arxiv| format!("ARXIV:{arxiv}"))
+            .and_then(|doi| {
+                reference_resolver::semantic::normalize_identifier(&format!("DOI:{doi}"))
             })
-            .or_else(|| reference.pmid.as_ref().map(|pmid| format!("PMID:{pmid}")));
+            .or_else(|| {
+                reference.arxiv_id.as_ref().and_then(|arxiv| {
+                    reference_resolver::semantic::normalize_identifier(&format!("ARXIV:{arxiv}"))
+                })
+            })
+            .or_else(|| {
+                reference.pmid.as_ref().and_then(|pmid| {
+                    reference_resolver::semantic::normalize_identifier(&format!("PMID:{pmid}"))
+                })
+            });
         let Some(identifier) = identifier else {
             continue;
         };
@@ -766,164 +753,32 @@ async fn enrich_references(
         return Ok(());
     }
 
-    for batch in identified.chunks(SEMANTIC_SCHOLAR_BATCH_SIZE) {
-        let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
-        let papers = fetch_semantic_scholar_batch(client, &ids).await?;
-        for ((_, reference_indices), paper) in batch.iter().zip(papers) {
-            let Some(paper) = paper else {
-                continue;
-            };
-            for reference_index in reference_indices {
-                apply_semantic_scholar_paper(&mut references[*reference_index], &paper);
-            }
+    let ids = identified
+        .iter()
+        .map(|(identifier, _)| identifier.clone())
+        .collect::<Vec<_>>();
+    let papers = reference_resolver::semantic::lookup_many(client, &ids).await?;
+    for (identifier, reference_indices) in &identified {
+        let Some(paper) = papers.get(identifier) else {
+            continue;
+        };
+        for reference_index in reference_indices {
+            apply_semantic_scholar_paper(&mut references[*reference_index], paper);
         }
     }
 
     Ok(())
 }
 
-async fn fetch_semantic_scholar_batch(
-    client: &reqwest::Client,
-    ids: &[&str],
-) -> Result<Vec<Option<SemanticScholarPaper>>, String> {
-    let api_key = std::env::var("SEMANTIC_SCHOLAR_API_KEY")
-        .ok()
-        .filter(|key| !key.trim().is_empty());
-    let mut last_error = None;
-    for attempt in 0..SEMANTIC_SCHOLAR_MAX_ATTEMPTS {
-        let mut request = client
-            .post("https://api.semanticscholar.org/graph/v1/paper/batch")
-            .query(&[("fields", "title,abstract,year,authors,url,openAccessPdf")])
-            .timeout(Duration::from_secs(20))
-            .json(&serde_json::json!({ "ids": ids }));
-        if let Some(api_key) = api_key.as_deref() {
-            request = request.header("x-api-key", api_key);
-        }
-        let response = {
-            let _permit = semantic_scholar_request_gate()
-                .acquire()
-                .await
-                .map_err(|_| "Could not acquire Semantic Scholar request slot".to_owned())?;
-            wait_for_semantic_scholar_slot().await;
-            request.send().await
-        };
-        match response {
-            Ok(response) if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS => {
-                let delay = response
-                    .headers()
-                    .get(reqwest::header::RETRY_AFTER)
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .map(|seconds| Duration::from_secs(seconds.min(30)))
-                    .unwrap_or_else(|| Duration::from_secs(1 << attempt));
-                let delay = delay + semantic_retry_jitter();
-                eprintln!(
-                    "[resolver] provider=semantic-scholar status=429 batch_size={} cooldown_ms={}",
-                    ids.len(),
-                    delay.as_millis()
-                );
-                extend_semantic_scholar_cooldown(delay).await;
-                last_error = Some(format!(
-                    "Semantic Scholar rate-limited enrichment (HTTP 429) after a {}-reference batch",
-                    ids.len()
-                ));
-                if attempt + 1 < SEMANTIC_SCHOLAR_MAX_ATTEMPTS {
-                    tokio::time::sleep(delay).await;
-                }
-            }
-            Ok(response) if response.status().is_server_error() => {
-                last_error = Some(format!(
-                    "Semantic Scholar enrichment returned {}",
-                    response.status()
-                ));
-                if attempt + 1 < SEMANTIC_SCHOLAR_MAX_ATTEMPTS {
-                    tokio::time::sleep(Duration::from_secs(1 << attempt)).await;
-                }
-            }
-            Ok(response) if !response.status().is_success() => {
-                return Err(format!(
-                    "Semantic Scholar enrichment returned {}",
-                    response.status()
-                ));
-            }
-            Ok(response) => {
-                return response
-                    .json()
-                    .await
-                    .map_err(|error| format!("Invalid Semantic Scholar response: {error}"));
-            }
-            Err(error) => {
-                last_error = Some(format!("Semantic Scholar enrichment failed: {error}"));
-                if attempt + 1 < SEMANTIC_SCHOLAR_MAX_ATTEMPTS {
-                    tokio::time::sleep(Duration::from_secs(1 << attempt)).await;
-                }
-            }
-        }
-    }
-    Err(last_error.unwrap_or_else(|| "Semantic Scholar enrichment failed".to_owned()))
-}
-
-fn semantic_scholar_last_request() -> &'static AsyncMutex<Option<Instant>> {
-    static LAST_REQUEST: OnceLock<AsyncMutex<Option<Instant>>> = OnceLock::new();
-    LAST_REQUEST.get_or_init(|| AsyncMutex::new(None))
-}
-
-fn semantic_scholar_request_gate() -> &'static Semaphore {
-    static REQUEST_GATE: OnceLock<Semaphore> = OnceLock::new();
-    REQUEST_GATE.get_or_init(|| Semaphore::new(1))
-}
-
-fn semantic_scholar_cooldown() -> &'static AsyncMutex<Option<Instant>> {
-    static COOLDOWN: OnceLock<AsyncMutex<Option<Instant>>> = OnceLock::new();
-    COOLDOWN.get_or_init(|| AsyncMutex::new(None))
-}
-
-async fn wait_for_semantic_scholar_slot() {
-    loop {
-        let delay = {
-            let until = *semantic_scholar_cooldown().lock().await;
-            until.and_then(|until| until.checked_duration_since(Instant::now()))
-        };
-        let Some(delay) = delay else {
-            break;
-        };
-        tokio::time::sleep(delay).await;
-    }
-
-    let mut last_request = semantic_scholar_last_request().lock().await;
-    if let Some(last) = *last_request {
-        let elapsed = last.elapsed();
-        if elapsed < SEMANTIC_SCHOLAR_BATCH_DELAY {
-            tokio::time::sleep(SEMANTIC_SCHOLAR_BATCH_DELAY - elapsed).await;
-        }
-    }
-    *last_request = Some(Instant::now());
-}
-
-async fn extend_semantic_scholar_cooldown(delay: Duration) {
-    let candidate = Instant::now() + delay;
-    let mut until = semantic_scholar_cooldown().lock().await;
-    if until.map_or(true, |current| candidate > current) {
-        *until = Some(candidate);
-    }
-}
-
-fn semantic_retry_jitter() -> Duration {
-    let millis = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_millis() as u64;
-    Duration::from_millis(50 + millis % 200)
-}
-
-fn apply_semantic_scholar_paper(reference: &mut Reference, paper: &SemanticScholarPaper) {
+fn apply_semantic_scholar_paper(
+    reference: &mut Reference,
+    paper: &reference_resolver::semantic::SemanticWork,
+) {
     if reference.title.is_none() {
         reference.title.clone_from(&paper.title);
     }
     if reference.authors.is_empty() {
-        if let Some(authors) = paper.authors.as_ref() {
-            reference.authors = authors.iter().map(|author| author.name.clone()).collect();
-        }
+        reference.authors = reference_resolver::semantic::authors(paper);
     }
     if reference.year.is_none() {
         if let Some(year) = paper.year {
@@ -934,10 +789,7 @@ fn apply_semantic_scholar_paper(reference: &mut Reference, paper: &SemanticSchol
         reference.abstract_text.clone_from(&paper.r#abstract);
     }
     if reference.open_access_pdf.is_none() {
-        reference.open_access_pdf = paper
-            .open_access_pdf
-            .as_ref()
-            .and_then(|pdf| pdf.url.clone());
+        reference.open_access_pdf = reference_resolver::semantic::open_access_pdf(paper);
     }
     if reference.link.is_none() {
         reference.link.clone_from(&paper.url);
@@ -946,6 +798,13 @@ fn apply_semantic_scholar_paper(reference: &mut Reference, paper: &SemanticSchol
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    load_local_env();
+    eprintln!(
+        "[resolver] crossref_polite_pool={} openalex_key_present={} semantic_scholar_key_present={}",
+        reference_resolver::crossref_polite_pool_configured(),
+        reference_resolver::openalex_api_key_configured(),
+        reference_resolver::semantic_scholar_api_key_configured(),
+    );
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -953,6 +812,43 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![analyze_pdf, resolve_grobid])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn load_local_env() {
+    let Ok(contents) = std::fs::read_to_string(".env") else {
+        return;
+    };
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty()
+            || !key
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+        {
+            continue;
+        }
+        if std::env::var_os(key).is_some() {
+            continue;
+        }
+        let value = value.trim();
+        let value = if value.len() >= 2
+            && ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+        {
+            &value[1..value.len() - 1]
+        } else {
+            value
+        };
+        std::env::set_var(key, value);
+    }
 }
 
 #[cfg(test)]

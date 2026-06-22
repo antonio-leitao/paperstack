@@ -25,9 +25,12 @@ use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
 mod arxiv;
 #[path = "reference_resolver_openalex.rs"]
 mod openalex;
+#[path = "reference_resolver_semantic.rs"]
+pub(crate) mod semantic;
 
 use arxiv::ArxivWork;
 use openalex::OpenAlexWork;
+use semantic::SemanticWork;
 
 const CROSSREF_API: &str = "https://api.crossref.org/v1";
 const CROSSREF_USER_AGENT: &str = "ResearchPDFRender/0.1 (reference-resolution prototype)";
@@ -95,6 +98,7 @@ pub struct ReferenceResolution {
     pub canonical_id: Option<String>,
     pub doi: Option<String>,
     pub arxiv_id: Option<String>,
+    pub pmid: Option<String>,
     pub bibtex: String,
     pub link: Option<String>,
     pub status: ResolutionStatus,
@@ -186,17 +190,39 @@ struct ScoredOpenAlexCandidate {
     corroborators: usize,
 }
 
+#[derive(Debug)]
+struct ScoredSemanticCandidate {
+    work: SemanticWork,
+    score: f64,
+    title_similarity: f64,
+    corroborators: usize,
+}
+
 type OpenAlexBatchResult = Arc<Result<HashMap<String, OpenAlexWork>, String>>;
 type ArxivBatchResult = Arc<Result<HashMap<String, ArxivWork>, String>>;
+type SemanticBatchResult = Arc<Result<HashMap<String, SemanticWork>, String>>;
 
 #[derive(Clone)]
 struct BatchLookups {
     openalex: Shared<BoxFuture<'static, OpenAlexBatchResult>>,
     arxiv: Shared<BoxFuture<'static, ArxivBatchResult>>,
+    semantic: Shared<BoxFuture<'static, SemanticBatchResult>>,
 }
 
 pub fn document_digest(bytes: &[u8]) -> String {
     hex_digest(Sha256::digest(bytes).as_slice())
+}
+
+pub fn openalex_api_key_configured() -> bool {
+    openalex::is_configured()
+}
+
+pub fn semantic_scholar_api_key_configured() -> bool {
+    semantic::is_configured()
+}
+
+pub fn crossref_polite_pool_configured() -> bool {
+    crossref_mailto().is_some()
 }
 
 pub fn stable_reference_id(
@@ -274,6 +300,7 @@ fn preload_identifiers(
 ) -> BatchLookups {
     let mut dois = Vec::new();
     let mut arxiv_ids = Vec::new();
+    let mut semantic_ids = Vec::new();
     for (input, _) in groups {
         if let Some(doi) = input
             .doi
@@ -282,16 +309,31 @@ fn preload_identifiers(
             .filter(|doi| !doi.is_empty())
             .or_else(|| input.raw_citation.as_deref().and_then(extract_doi))
         {
+            if let Some(identifier) = semantic::normalize_identifier(&format!("DOI:{doi}")) {
+                semantic_ids.push(identifier);
+            }
             dois.push(doi);
         }
         if let Some(arxiv_id) = explicit_arxiv_id(input) {
+            if let Some(identifier) = semantic::normalize_identifier(&format!("ARXIV:{arxiv_id}")) {
+                semantic_ids.push(identifier);
+            }
             arxiv_ids.push(arxiv_id);
+        }
+        if let Some(identifier) = input
+            .pmid
+            .as_deref()
+            .and_then(|pmid| semantic::normalize_identifier(&format!("PMID:{pmid}")))
+        {
+            semantic_ids.push(identifier);
         }
     }
     dois.sort();
     dois.dedup();
     arxiv_ids.sort();
     arxiv_ids.dedup();
+    semantic_ids.sort();
+    semantic_ids.dedup();
     let openalex_count = dois.len();
     let openalex_client = client.clone();
     let openalex = async move {
@@ -320,7 +362,32 @@ fn preload_identifiers(
     .boxed()
     .shared();
 
-    BatchLookups { openalex, arxiv }
+    let semantic_count = semantic_ids.len();
+    let semantic_client = client.clone();
+    let semantic = async move {
+        let result = semantic::lookup_many(&semantic_client, &semantic_ids).await;
+        match result.as_ref() {
+            Ok(found) => eprintln!(
+                "[resolver] semantic_exact_ids={} semantic_exact_matches={}",
+                semantic_count,
+                found.len(),
+            ),
+            Err(error) => eprintln!(
+                "[resolver] semantic_exact_ids={} batch_error={}",
+                semantic_count,
+                truncate(error, 300),
+            ),
+        }
+        Arc::new(result)
+    }
+    .boxed()
+    .shared();
+
+    BatchLookups {
+        openalex,
+        arxiv,
+        semantic,
+    }
 }
 
 async fn resolve_reference(
@@ -454,7 +521,8 @@ async fn resolve_reference(
         .as_deref()
         .filter(|title| !title.trim().is_empty())
     {
-        match openalex::search(client, title).await {
+        let title = normalize_provider_text(title);
+        match openalex::search(client, &title).await {
             Ok(candidates) => {
                 let mut scored: Vec<ScoredOpenAlexCandidate> = candidates
                     .into_iter()
@@ -494,7 +562,8 @@ async fn resolve_reference(
             .as_deref()
             .filter(|title| !title.trim().is_empty())
         {
-            match arxiv::search(client, title).await {
+            let title = normalize_provider_text(title);
+            match arxiv::search(client, &title).await {
                 Ok(candidates) => {
                     let mut scored: Vec<ScoredArxivCandidate> = candidates
                         .into_iter()
@@ -529,6 +598,74 @@ async fn resolve_reference(
         }
     }
 
+    if let Some(identifier) = semantic_identifier(&input) {
+        let semantic_batch = lookups.semantic.clone().await;
+        let semantic_work = semantic_batch
+            .as_ref()
+            .as_ref()
+            .ok()
+            .and_then(|found| found.get(&identifier))
+            .cloned();
+        match semantic_work {
+            Some(work) if !has_semantic_hard_conflict(&input, &work) => {
+                let confidence = semantic_title_similarity(&input, &work).max(0.97);
+                return accepted_semantic_resolution(
+                    &input,
+                    work,
+                    confidence,
+                    "semantic-scholar-id",
+                );
+            }
+            Some(work) => {
+                fallback.status = ResolutionStatus::Ambiguous;
+                fallback.confidence = Some(semantic_title_similarity(&input, &work));
+                fallback.source = Some("semantic-scholar-id-conflict".to_owned());
+            }
+            None => {}
+        }
+    }
+
+    if let Some(title) = input
+        .title
+        .as_deref()
+        .filter(|title| !title.trim().is_empty())
+    {
+        let title = normalize_provider_text(title);
+        match semantic::search(client, &title).await {
+            Ok(candidates) => {
+                let mut scored: Vec<ScoredSemanticCandidate> = candidates
+                    .into_iter()
+                    .filter(|work| work.title.is_some())
+                    .map(|work| score_semantic_candidate(&input, work))
+                    .collect();
+                scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+                if let Some(top) = scored.first() {
+                    let runner_up_score = scored
+                        .get(1)
+                        .map(|candidate| candidate.score)
+                        .unwrap_or(0.0);
+                    if should_accept_semantic(top, runner_up_score) {
+                        let top = scored.remove(0);
+                        return accepted_semantic_resolution(
+                            &input,
+                            top.work,
+                            top.score,
+                            "semantic-scholar-search",
+                        );
+                    }
+                    if top.title_similarity >= 0.80
+                        && fallback.status != ResolutionStatus::Ambiguous
+                    {
+                        fallback.status = ResolutionStatus::Ambiguous;
+                        fallback.confidence = Some(top.score);
+                        fallback.source = Some("semantic-scholar-search".to_owned());
+                    }
+                }
+            }
+            Err(error) => provider_errors.push(error),
+        }
+    }
+
     if !provider_errors.is_empty() {
         if fallback.status != ResolutionStatus::Ambiguous {
             fallback.status = ResolutionStatus::Error;
@@ -553,6 +690,7 @@ fn accepted_resolution(
         canonical_id: Some(format!("doi:{doi}")),
         doi: Some(doi.clone()),
         arxiv_id: input.arxiv_id.clone(),
+        pmid: input.pmid.clone(),
         bibtex,
         link: Some(format!("https://doi.org/{doi}")),
         status: ResolutionStatus::Resolved,
@@ -587,6 +725,7 @@ fn accepted_arxiv_resolution(
         canonical_id: Some(format!("arxiv:{arxiv_id}")),
         doi,
         arxiv_id: Some(arxiv_id.clone()),
+        pmid: input.pmid.clone(),
         bibtex,
         link: Some(format!("https://arxiv.org/abs/{arxiv_id}")),
         status: ResolutionStatus::Resolved,
@@ -652,6 +791,7 @@ fn accepted_openalex_resolution(
         canonical_id,
         doi,
         arxiv_id,
+        pmid: input.pmid.clone(),
         bibtex,
         link,
         status: ResolutionStatus::Resolved,
@@ -661,6 +801,76 @@ fn accepted_openalex_resolution(
         metadata: Some(metadata),
         abstract_text: openalex::abstract_text(&work),
         open_access_pdf: openalex::open_access_pdf(&work),
+    }
+}
+
+fn accepted_semantic_resolution(
+    input: &ReferenceInput,
+    work: SemanticWork,
+    confidence: f64,
+    source: &str,
+) -> ReferenceResolution {
+    let doi = semantic::doi(&work)
+        .as_deref()
+        .map(normalize_doi)
+        .filter(|value| !value.is_empty());
+    let arxiv_id = semantic::arxiv_id(&work).map(|id| arxiv::normalize_id(&id));
+    let pmid = semantic::pmid(&work);
+    let metadata = metadata_from_semantic(&work);
+    let mut bibtex_input = input.clone();
+    bibtex_input.arxiv_id = arxiv_id.clone();
+    let arxiv_deposit_doi = doi
+        .as_deref()
+        .is_some_and(|doi| doi.starts_with("10.48550/arxiv."));
+    let bibtex_doi = if arxiv_deposit_doi {
+        None
+    } else {
+        doi.as_deref()
+    };
+    let bibtex = render_bibtex(&metadata, bibtex_doi, Some(&bibtex_input));
+    let (canonical_id, link) = if arxiv_deposit_doi && arxiv_id.is_some() {
+        let arxiv_id = arxiv_id.as_deref().unwrap_or_default();
+        (
+            Some(format!("arxiv:{arxiv_id}")),
+            Some(format!("https://arxiv.org/abs/{arxiv_id}")),
+        )
+    } else if let Some(doi) = doi.as_deref() {
+        (
+            Some(format!("doi:{doi}")),
+            Some(format!("https://doi.org/{doi}")),
+        )
+    } else if let Some(arxiv_id) = arxiv_id.as_deref() {
+        (
+            Some(format!("arxiv:{arxiv_id}")),
+            Some(format!("https://arxiv.org/abs/{arxiv_id}")),
+        )
+    } else if let Some(pmid) = pmid.as_deref() {
+        (
+            Some(format!("pmid:{pmid}")),
+            Some(format!("https://pubmed.ncbi.nlm.nih.gov/{pmid}/")),
+        )
+    } else {
+        (
+            Some(format!("semantic:{}", work.paper_id)),
+            work.url.clone(),
+        )
+    };
+
+    ReferenceResolution {
+        reference_id: input.id.clone(),
+        canonical_id,
+        doi,
+        arxiv_id,
+        pmid,
+        bibtex,
+        link,
+        status: ResolutionStatus::Resolved,
+        confidence: Some(confidence.clamp(0.0, 1.0)),
+        source: Some(source.to_owned()),
+        error: None,
+        metadata: Some(metadata),
+        abstract_text: work.r#abstract.clone(),
+        open_access_pdf: semantic::open_access_pdf(&work),
     }
 }
 
@@ -695,16 +905,13 @@ fn fallback_resolution(input: &ReferenceInput) -> ReferenceResolution {
     } else {
         ResolutionStatus::Unresolved
     };
-    let metadata = metadata_from_input(input);
-    let mut bibtex_input = input.clone();
-    bibtex_input.arxiv_id = arxiv_id.clone();
-
     ReferenceResolution {
         reference_id: input.id.clone(),
         canonical_id,
         doi: doi.clone(),
         arxiv_id,
-        bibtex: render_bibtex(&metadata, doi.as_deref(), Some(&bibtex_input)),
+        pmid: input.pmid.clone(),
+        bibtex: String::new(),
         link,
         status,
         confidence: None,
@@ -759,8 +966,16 @@ fn work_url(doi: &str) -> Result<Url, String> {
     Ok(url)
 }
 
-fn crossref_request(mut request: RequestBuilder) -> RequestBuilder {
-    if let Some(mailto) = crossref_mailto() {
+fn crossref_request(request: RequestBuilder) -> RequestBuilder {
+    let mailto = crossref_mailto();
+    crossref_request_with_mailto(request, mailto.as_deref())
+}
+
+fn crossref_request_with_mailto(
+    mut request: RequestBuilder,
+    mailto: Option<&str>,
+) -> RequestBuilder {
+    if let Some(mailto) = mailto {
         request = request.query(&[("mailto", mailto)]);
     }
     request
@@ -1067,6 +1282,55 @@ fn has_openalex_hard_conflict(input: &ReferenceInput, work: &OpenAlexWork) -> bo
     title_conflict || author_conflict || year_conflict
 }
 
+fn score_semantic_candidate(input: &ReferenceInput, work: SemanticWork) -> ScoredSemanticCandidate {
+    let title_similarity = semantic_title_similarity(input, &work);
+    let author_similarity = semantic_author_similarity(input, &work);
+    let year_similarity = match (input.year.as_deref().and_then(parse_year_value), work.year) {
+        (Some(left), Some(right)) if left == right => 1.0,
+        (Some(left), Some(right)) if left.abs_diff(right) == 1 => 0.4,
+        _ => 0.0,
+    };
+    let score = title_similarity * 0.72 + author_similarity * 0.20 + year_similarity * 0.08;
+    let corroborators = usize::from(title_similarity >= 0.92)
+        + usize::from(author_similarity >= 0.80)
+        + usize::from(year_similarity >= 0.40);
+    ScoredSemanticCandidate {
+        work,
+        score,
+        title_similarity,
+        corroborators,
+    }
+}
+
+fn should_accept_semantic(candidate: &ScoredSemanticCandidate, runner_up_score: f64) -> bool {
+    candidate.title_similarity >= 0.92
+        && candidate.score >= 0.87
+        && candidate.corroborators >= 2
+        && candidate.score - runner_up_score >= 0.08
+}
+
+fn semantic_title_similarity(input: &ReferenceInput, work: &SemanticWork) -> f64 {
+    option_similarity(input.title.as_deref(), work.title.as_deref())
+}
+
+fn semantic_author_similarity(input: &ReferenceInput, work: &SemanticWork) -> f64 {
+    let authors = semantic::authors(work);
+    partial_author_list_similarity(&input.authors, &authors)
+}
+
+fn has_semantic_hard_conflict(input: &ReferenceInput, work: &SemanticWork) -> bool {
+    let title_conflict = input.title.is_some() && semantic_title_similarity(input, work) < 0.60;
+    let candidate_authors = semantic::authors(work);
+    let author_conflict = !input.authors.is_empty()
+        && !candidate_authors.is_empty()
+        && semantic_author_similarity(input, work) < 0.35;
+    let year_conflict = match (input.year.as_deref().and_then(parse_year_value), work.year) {
+        (Some(left), Some(right)) => left.abs_diff(right) > 1,
+        _ => false,
+    };
+    title_conflict || author_conflict || year_conflict
+}
+
 fn should_accept(top: &ScoredCandidate, runner_up_score: f64) -> bool {
     let distinctive_title_and_author =
         top.title_is_distinctive && top.title_similarity >= 0.96 && top.author_similarity >= 0.95;
@@ -1234,7 +1498,7 @@ fn token_set(value: &str) -> BTreeSet<String> {
 }
 
 fn normalize_text(value: &str) -> String {
-    value
+    normalize_provider_text(value)
         .nfkd()
         .filter(|character| !is_combining_mark(*character))
         .flat_map(char::to_lowercase)
@@ -1246,6 +1510,20 @@ fn normalize_text(value: &str) -> String {
             }
         })
         .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn normalize_provider_text(value: &str) -> String {
+    static LINE_WRAP_HYPHENATION: OnceLock<Regex> = OnceLock::new();
+    let regex = LINE_WRAP_HYPHENATION.get_or_init(|| {
+        Regex::new(r"(?u)(\p{L})-\s+(\p{Ll})")
+            .expect("line-wrap hyphenation regular expression must compile")
+    });
+    let without_soft_hyphens = value.replace('\u{00ad}', "");
+    regex
+        .replace_all(&without_soft_hyphens, "$1$2")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -1270,6 +1548,15 @@ pub fn normalize_doi(value: &str) -> String {
     doi
 }
 
+fn is_valid_doi(doi: &str) -> bool {
+    static DOI: OnceLock<Regex> = OnceLock::new();
+    DOI.get_or_init(|| {
+        Regex::new(r"(?i)^10\.\d{4,9}/[-._;()/:a-z0-9]+$")
+            .expect("DOI validation regular expression must compile")
+    })
+    .is_match(doi)
+}
+
 fn extract_doi(value: &str) -> Option<String> {
     static DOI: OnceLock<Regex> = OnceLock::new();
     let regex = DOI.get_or_init(|| {
@@ -1285,7 +1572,7 @@ fn extract_doi(value: &str) -> Option<String> {
 fn explicit_arxiv_id(input: &ReferenceInput) -> Option<String> {
     if let Some(id) = input.arxiv_id.as_deref() {
         let id = arxiv::normalize_id(id);
-        if !id.is_empty() {
+        if is_valid_arxiv_id(&id) {
             return Some(id);
         }
     }
@@ -1302,7 +1589,38 @@ fn explicit_arxiv_id(input: &ReferenceInput) -> Option<String> {
         .and_then(|citation| regex.captures(citation))
         .and_then(|captures| captures.get(1))
         .map(|value| arxiv::normalize_id(value.as_str()))
-        .filter(|id| !id.is_empty())
+        .filter(|id| is_valid_arxiv_id(id))
+}
+
+fn is_valid_arxiv_id(id: &str) -> bool {
+    static ARXIV_ID: OnceLock<Regex> = OnceLock::new();
+    ARXIV_ID
+        .get_or_init(|| {
+            Regex::new(r"(?i)^(?:[a-z-]+(?:\.[a-z-]+)?/\d{7}|\d{4}\.\d{4,5})$")
+                .expect("arXiv validation regular expression must compile")
+        })
+        .is_match(id)
+}
+
+fn semantic_identifier(input: &ReferenceInput) -> Option<String> {
+    let doi = input
+        .doi
+        .as_deref()
+        .map(normalize_doi)
+        .filter(|doi| !doi.is_empty())
+        .or_else(|| input.raw_citation.as_deref().and_then(extract_doi));
+    doi.as_deref()
+        .and_then(|doi| semantic::normalize_identifier(&format!("DOI:{doi}")))
+        .or_else(|| {
+            explicit_arxiv_id(input)
+                .and_then(|id| semantic::normalize_identifier(&format!("ARXIV:{id}")))
+        })
+        .or_else(|| {
+            input
+                .pmid
+                .as_deref()
+                .and_then(|pmid| semantic::normalize_identifier(&format!("PMID:{pmid}")))
+        })
 }
 
 fn metadata_from_work(work: &CrossrefWork) -> ResolvedMetadata {
@@ -1354,17 +1672,17 @@ fn metadata_from_openalex(work: &OpenAlexWork) -> ResolvedMetadata {
     }
 }
 
-fn metadata_from_input(input: &ReferenceInput) -> ResolvedMetadata {
+fn metadata_from_semantic(work: &SemanticWork) -> ResolvedMetadata {
     ResolvedMetadata {
-        title: input.title.clone(),
-        authors: input.authors.clone(),
-        year: input.year.clone(),
-        venue: input.venue.clone(),
-        volume: input.volume.clone(),
-        issue: input.issue.clone(),
-        pages: input.pages.clone(),
+        title: work.title.clone(),
+        authors: semantic::authors(work),
+        year: work.year.map(|year| year.to_string()),
+        venue: work.venue.clone(),
+        volume: None,
+        issue: None,
+        pages: None,
         publisher: None,
-        work_type: None,
+        work_type: semantic::work_type(work),
     }
 }
 
@@ -1540,20 +1858,22 @@ fn bibliographic_query(input: &ReferenceInput) -> String {
         .as_deref()
         .filter(|value| !value.trim().is_empty())
     {
-        return raw.trim().to_owned();
+        return normalize_provider_text(raw);
     }
-    [
-        input.title.as_deref(),
-        input.authors.first().map(String::as_str),
-        input.venue.as_deref(),
-        input.year.as_deref(),
-        input.volume.as_deref(),
-        input.pages.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>()
-    .join(" ")
+    normalize_provider_text(
+        &[
+            input.title.as_deref(),
+            input.authors.first().map(String::as_str),
+            input.venue.as_deref(),
+            input.year.as_deref(),
+            input.volume.as_deref(),
+            input.pages.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" "),
+    )
 }
 
 fn format_crossref_author(author: &CrossrefAuthor) -> Option<String> {
@@ -1706,6 +2026,22 @@ mod tests {
         .unwrap()
     }
 
+    fn semantic_work(title: &str, author: &str, year: u32) -> SemanticWork {
+        serde_json::from_value(serde_json::json!({
+            "paperId": "semantic123",
+            "externalIds": {"DOI": "10.1234/example"},
+            "title": title,
+            "abstract": null,
+            "year": year,
+            "authors": [{"name": author}],
+            "venue": "Example Journal",
+            "url": "https://www.semanticscholar.org/paper/semantic123",
+            "openAccessPdf": null,
+            "publicationTypes": ["JournalArticle"]
+        }))
+        .unwrap()
+    }
+
     #[test]
     fn creates_stable_document_scoped_ids() {
         let first = stable_reference_id("document", 0, Some("Citation"), None);
@@ -1722,6 +2058,40 @@ mod tests {
             extract_doi("Available at https://doi.org/10.1234/ABC.567)."),
             Some("10.1234/abc.567".to_owned())
         );
+    }
+
+    #[test]
+    fn repairs_pdf_line_wrap_hyphenation_for_provider_queries() {
+        assert_eq!(
+            normalize_provider_text("40th Interna- tional\nConference"),
+            "40th International Conference"
+        );
+        assert_eq!(
+            normalize_text("Rethinking Interna- tional Policies"),
+            normalize_text("Rethinking International Policies")
+        );
+
+        let mut wrapped = input();
+        wrapped.raw_citation = Some("Proceedings of the Interna- tional Conference".to_owned());
+        assert_eq!(
+            bibliographic_query(&wrapped),
+            "Proceedings of the International Conference"
+        );
+    }
+
+    #[test]
+    fn skips_invalid_semantic_identifiers_and_uses_the_next_valid_one() {
+        let mut reference = input();
+        reference.doi = Some("not-a-doi".to_owned());
+        reference.arxiv_id = Some("2401.12345v2".to_owned());
+        assert_eq!(
+            semantic_identifier(&reference).as_deref(),
+            Some("ARXIV:2401.12345")
+        );
+
+        reference.arxiv_id = Some("not-an-arxiv-id".to_owned());
+        reference.pmid = Some("12x".to_owned());
+        assert!(semantic_identifier(&reference).is_none());
     }
 
     #[test]
@@ -1891,6 +2261,24 @@ mod tests {
     }
 
     #[test]
+    fn accepts_only_well_corroborated_semantic_scholar_matches() {
+        let input = input();
+        let matching = score_semantic_candidate(
+            &input,
+            semantic_work("A robust approach to reference matching", "Jane Doe", 2024),
+        );
+        assert!(matching.score >= 0.99);
+        assert!(should_accept_semantic(&matching, 0.80));
+        assert!(!should_accept_semantic(&matching, matching.score - 0.04));
+
+        let conflicting = score_semantic_candidate(
+            &input,
+            semantic_work("An unrelated paper about chemistry", "Jane Doe", 2024),
+        );
+        assert!(!should_accept_semantic(&conflicting, 0.0));
+    }
+
+    #[test]
     fn groups_duplicate_citations_independently_of_reference_id() {
         let first = input();
         let mut duplicate = first.clone();
@@ -1912,6 +2300,22 @@ mod tests {
             work_url("10.1038/nphys1170").unwrap().as_str(),
             "https://api.crossref.org/v1/works/10.1038%2Fnphys1170"
         );
+    }
+
+    #[test]
+    fn adds_mailto_to_every_crossref_request_for_the_polite_pool() {
+        let request = crossref_request_with_mailto(
+            Client::new().get("https://api.crossref.org/v1/works/10.1234%2Fexample"),
+            Some("researcher@example.com"),
+        )
+        .build()
+        .unwrap();
+        let mailto = request
+            .url()
+            .query_pairs()
+            .find(|(key, _)| key == "mailto")
+            .map(|(_, value)| value.into_owned());
+        assert_eq!(mailto.as_deref(), Some("researcher@example.com"));
     }
 
     #[test]
@@ -1937,13 +2341,25 @@ mod tests {
     }
 
     #[test]
-    fn fallback_bibtex_is_deterministic_and_escaped() {
-        let mut input = input();
-        input.title = Some("Research & development_100%".to_owned());
-        let first = fallback_resolution(&input).bibtex;
-        let second = fallback_resolution(&input).bibtex;
-        assert_eq!(first, second);
-        assert!(first.starts_with("@article{"));
-        assert!(first.contains("Research \\& development\\_100\\%"));
+    fn unresolved_references_do_not_synthesize_bibtex() {
+        assert!(fallback_resolution(&input()).bibtex.is_empty());
+    }
+
+    #[test]
+    fn trusted_resolved_metadata_produces_bibtex() {
+        let input = input();
+        let resolved = accepted_resolution(
+            &input,
+            work(
+                "A robust approach to reference matching",
+                "Doe",
+                2024,
+                "10.1234/example",
+            ),
+            0.99,
+            "crossref-search",
+        );
+        assert!(resolved.bibtex.starts_with("@article{"));
+        assert!(resolved.bibtex.contains("doi = {10.1234/example}"));
     }
 }

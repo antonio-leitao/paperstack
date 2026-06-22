@@ -5,8 +5,10 @@
   import { readFile } from "@tauri-apps/plugin-fs";
   import { onMount } from "svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
+  import { copyToClipboard } from "$lib/copyToClipboard";
   import { openExternal } from "$lib/openExternal";
-  import type { AnalysisResult, GrobidService } from "$lib/types";
+  import { hasTrustedBibtex } from "$lib/referenceBibtex";
+  import type { AnalysisResult, GrobidService, Reference } from "$lib/types";
 
   let pdfBuffer = $state<ArrayBuffer | null>(null);
   let pdfName = $state("");
@@ -17,6 +19,8 @@
   let hostedGrobidUrl = $state("https://grobidorg-grobid-full.hf.space");
   let grobidStatus = $state<string | null>(null);
   let browserInput = $state<HTMLInputElement>();
+  let copiedBibtexId = $state<string | null>(null);
+  let failedBibtexId = $state<string | null>(null);
 
   type ReferenceEnrichmentEvent = {
     path: string;
@@ -108,6 +112,20 @@
       analysisError = typeof error === "string" ? error : String(error);
     } finally {
       analyzing = false;
+    }
+  }
+
+  async function copyBibtex(reference: Reference) {
+    try {
+      await copyToClipboard(reference.bibtex);
+      copiedBibtexId = reference.id;
+      failedBibtexId = null;
+      window.setTimeout(() => {
+        if (copiedBibtexId === reference.id) copiedBibtexId = null;
+      }, 1500);
+    } catch {
+      copiedBibtexId = null;
+      failedBibtexId = reference.id;
     }
   }
 </script>
@@ -204,6 +222,19 @@
                 <small>{reference.authors.join(", ")}</small>
               {/if}
               <small>{reference.calloutBoxes.length} callout(s)</small>
+              {#if hasTrustedBibtex(reference)}
+                <button
+                  type="button"
+                  aria-label={`Copy BibTeX for ${reference.title ?? reference.rawCitation ?? reference.id}`}
+                  onclick={() => void copyBibtex(reference)}
+                >
+                  {failedBibtexId === reference.id
+                    ? "Copy failed"
+                    : copiedBibtexId === reference.id
+                      ? "Copied"
+                      : "Copy BibTeX"}
+                </button>
+              {/if}
             </li>
           {/each}
         </ol>
