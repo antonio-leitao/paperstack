@@ -7,7 +7,7 @@ use reqwest::multipart::{Form, Part};
 use roxmltree::{Document, Node};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::Path,
     time::{Duration, Instant},
 };
@@ -18,7 +18,7 @@ const FULL_GROBID_URL: &str = "https://grobidorg-grobid-full.hf.space";
 const FULL_GROBID_MIRROR_URL: &str = "https://grobidorg-grobid-full2.hf.space";
 const HOSTED_WAKE_TIMEOUT: Duration = Duration::from_secs(180);
 const HOSTED_POLL_INTERVAL: Duration = Duration::from_secs(3);
-const REFERENCE_RESOLVER_VERSION: &str = "resolver-v7-validated-identifiers";
+const REFERENCE_RESOLVER_VERSION: &str = "resolver-v8-staged-semantic";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,9 +79,10 @@ struct AnalysisResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ReferenceEnrichmentEvent {
+struct ReferenceResolutionProgressEvent {
     path: String,
     analysis: AnalysisResult,
+    resolving_reference_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -182,6 +183,7 @@ async fn analyze_pdf(
     app: tauri::AppHandle,
     path: String,
     grobid_url: Option<String>,
+    force_resolve: bool,
 ) -> Result<AnalysisResult, String> {
     let pdf = std::fs::read(&path).map_err(|error| format!("Could not read PDF: {error}"))?;
     let document_digest = reference_resolver::document_digest(&pdf);
@@ -195,8 +197,14 @@ async fn analyze_pdf(
                 database::EXTRACTION_VERSION,
                 REFERENCE_RESOLVER_VERSION,
             ) {
-                Ok(database::CacheLookup::Fresh(result)) => {
-                    cached_extraction = Some(result);
+                Ok(database::CacheLookup::Fresh {
+                    extracted,
+                    resolved,
+                }) => {
+                    if !force_resolve {
+                        return Ok(resolved);
+                    }
+                    cached_extraction = Some(extracted);
                 }
                 Ok(database::CacheLookup::NeedsResolution(extracted)) => {
                     cached_extraction = Some(extracted);
@@ -281,11 +289,24 @@ async fn analyze_pdf(
         .map(reference_input)
         .collect::<Vec<_>>();
     let network_reference_count = inputs.len();
+    let mut resolving_reference_ids = inputs
+        .iter()
+        .map(|input| input.id.clone())
+        .collect::<HashSet<_>>();
+    if !resolving_reference_ids.is_empty() {
+        emit_resolution_progress(&app, &path, &result, &resolving_reference_ids);
+    }
     let resolution_started = Instant::now();
-    let resolution_batch = reference_resolver::resolve_references(&client, inputs).await;
+    let resolution_batch = reference_resolver::resolve_references(&client, inputs, |completed| {
+        for resolution in &completed {
+            resolving_reference_ids.remove(&resolution.reference_id);
+        }
+        apply_resolutions(&mut result, completed);
+        emit_resolution_progress(&app, &path, &result, &resolving_reference_ids);
+    })
+    .await;
     let resolution_elapsed = resolution_started.elapsed();
     warnings.extend(resolution_batch.warning);
-    apply_resolutions(&mut result, resolution_batch.items);
     eprintln!(
         "[resolver] references={} cache_hits={} network_references={} cache_ms={} resolution_ms={}",
         result.references.len(),
@@ -308,53 +329,25 @@ async fn analyze_pdf(
         }
     }
     result.enrichment_warning = (!warnings.is_empty()).then(|| warnings.join(" "));
-    if needs_semantic_enrichment(&result) {
-        let app = app.clone();
-        let event_path = path.clone();
-        let cache_path = cache_path.clone();
-        let document_digest = document_digest.clone();
-        let extracted = extracted.clone();
-        let client = client.clone();
-        let mut enriched = result.clone();
-        tauri::async_runtime::spawn(async move {
-            let started = Instant::now();
-            let mut background_warnings = enriched
-                .enrichment_warning
-                .take()
-                .into_iter()
-                .collect::<Vec<_>>();
-            if let Err(error) = enrich_references(&client, &mut enriched).await {
-                background_warnings.push(error);
-            }
-            if let Some(cache_path) = cache_path.as_ref() {
-                match database::store_pdf(
-                    cache_path,
-                    &document_digest,
-                    database::EXTRACTION_VERSION,
-                    REFERENCE_RESOLVER_VERSION,
-                    &extracted,
-                    &enriched,
-                ) {
-                    Ok(reference_ids) => apply_shared_ids(&mut enriched, &reference_ids),
-                    Err(error) => background_warnings.push(error),
-                }
-            }
-            enriched.enrichment_warning =
-                (!background_warnings.is_empty()).then(|| background_warnings.join(" "));
-            eprintln!(
-                "[resolver] semantic_enrichment_ms={}",
-                started.elapsed().as_millis()
-            );
-            let _ = app.emit(
-                "reference-enrichment-complete",
-                ReferenceEnrichmentEvent {
-                    path: event_path,
-                    analysis: enriched,
-                },
-            );
-        });
-    }
     Ok(result)
+}
+
+fn emit_resolution_progress(
+    app: &tauri::AppHandle,
+    path: &str,
+    analysis: &AnalysisResult,
+    resolving_reference_ids: &HashSet<String>,
+) {
+    let mut resolving_reference_ids = resolving_reference_ids.iter().cloned().collect::<Vec<_>>();
+    resolving_reference_ids.sort();
+    let _ = app.emit(
+        "reference-resolution-progress",
+        ReferenceResolutionProgressEvent {
+            path: path.to_owned(),
+            analysis: analysis.clone(),
+            resolving_reference_ids,
+        },
+    );
 }
 
 fn parse_tei(tei: &str, document_digest: &str) -> Result<AnalysisResult, String> {
@@ -755,142 +748,6 @@ fn normalize_arxiv(value: String) -> String {
         .next()
         .unwrap_or_default()
         .to_owned()
-}
-
-fn needs_semantic_enrichment(analysis: &AnalysisResult) -> bool {
-    analysis
-        .source_reference
-        .iter()
-        .chain(analysis.references.iter())
-        .any(|reference| {
-            matches!(
-                reference.resolution_status.as_str(),
-                "resolved" | "identified"
-            ) && reference.abstract_text.is_none()
-                && reference.open_access_pdf.is_none()
-                && !reference
-                    .resolution_source
-                    .as_deref()
-                    .is_some_and(|source| source.starts_with("semantic-scholar"))
-                && (reference.doi.is_some()
-                    || reference.arxiv_id.is_some()
-                    || reference.pmid.is_some())
-        })
-}
-
-async fn enrich_references(
-    client: &reqwest::Client,
-    analysis: &mut AnalysisResult,
-) -> Result<(), String> {
-    #[derive(Clone, Copy)]
-    enum ReferencePosition {
-        Source,
-        Bibliography(usize),
-    }
-
-    let mut identified: Vec<(String, Vec<ReferencePosition>)> = Vec::new();
-    let mut identifier_positions: HashMap<String, usize> = HashMap::new();
-    let references = analysis
-        .source_reference
-        .iter()
-        .map(|reference| (ReferencePosition::Source, reference))
-        .chain(
-            analysis
-                .references
-                .iter()
-                .enumerate()
-                .map(|(index, reference)| (ReferencePosition::Bibliography(index), reference)),
-        );
-    for (reference_position, reference) in references {
-        if !matches!(
-            reference.resolution_status.as_str(),
-            "resolved" | "identified"
-        ) || reference.abstract_text.is_some()
-            || reference.open_access_pdf.is_some()
-            || reference
-                .resolution_source
-                .as_deref()
-                .is_some_and(|source| source.starts_with("semantic-scholar"))
-        {
-            continue;
-        }
-        let identifier = reference
-            .doi
-            .as_ref()
-            .and_then(|doi| {
-                reference_resolver::semantic::normalize_identifier(&format!("DOI:{doi}"))
-            })
-            .or_else(|| {
-                reference.arxiv_id.as_ref().and_then(|arxiv| {
-                    reference_resolver::semantic::normalize_identifier(&format!("ARXIV:{arxiv}"))
-                })
-            })
-            .or_else(|| {
-                reference.pmid.as_ref().and_then(|pmid| {
-                    reference_resolver::semantic::normalize_identifier(&format!("PMID:{pmid}"))
-                })
-            });
-        let Some(identifier) = identifier else {
-            continue;
-        };
-        if let Some(position) = identifier_positions.get(&identifier).copied() {
-            identified[position].1.push(reference_position);
-        } else {
-            identifier_positions.insert(identifier.clone(), identified.len());
-            identified.push((identifier, vec![reference_position]));
-        }
-    }
-    if identified.is_empty() {
-        return Ok(());
-    }
-
-    let ids = identified
-        .iter()
-        .map(|(identifier, _)| identifier.clone())
-        .collect::<Vec<_>>();
-    let papers = reference_resolver::semantic::lookup_many(client, &ids).await?;
-    for (identifier, reference_positions) in &identified {
-        let Some(paper) = papers.get(identifier) else {
-            continue;
-        };
-        for reference_position in reference_positions {
-            let reference = match reference_position {
-                ReferencePosition::Source => analysis.source_reference.as_mut(),
-                ReferencePosition::Bibliography(index) => analysis.references.get_mut(*index),
-            };
-            if let Some(reference) = reference {
-                apply_semantic_scholar_paper(reference, paper);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn apply_semantic_scholar_paper(
-    reference: &mut Reference,
-    paper: &reference_resolver::semantic::SemanticWork,
-) {
-    if reference.title.is_none() {
-        reference.title.clone_from(&paper.title);
-    }
-    if reference.authors.is_empty() {
-        reference.authors = reference_resolver::semantic::authors(paper);
-    }
-    if reference.year.is_none() {
-        if let Some(year) = paper.year {
-            reference.year = Some(year.to_string());
-        }
-    }
-    if reference.abstract_text.is_none() {
-        reference.abstract_text.clone_from(&paper.r#abstract);
-    }
-    if reference.open_access_pdf.is_none() {
-        reference.open_access_pdf = reference_resolver::semantic::open_access_pdf(paper);
-    }
-    if reference.link.is_none() {
-        reference.link.clone_from(&paper.url);
-    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

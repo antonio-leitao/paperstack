@@ -24,7 +24,10 @@ struct CachedPdf {
 
 pub(crate) enum CacheLookup {
     Miss,
-    Fresh(AnalysisResult),
+    Fresh {
+        extracted: AnalysisResult,
+        resolved: AnalysisResult,
+    },
     NeedsResolution(AnalysisResult),
 }
 
@@ -268,17 +271,18 @@ fn load_pdf_from_connection(
     let Some(cached_json) = cached_json else {
         return Ok(CacheLookup::Miss);
     };
-    let mut cached: CachedPdf = serde_json::from_str(&cached_json)
+    let cached: CachedPdf = serde_json::from_str(&cached_json)
         .map_err(|error| format!("Invalid cached PDF analysis: {error}"))?;
     if cached.resolver_version != resolver_version {
-        cached.analysis.enrichment_warning = None;
-        return Ok(CacheLookup::NeedsResolution(cached.analysis));
+        let mut extracted = cached.analysis;
+        extracted.enrichment_warning = None;
+        return Ok(CacheLookup::NeedsResolution(extracted));
     }
-    for reference in cached
-        .analysis
+    let mut resolved = cached.analysis.clone();
+    for reference in resolved
         .source_reference
         .iter_mut()
-        .chain(cached.analysis.references.iter_mut())
+        .chain(resolved.references.iter_mut())
     {
         let Some(reference_id) = cached.reference_ids.get(&reference.id) else {
             continue;
@@ -288,8 +292,11 @@ fn load_pdf_from_connection(
             reference.shared_id = Some(resolve_root_id(connection, reference_id)?);
         }
     }
-    cached.analysis.enrichment_warning = None;
-    Ok(CacheLookup::Fresh(cached.analysis))
+    resolved.enrichment_warning = None;
+    Ok(CacheLookup::Fresh {
+        extracted: cached.analysis,
+        resolved,
+    })
 }
 
 fn store_pdf_with_connection(
@@ -1033,9 +1040,11 @@ mod tests {
         )
         .unwrap();
 
-        let CacheLookup::Fresh(healed) =
-            load_pdf_from_connection(&connection, "pdf_a", EXTRACTION_VERSION, "resolver-v1")
-                .unwrap()
+        let CacheLookup::Fresh {
+            extracted,
+            resolved: healed,
+        } = load_pdf_from_connection(&connection, "pdf_a", EXTRACTION_VERSION, "resolver-v1")
+            .unwrap()
         else {
             panic!("expected a fresh cache hit");
         };
@@ -1047,6 +1056,8 @@ mod tests {
         );
         assert_eq!(healed_reference.id, "occurrence_a");
         assert_eq!(healed_reference.bibliography_boxes.len(), 1);
+        assert!(extracted.references[0].doi.is_none());
+        assert_eq!(extracted.references[0].resolution_status, "unresolved");
     }
 
     #[test]
@@ -1097,13 +1108,16 @@ mod tests {
         )
         .unwrap();
 
-        let CacheLookup::Fresh(cached) = load_pdf_from_connection(
+        let CacheLookup::Fresh {
+            resolved: cached, ..
+        } = load_pdf_from_connection(
             &connection,
             "unknown_pdf",
             EXTRACTION_VERSION,
             "resolver-v1",
         )
-        .unwrap() else {
+        .unwrap()
+        else {
             panic!("expected a fresh cache hit");
         };
         assert!(cached.references[0].bibtex.is_empty());
@@ -1263,22 +1277,30 @@ mod tests {
         )
         .unwrap();
 
-        let CacheLookup::Fresh(healed_preprint) = load_pdf_from_connection(
+        let CacheLookup::Fresh {
+            resolved: healed_preprint,
+            ..
+        } = load_pdf_from_connection(
             &connection,
             "preprint_pdf",
             EXTRACTION_VERSION,
             "resolver-v1",
         )
-        .unwrap() else {
+        .unwrap()
+        else {
             panic!("expected a fresh preprint cache hit");
         };
-        let CacheLookup::Fresh(healed_journal) = load_pdf_from_connection(
+        let CacheLookup::Fresh {
+            resolved: healed_journal,
+            ..
+        } = load_pdf_from_connection(
             &connection,
             "journal_pdf",
             EXTRACTION_VERSION,
             "resolver-v1",
         )
-        .unwrap() else {
+        .unwrap()
+        else {
             panic!("expected a fresh journal cache hit");
         };
         assert_eq!(

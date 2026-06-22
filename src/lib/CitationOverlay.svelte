@@ -9,11 +9,13 @@
     renderedWidth,
     renderedHeight,
     references,
+    resolvingReferenceIds = [],
   }: {
     page: PageSize;
     renderedWidth: number;
     renderedHeight: number;
     references: Reference[];
+    resolvingReferenceIds?: string[];
   } = $props();
 
   let activeKey = $state<string | null>(null);
@@ -62,9 +64,12 @@
     {@const top = (callout.box.y / page.height) * renderedHeight}
     {@const width = (callout.box.width / page.width) * renderedWidth}
     {@const height = (callout.box.height / page.height) * renderedHeight}
+    {@const resolving = resolvingReferenceIds.includes(callout.reference.id)}
     <div
       class="callout"
+      class:resolving
       role="group"
+      aria-busy={resolving}
       aria-label={`Citation details for ${referenceLabel(callout.reference)}`}
       style:left={`${left}px`}
       style:top={`${top}px`}
@@ -97,7 +102,10 @@
           {#if callout.reference.abstractText}
             <span class="abstract">{callout.reference.abstractText}</span>
           {/if}
-          {#if callout.reference.link}
+          {#if resolving}
+            <span>Resolving metadata…</span>
+          {/if}
+          {#if callout.reference.link && !resolving}
             <a
               href={callout.reference.link}
               target="_blank"
@@ -108,7 +116,7 @@
               }}
             >Open paper</a>
           {/if}
-          {#if callout.reference.openAccessPdf}
+          {#if callout.reference.openAccessPdf && !resolving}
             <a
               href={callout.reference.openAccessPdf}
               target="_blank"
@@ -119,7 +127,7 @@
               }}
             >Open PDF</a>
           {/if}
-          {#if hasTrustedBibtex(callout.reference)}
+          {#if hasTrustedBibtex(callout.reference) && !resolving}
             <button
               type="button"
               aria-label={`Copy BibTeX for ${referenceLabel(callout.reference)}`}
@@ -169,6 +177,10 @@
     border-color: #165fc2;
     background: rgba(60, 130, 245, 0.25);
     outline: none;
+  }
+
+  .callout.resolving .citation {
+    opacity: 0.55;
   }
 
   .card {

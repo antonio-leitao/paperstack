@@ -36,10 +36,12 @@
     buffer,
     fileName,
     analysis,
+    resolvingReferenceIds = [],
   }: {
     buffer: ArrayBuffer;
     fileName: string;
     analysis: AnalysisResult | null;
+    resolvingReferenceIds?: string[];
   } = $props();
 
   const documentId = "prototype-document";
@@ -118,6 +120,7 @@
                           renderedWidth={page.width}
                           renderedHeight={page.height}
                           references={analysis.references}
+                          {resolvingReferenceIds}
                         />
                       {/if}
                     </PagePointerProvider>

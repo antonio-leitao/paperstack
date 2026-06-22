@@ -26,7 +26,7 @@ mod arxiv;
 #[path = "reference_resolver_openalex.rs"]
 mod openalex;
 #[path = "reference_resolver_semantic.rs"]
-pub(crate) mod semantic;
+mod semantic;
 
 use arxiv::ArxivWork;
 use openalex::OpenAlexWork;
@@ -112,7 +112,6 @@ pub struct ReferenceResolution {
 
 #[derive(Debug)]
 pub struct ResolutionBatch {
-    pub items: Vec<ReferenceResolution>,
     pub warning: Option<String>,
 }
 
@@ -200,13 +199,22 @@ struct ScoredSemanticCandidate {
 
 type OpenAlexBatchResult = Arc<Result<HashMap<String, OpenAlexWork>, String>>;
 type ArxivBatchResult = Arc<Result<HashMap<String, ArxivWork>, String>>;
-type SemanticBatchResult = Arc<Result<HashMap<String, SemanticWork>, String>>;
 
 #[derive(Clone)]
 struct BatchLookups {
     openalex: Shared<BoxFuture<'static, OpenAlexBatchResult>>,
     arxiv: Shared<BoxFuture<'static, ArxivBatchResult>>,
-    semantic: Shared<BoxFuture<'static, SemanticBatchResult>>,
+}
+
+struct PendingSemanticResolution {
+    input: ReferenceInput,
+    fallback: ReferenceResolution,
+    provider_errors: Vec<String>,
+}
+
+enum PrimaryResolution {
+    Complete(ReferenceResolution),
+    Pending(PendingSemanticResolution),
 }
 
 pub fn document_digest(bytes: &[u8]) -> String {
@@ -241,7 +249,14 @@ pub fn stable_reference_id(
     format!("ref_{}", hex_digest(&digest[..16]))
 }
 
-pub async fn resolve_references(client: &Client, inputs: Vec<ReferenceInput>) -> ResolutionBatch {
+pub async fn resolve_references<F>(
+    client: &Client,
+    inputs: Vec<ReferenceInput>,
+    mut on_resolved: F,
+) -> ResolutionBatch
+where
+    F: FnMut(Vec<ReferenceResolution>),
+{
     let mut groups: Vec<(ReferenceInput, Vec<(usize, String)>)> = Vec::new();
     let mut group_positions: HashMap<String, usize> = HashMap::new();
     for (index, input) in inputs.into_iter().enumerate() {
@@ -257,20 +272,77 @@ pub async fn resolve_references(client: &Client, inputs: Vec<ReferenceInput>) ->
 
     let lookups = preload_identifiers(client, &groups);
 
-    let resolved_groups = stream::iter(groups)
-        .map(|(input, members)| {
-            let lookups = &lookups;
-            async move { (members, resolve_reference(client, input, lookups).await) }
-        })
-        .buffer_unordered(MAX_CONCURRENCY)
-        .collect::<Vec<_>>()
-        .await;
+    let mut primary_groups = Box::pin(
+        stream::iter(groups)
+            .map(|(input, members)| {
+                let lookups = &lookups;
+                async move {
+                    (
+                        members,
+                        resolve_primary_reference(client, input, lookups).await,
+                    )
+                }
+            })
+            .buffer_unordered(MAX_CONCURRENCY),
+    );
     let mut indexed = Vec::new();
-    for (members, resolution) in resolved_groups {
-        for (index, reference_id) in members {
-            let mut item = resolution.clone();
-            item.reference_id = reference_id;
-            indexed.push((index, item));
+    let mut pending = Vec::new();
+    while let Some((members, resolution)) = primary_groups.next().await {
+        match resolution {
+            PrimaryResolution::Complete(resolution) => {
+                record_resolution(members, resolution, &mut indexed, &mut on_resolved);
+            }
+            PrimaryResolution::Pending(resolution) => pending.push((members, resolution)),
+        }
+    }
+
+    if !pending.is_empty() {
+        let semantic_ids = pending
+            .iter()
+            .filter_map(|(_, pending)| semantic_identifier(&pending.input))
+            .collect::<Vec<_>>();
+        let semantic_count = semantic_ids.len();
+        let (semantic_works, semantic_batch_error) =
+            match semantic::lookup_many(client, &semantic_ids).await {
+                Ok(found) => {
+                    eprintln!(
+                        "[resolver] semantic_exact_ids={} semantic_exact_matches={}",
+                        semantic_count,
+                        found.len(),
+                    );
+                    (Arc::new(found), None)
+                }
+                Err(error) => {
+                    eprintln!(
+                        "[resolver] semantic_exact_ids={} batch_error={}",
+                        semantic_count,
+                        truncate(&error, 300),
+                    );
+                    (Arc::new(HashMap::new()), Some(error))
+                }
+            };
+        let mut semantic_groups = Box::pin(
+            stream::iter(pending)
+                .map(|(members, pending)| {
+                    let semantic_works = Arc::clone(&semantic_works);
+                    let semantic_batch_error = semantic_batch_error.clone();
+                    async move {
+                        (
+                            members,
+                            resolve_semantic_reference(
+                                client,
+                                pending,
+                                &semantic_works,
+                                semantic_batch_error.as_deref(),
+                            )
+                            .await,
+                        )
+                    }
+                })
+                .buffer_unordered(MAX_CONCURRENCY),
+        );
+        while let Some((members, resolution)) = semantic_groups.next().await {
+            record_resolution(members, resolution, &mut indexed, &mut on_resolved);
         }
     }
     indexed.sort_by_key(|(index, _)| *index);
@@ -291,7 +363,25 @@ pub async fn resolve_references(client: &Client, inputs: Vec<ReferenceInput>) ->
         )
     });
 
-    ResolutionBatch { items, warning }
+    ResolutionBatch { warning }
+}
+
+fn record_resolution<F>(
+    members: Vec<(usize, String)>,
+    resolution: ReferenceResolution,
+    indexed: &mut Vec<(usize, ReferenceResolution)>,
+    on_resolved: &mut F,
+) where
+    F: FnMut(Vec<ReferenceResolution>),
+{
+    let mut completed = Vec::with_capacity(members.len());
+    for (index, reference_id) in members {
+        let mut item = resolution.clone();
+        item.reference_id = reference_id;
+        completed.push(item.clone());
+        indexed.push((index, item));
+    }
+    on_resolved(completed);
 }
 
 fn preload_identifiers(
@@ -300,7 +390,6 @@ fn preload_identifiers(
 ) -> BatchLookups {
     let mut dois = Vec::new();
     let mut arxiv_ids = Vec::new();
-    let mut semantic_ids = Vec::new();
     for (input, _) in groups {
         if let Some(doi) = input
             .doi
@@ -309,31 +398,16 @@ fn preload_identifiers(
             .filter(|doi| !doi.is_empty())
             .or_else(|| input.raw_citation.as_deref().and_then(extract_doi))
         {
-            if let Some(identifier) = semantic::normalize_identifier(&format!("DOI:{doi}")) {
-                semantic_ids.push(identifier);
-            }
             dois.push(doi);
         }
         if let Some(arxiv_id) = explicit_arxiv_id(input) {
-            if let Some(identifier) = semantic::normalize_identifier(&format!("ARXIV:{arxiv_id}")) {
-                semantic_ids.push(identifier);
-            }
             arxiv_ids.push(arxiv_id);
-        }
-        if let Some(identifier) = input
-            .pmid
-            .as_deref()
-            .and_then(|pmid| semantic::normalize_identifier(&format!("PMID:{pmid}")))
-        {
-            semantic_ids.push(identifier);
         }
     }
     dois.sort();
     dois.dedup();
     arxiv_ids.sort();
     arxiv_ids.dedup();
-    semantic_ids.sort();
-    semantic_ids.dedup();
     let openalex_count = dois.len();
     let openalex_client = client.clone();
     let openalex = async move {
@@ -362,39 +436,14 @@ fn preload_identifiers(
     .boxed()
     .shared();
 
-    let semantic_count = semantic_ids.len();
-    let semantic_client = client.clone();
-    let semantic = async move {
-        let result = semantic::lookup_many(&semantic_client, &semantic_ids).await;
-        match result.as_ref() {
-            Ok(found) => eprintln!(
-                "[resolver] semantic_exact_ids={} semantic_exact_matches={}",
-                semantic_count,
-                found.len(),
-            ),
-            Err(error) => eprintln!(
-                "[resolver] semantic_exact_ids={} batch_error={}",
-                semantic_count,
-                truncate(error, 300),
-            ),
-        }
-        Arc::new(result)
-    }
-    .boxed()
-    .shared();
-
-    BatchLookups {
-        openalex,
-        arxiv,
-        semantic,
-    }
+    BatchLookups { openalex, arxiv }
 }
 
-async fn resolve_reference(
+async fn resolve_primary_reference(
     client: &Client,
     input: ReferenceInput,
     lookups: &BatchLookups,
-) -> ReferenceResolution {
+) -> PrimaryResolution {
     let mut fallback = fallback_resolution(&input);
     let mut provider_errors = Vec::new();
     let explicit_doi = input
@@ -416,12 +465,12 @@ async fn resolve_reference(
                     fallback.confidence = Some(title_similarity);
                     fallback.source = Some("crossref-doi-conflict".to_owned());
                 } else {
-                    return accepted_resolution(
+                    return PrimaryResolution::Complete(accepted_resolution(
                         &input,
                         work,
                         title_similarity.max(0.97),
                         "crossref-doi",
-                    );
+                    ));
                 }
             }
             Ok(None) => {}
@@ -439,7 +488,12 @@ async fn resolve_reference(
         match openalex_work {
             Some(work) if !has_openalex_hard_conflict(&input, &work) => {
                 let confidence = openalex_title_similarity(&input, &work).max(0.97);
-                return accepted_openalex_resolution(&input, work, confidence, "openalex-doi");
+                return PrimaryResolution::Complete(accepted_openalex_resolution(
+                    &input,
+                    work,
+                    confidence,
+                    "openalex-doi",
+                ));
             }
             Some(work) => {
                 fallback.status = ResolutionStatus::Ambiguous;
@@ -470,12 +524,12 @@ async fn resolve_reference(
                             .unwrap_or(0.0);
                         if should_accept(top, runner_up_score) {
                             let top = scored.remove(0);
-                            return accepted_resolution(
+                            return PrimaryResolution::Complete(accepted_resolution(
                                 &input,
                                 top.work,
                                 top.score,
                                 "crossref-search",
-                            );
+                            ));
                         }
                         if top.title_similarity >= 0.75 {
                             fallback.status = ResolutionStatus::Ambiguous;
@@ -501,7 +555,9 @@ async fn resolve_reference(
         match arxiv_work {
             Some(work) if !has_arxiv_hard_conflict(&input, &work) => {
                 let confidence = arxiv_title_similarity(&input, &work).max(0.97);
-                return accepted_arxiv_resolution(&input, work, confidence, "arxiv-id");
+                return PrimaryResolution::Complete(accepted_arxiv_resolution(
+                    &input, work, confidence, "arxiv-id",
+                ));
             }
             Some(work) => {
                 fallback.status = ResolutionStatus::Ambiguous;
@@ -536,12 +592,12 @@ async fn resolve_reference(
                         .unwrap_or(0.0);
                     if should_accept_openalex(top, runner_up_score) {
                         let top = scored.remove(0);
-                        return accepted_openalex_resolution(
+                        return PrimaryResolution::Complete(accepted_openalex_resolution(
                             &input,
                             top.work,
                             top.score,
                             "openalex-search",
-                        );
+                        ));
                     }
                     if top.title_similarity >= 0.80
                         && fallback.status != ResolutionStatus::Ambiguous
@@ -577,12 +633,12 @@ async fn resolve_reference(
                             .unwrap_or(0.0);
                         if should_accept_arxiv(top, runner_up_score) {
                             let top = scored.remove(0);
-                            return accepted_arxiv_resolution(
+                            return PrimaryResolution::Complete(accepted_arxiv_resolution(
                                 &input,
                                 top.work,
                                 top.score,
                                 "arxiv-search",
-                            );
+                            ));
                         }
                         if top.title_similarity >= 0.80
                             && fallback.status != ResolutionStatus::Ambiguous
@@ -598,15 +654,30 @@ async fn resolve_reference(
         }
     }
 
+    PrimaryResolution::Pending(PendingSemanticResolution {
+        input,
+        fallback,
+        provider_errors,
+    })
+}
+
+async fn resolve_semantic_reference(
+    client: &Client,
+    pending: PendingSemanticResolution,
+    semantic_works: &HashMap<String, SemanticWork>,
+    semantic_batch_error: Option<&str>,
+) -> ReferenceResolution {
+    let PendingSemanticResolution {
+        input,
+        mut fallback,
+        mut provider_errors,
+    } = pending;
+    if let Some(error) = semantic_batch_error {
+        provider_errors.push(error.to_owned());
+    }
+
     if let Some(identifier) = semantic_identifier(&input) {
-        let semantic_batch = lookups.semantic.clone().await;
-        let semantic_work = semantic_batch
-            .as_ref()
-            .as_ref()
-            .ok()
-            .and_then(|found| found.get(&identifier))
-            .cloned();
-        match semantic_work {
+        match semantic_works.get(&identifier).cloned() {
             Some(work) if !has_semantic_hard_conflict(&input, &work) => {
                 let confidence = semantic_title_similarity(&input, &work).max(0.97);
                 return accepted_semantic_resolution(

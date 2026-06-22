@@ -32,6 +32,7 @@
   let leftSidebarOpen = $state(true);
   let rightSidebarOpen = $state(true);
   let dismissedSourceId = $state<string | null>(null);
+  let resolvingReferenceIds = $state<string[]>([]);
   let analysisRequest = 0;
 
   const desktop = isTauri();
@@ -49,20 +50,28 @@
       : null,
   );
 
-  type ReferenceEnrichmentEvent = {
+  type ReferenceResolutionProgressEvent = {
     path: string;
     analysis: AnalysisResult;
+    resolvingReferenceIds: string[];
   };
 
   onMount(() => {
     if (desktop) void refreshLibrary();
-    let unlisten: (() => void) | undefined;
-    void listen<ReferenceEnrichmentEvent>("reference-enrichment-complete", (event) => {
-      if (event.payload.path === pdfPath) analysis = event.payload.analysis;
+    let unlistenResolution: (() => void) | undefined;
+    void listen<ReferenceResolutionProgressEvent>("reference-resolution-progress", (event) => {
+      if (event.payload.path !== pdfPath) return;
+      analysis = event.payload.analysis;
+      resolvingReferenceIds = event.payload.resolvingReferenceIds;
+      grobidStatus = resolvingReferenceIds.length
+        ? `Resolving ${resolvingReferenceIds.length} reference(s)…`
+        : "Resolution complete";
     }).then((dispose) => {
-      unlisten = dispose;
+      unlistenResolution = dispose;
     });
-    return () => unlisten?.();
+    return () => {
+      unlistenResolution?.();
+    };
   });
 
   function errorMessage(error: unknown): string {
@@ -153,9 +162,10 @@
     analyzing = false;
     grobidStatus = null;
     dismissedSourceId = null;
+    resolvingReferenceIds = [];
   }
 
-  async function analyzePdf(path = pdfPath) {
+  async function analyzePdf(path = pdfPath, forceResolve = false) {
     if (!path) return;
     const request = ++analysisRequest;
     analyzing = true;
@@ -165,12 +175,17 @@
       const result = await invoke<AnalysisResult>("analyze_pdf", {
         path,
         grobidUrl: null,
+        forceResolve,
       });
-      if (request === analysisRequest && path === pdfPath) analysis = result;
+      if (request === analysisRequest && path === pdfPath) {
+        analysis = result;
+        resolvingReferenceIds = [];
+      }
     } catch (error) {
       if (request === analysisRequest) {
         grobidStatus = "GROBID unavailable";
         analysisError = errorMessage(error);
+        resolvingReferenceIds = [];
       }
     } finally {
       if (request === analysisRequest) analyzing = false;
@@ -325,6 +340,10 @@
       failedBibtexId = reference.id;
     }
   }
+
+  function isResolving(reference: Reference): boolean {
+    return resolvingReferenceIds.includes(reference.id);
+  }
 </script>
 
 {#snippet documentItems(items: LibraryDocument[])}
@@ -395,7 +414,7 @@
         </div>
       </details>
 
-      <button type="button" onclick={() => void analyzePdf()} disabled={analyzing}>
+      <button type="button" onclick={() => void analyzePdf(pdfPath, true)} disabled={analyzing}>
         {analyzing ? "Analyzing…" : "Analyze again"}
       </button>
     {/if}
@@ -492,7 +511,12 @@
       <div class="viewer-panel">
         {#if pdfBuffer}
           {#key pdfBuffer}
-            <PdfViewer buffer={pdfBuffer} fileName={pdfName} {analysis} />
+            <PdfViewer
+              buffer={pdfBuffer}
+              fileName={pdfName}
+              {analysis}
+              {resolvingReferenceIds}
+            />
           {/key}
         {:else}
           <div class="empty">
@@ -516,13 +540,13 @@
             Hide
           </button>
         </header>
-        {#if analyzing}
+        {#if analyzing && !analysis}
           <p>Extracting and resolving references…</p>
         {:else if analysis?.references.length}
           <ol>
             {#each analysis.references as reference (reference.id)}
-              <li>
-                {#if reference.link}
+              <li class:resolving={isResolving(reference)} aria-busy={isResolving(reference)}>
+                {#if reference.link && !isResolving(reference)}
                   <a
                     href={reference.link}
                     target="_blank"
@@ -537,8 +561,11 @@
                 {#if reference.authors.length}
                   <small>{reference.authors.join(", ")}</small>
                 {/if}
+                {#if isResolving(reference)}
+                  <small>Resolving metadata…</small>
+                {/if}
                 <small>{reference.calloutBoxes.length} callout(s)</small>
-                {#if hasTrustedBibtex(reference)}
+                {#if hasTrustedBibtex(reference) && !isResolving(reference)}
                   <button type="button" onclick={() => void copyBibtex(reference)}>
                     {failedBibtexId === reference.id
                       ? "Copy failed"
@@ -783,6 +810,10 @@
   .references li {
     margin-bottom: 13px;
     font-size: 13px;
+  }
+
+  .references li.resolving {
+    opacity: 0.55;
   }
 
   .references a,
