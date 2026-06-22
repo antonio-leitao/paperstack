@@ -11,7 +11,7 @@ use tauri::Manager;
 use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
 use uuid::Uuid;
 
-pub(crate) const EXTRACTION_VERSION: &str = "grobid-full-coordinates-v1";
+pub(crate) const EXTRACTION_VERSION: &str = "grobid-full-coordinates-v2-source-header";
 const FUZZY_CANDIDATE_LIMIT: i64 = 500;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -65,14 +65,22 @@ struct MatchCandidate {
     corroborators: usize,
 }
 
-pub(crate) fn database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn app_data_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let directory = app
         .path()
         .app_data_dir()
-        .map_err(|error| format!("Could not determine cache directory: {error}"))?;
+        .map_err(|error| format!("Could not determine application data directory: {error}"))?;
     std::fs::create_dir_all(&directory)
-        .map_err(|error| format!("Could not create cache directory: {error}"))?;
-    Ok(directory.join("research-pdf-cache.sqlite3"))
+        .map_err(|error| format!("Could not create application data directory: {error}"))?;
+    Ok(directory)
+}
+
+pub(crate) fn database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app_data_directory(app)?.join("research-pdf.sqlite3"))
+}
+
+pub(crate) fn connection(app: &tauri::AppHandle) -> Result<Connection, String> {
+    open_connection(&database_path(app)?)
 }
 
 pub(crate) fn load_pdf(
@@ -92,7 +100,7 @@ pub(crate) fn store_pdf(
     resolver_version: &str,
     extracted: &AnalysisResult,
     resolved: &AnalysisResult,
-) -> Result<(), String> {
+) -> Result<HashMap<String, String>, String> {
     let mut connection = open_connection(path)?;
     store_pdf_with_connection(
         &mut connection,
@@ -106,18 +114,22 @@ pub(crate) fn store_pdf(
 
 pub(crate) fn apply_shared_references(
     path: &Path,
-    references: &mut [Reference],
+    analysis: &mut AnalysisResult,
 ) -> Result<usize, String> {
     let connection = open_connection(path)?;
-    apply_shared_references_from_connection(&connection, references)
+    apply_shared_references_from_connection(&connection, analysis)
 }
 
 fn apply_shared_references_from_connection(
     connection: &Connection,
-    references: &mut [Reference],
+    analysis: &mut AnalysisResult,
 ) -> Result<usize, String> {
     let mut hits = 0;
-    for reference in references {
+    for reference in analysis
+        .source_reference
+        .iter_mut()
+        .chain(analysis.references.iter_mut())
+    {
         let incoming = ReferenceData::from_reference(reference);
         let keys = ReferenceKeys::from_data(&incoming);
         let mut exact_matches = exact_match_ids(connection, &keys)?;
@@ -131,6 +143,7 @@ fn apply_shared_references_from_connection(
         let Some(reference_id) = reference_id else {
             continue;
         };
+        reference.shared_id = Some(reference_id.clone());
         let Some(stored) = load_stored_reference(connection, &reference_id)? else {
             continue;
         };
@@ -146,7 +159,7 @@ fn apply_shared_references_from_connection(
     Ok(hits)
 }
 
-fn open_connection(path: &Path) -> Result<Connection, String> {
+pub(crate) fn open_connection(path: &Path) -> Result<Connection, String> {
     let connection = Connection::open(path)
         .map_err(|error| format!("Could not open analysis cache: {error}"))?;
     initialize(&connection)?;
@@ -198,6 +211,40 @@ fn initialize(connection: &Connection) -> Result<(), String> {
                 ON "references"(openalex_id) WHERE openalex_id IS NOT NULL AND merged_into IS NULL;
             CREATE INDEX IF NOT EXISTS references_match_keys
                 ON "references"(author_key, year, title_key) WHERE merged_into IS NULL;
+
+            CREATE TABLE IF NOT EXISTS documents (
+                id TEXT PRIMARY KEY,
+                content_hash TEXT NOT NULL UNIQUE,
+                original_filename TEXT NOT NULL,
+                title TEXT NOT NULL,
+                byte_size INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_viewed_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS document_reference_links (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                reference_id TEXT NOT NULL UNIQUE REFERENCES "references"(id),
+                linked_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS stacks (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                name_key TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS document_stacks (
+                document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                stack_id TEXT NOT NULL REFERENCES stacks(id) ON DELETE CASCADE,
+                PRIMARY KEY (document_id, stack_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS document_stacks_by_stack ON document_stacks(stack_id);
+            CREATE INDEX IF NOT EXISTS documents_by_last_viewed
+                ON documents(last_viewed_at DESC);
             "#,
         )
         .map_err(|error| format!("Could not initialize analysis cache: {error}"))?;
@@ -227,12 +274,18 @@ fn load_pdf_from_connection(
         cached.analysis.enrichment_warning = None;
         return Ok(CacheLookup::NeedsResolution(cached.analysis));
     }
-    for reference in &mut cached.analysis.references {
+    for reference in cached
+        .analysis
+        .source_reference
+        .iter_mut()
+        .chain(cached.analysis.references.iter_mut())
+    {
         let Some(reference_id) = cached.reference_ids.get(&reference.id) else {
             continue;
         };
         if let Some(stored) = load_stored_reference(connection, reference_id)? {
             stored.data.apply(reference);
+            reference.shared_id = Some(resolve_root_id(connection, reference_id)?);
         }
     }
     cached.analysis.enrichment_warning = None;
@@ -246,18 +299,22 @@ fn store_pdf_with_connection(
     resolver_version: &str,
     extracted: &AnalysisResult,
     resolved: &AnalysisResult,
-) -> Result<(), String> {
+) -> Result<HashMap<String, String>, String> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| format!("Could not start analysis cache transaction: {error}"))?;
     let mut reference_ids = HashMap::new();
-    for reference in &resolved.references {
+    for reference in resolved
+        .source_reference
+        .iter()
+        .chain(resolved.references.iter())
+    {
         let shared_id = upsert_reference(&transaction, reference)?;
         reference_ids.insert(reference.id.clone(), shared_id);
     }
     let cached = CachedPdf {
         analysis: extracted.clone(),
-        reference_ids,
+        reference_ids: reference_ids.clone(),
         resolver_version: resolver_version.to_owned(),
     };
     let cached_json = serde_json::to_string(&cached)
@@ -277,7 +334,8 @@ fn store_pdf_with_connection(
         .map_err(|error| format!("Could not write PDF cache: {error}"))?;
     transaction
         .commit()
-        .map_err(|error| format!("Could not commit analysis cache: {error}"))
+        .map_err(|error| format!("Could not commit analysis cache: {error}"))?;
+    Ok(reference_ids)
 }
 
 fn upsert_reference(connection: &Connection, reference: &Reference) -> Result<String, String> {
@@ -386,6 +444,7 @@ fn merge_reference_rows(
     let Some(loser) = load_stored_reference(connection, loser_id)? else {
         return Ok(());
     };
+    merge_document_links(connection, winner_id, loser_id)?;
     connection
         .execute(
             "UPDATE \"references\" SET merged_into = ?1, updated_at = ?2 WHERE id = ?3",
@@ -400,6 +459,56 @@ fn merge_reference_rows(
         &merged,
         winner.confidence.max(loser.confidence),
     )
+}
+
+fn merge_document_links(
+    connection: &Connection,
+    winner_id: &str,
+    loser_id: &str,
+) -> Result<(), String> {
+    let winner_document: Option<String> = connection
+        .query_row(
+            "SELECT document_id FROM document_reference_links WHERE reference_id = ?1",
+            params![winner_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not inspect the winning reference link: {error}"))?;
+    let loser_document: Option<String> = connection
+        .query_row(
+            "SELECT document_id FROM document_reference_links WHERE reference_id = ?1",
+            params![loser_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not inspect the merged reference link: {error}"))?;
+
+    match (winner_document, loser_document) {
+        (None, Some(_)) => {
+            connection
+                .execute(
+                    "UPDATE document_reference_links SET reference_id = ?1 WHERE reference_id = ?2",
+                    params![winner_id, loser_id],
+                )
+                .map_err(|error| {
+                    format!("Could not preserve the document reference link: {error}")
+                })?;
+        }
+        (Some(winner_document), Some(loser_document)) if winner_document != loser_document => {
+            connection
+                .execute(
+                    "DELETE FROM document_reference_links WHERE reference_id = ?1",
+                    params![loser_id],
+                )
+                .map_err(|error| format!("Could not resolve duplicate document links: {error}"))?;
+            eprintln!(
+                "[library] detached_document={} reason=references_merged kept_document={}",
+                loser_document, winner_document
+            );
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn fuzzy_match_id(
@@ -520,7 +629,10 @@ fn load_stored_reference(
     Ok(Some(StoredReference { data, confidence }))
 }
 
-fn resolve_root_id(connection: &Connection, reference_id: &str) -> Result<String, String> {
+pub(crate) fn resolve_root_id(
+    connection: &Connection,
+    reference_id: &str,
+) -> Result<String, String> {
     let mut current = reference_id.to_owned();
     let mut visited = HashSet::new();
     for _ in 0..16 {
@@ -810,7 +922,7 @@ fn token_dice(left: &str, right: &str) -> f64 {
     (2 * intersection) as f64 / (left.len() + right.len()) as f64
 }
 
-fn unix_timestamp() -> i64 {
+pub(crate) fn unix_timestamp() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -826,6 +938,7 @@ mod tests {
         Reference {
             id: id.to_owned(),
             source_id: format!("source_{id}"),
+            shared_id: None,
             canonical_id: None,
             raw_citation: Some(format!("Doe. {title}. 2024.")),
             title: Some(title.to_owned()),
@@ -864,9 +977,24 @@ mod tests {
                 width: 612.0,
                 height: 792.0,
             }],
+            source_reference: None,
             references: vec![reference],
             enrichment_warning: None,
         }
+    }
+
+    fn insert_document(connection: &Connection, id: &str) {
+        connection
+            .execute(
+                r#"
+                INSERT INTO documents (
+                    id, content_hash, original_filename, title, byte_size,
+                    created_at, updated_at, last_viewed_at
+                ) VALUES (?1, ?2, 'paper.pdf', 'Paper', 100, 1, 1, 1)
+                "#,
+                params![id, format!("hash-{id}")],
+            )
+            .unwrap();
     }
 
     #[test]
@@ -944,15 +1072,14 @@ mod tests {
         )
         .unwrap();
 
-        let mut new_references = vec![reference("new_occurrence", "A Useful Paper", 0.4)];
-        let hits =
-            apply_shared_references_from_connection(&connection, &mut new_references).unwrap();
+        let mut new_analysis = analysis(reference("new_occurrence", "A Useful Paper", 0.4));
+        let hits = apply_shared_references_from_connection(&connection, &mut new_analysis).unwrap();
         assert_eq!(hits, 1);
         assert_eq!(
-            new_references[0].canonical_id.as_deref(),
+            new_analysis.references[0].canonical_id.as_deref(),
             Some("doi:10.1234/useful")
         );
-        assert_eq!(new_references[0].id, "new_occurrence");
+        assert_eq!(new_analysis.references[0].id, "new_occurrence");
     }
 
     #[test]
@@ -1029,6 +1156,60 @@ mod tests {
     fn author_match_keys_strip_et_al_suffixes() {
         assert_eq!(normalized_surname("Jane Doe et al."), "doe");
         assert_eq!(normalized_surname("Doe, Jane et al."), "doe");
+    }
+
+    #[test]
+    fn document_reference_links_are_optional_one_to_one() {
+        let connection = Connection::open_in_memory().unwrap();
+        initialize(&connection).unwrap();
+        insert_document(&connection, "document-a");
+        insert_document(&connection, "document-b");
+
+        let mut work = reference("work", "A Unique Work", 0.99);
+        work.canonical_id = Some("doi:10.1234/unique".to_owned());
+        work.doi = Some("10.1234/unique".to_owned());
+        work.resolution_status = "resolved".to_owned();
+        work.resolution_source = Some("crossref-doi".to_owned());
+        let reference_id = upsert_reference(&connection, &work).unwrap();
+        connection
+            .execute(
+                "INSERT INTO document_reference_links VALUES (?1, ?2, 1)",
+                params!["document-a", reference_id],
+            )
+            .unwrap();
+
+        let duplicate = connection.execute(
+            "INSERT INTO document_reference_links VALUES (?1, ?2, 1)",
+            params!["document-b", reference_id],
+        );
+        assert!(duplicate.is_err());
+    }
+
+    #[test]
+    fn reference_merges_preserve_an_existing_document_link() {
+        let connection = Connection::open_in_memory().unwrap();
+        initialize(&connection).unwrap();
+        insert_document(&connection, "document");
+        let winner =
+            upsert_reference(&connection, &reference("winner", "Published Work", 0.99)).unwrap();
+        let loser =
+            upsert_reference(&connection, &reference("loser", "Earlier Preprint", 0.95)).unwrap();
+        connection
+            .execute(
+                "INSERT INTO document_reference_links VALUES (?1, ?2, 1)",
+                params!["document", loser],
+            )
+            .unwrap();
+
+        merge_reference_rows(&connection, &winner, &loser).unwrap();
+        let linked_reference: String = connection
+            .query_row(
+                "SELECT reference_id FROM document_reference_links WHERE document_id = 'document'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(linked_reference, winner);
     }
 
     #[test]

@@ -7,6 +7,9 @@
     "core:default",
     "opener:default",
     "dialog:allow-open",
-    "fs:allow-read-file"
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [{ "path": "$APPDATA/documents/*" }]
+    }
   ]
 }

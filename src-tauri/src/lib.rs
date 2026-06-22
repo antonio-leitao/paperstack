@@ -1,4 +1,5 @@
-mod analysis_cache;
+mod database;
+mod document_library;
 mod reference_resolver;
 
 use reference_resolver::{ReferenceInput, ReferenceResolution, ResolutionStatus};
@@ -42,6 +43,7 @@ struct PdfBox {
 struct Reference {
     id: String,
     source_id: String,
+    shared_id: Option<String>,
     canonical_id: Option<String>,
     raw_citation: Option<String>,
     title: Option<String>,
@@ -70,6 +72,7 @@ struct Reference {
 #[serde(rename_all = "camelCase")]
 struct AnalysisResult {
     pages: Vec<PageSize>,
+    source_reference: Option<Reference>,
     references: Vec<Reference>,
     enrichment_warning: Option<String>,
 }
@@ -94,7 +97,6 @@ enum HealthStatus {
     Unreachable(String),
 }
 
-#[tauri::command]
 async fn resolve_grobid(hosted_url: Option<String>) -> Result<GrobidService, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
@@ -185,21 +187,21 @@ async fn analyze_pdf(
     let document_digest = reference_resolver::document_digest(&pdf);
     let mut cache_warnings = Vec::new();
     let mut cached_extraction = None;
-    let cache_path = match analysis_cache::database_path(&app) {
+    let cache_path = match database::database_path(&app) {
         Ok(path) => {
-            match analysis_cache::load_pdf(
+            match database::load_pdf(
                 &path,
                 &document_digest,
-                analysis_cache::EXTRACTION_VERSION,
+                database::EXTRACTION_VERSION,
                 REFERENCE_RESOLVER_VERSION,
             ) {
-                Ok(analysis_cache::CacheLookup::Fresh(result)) => {
+                Ok(database::CacheLookup::Fresh(result)) => {
                     cached_extraction = Some(result);
                 }
-                Ok(analysis_cache::CacheLookup::NeedsResolution(extracted)) => {
+                Ok(database::CacheLookup::NeedsResolution(extracted)) => {
                     cached_extraction = Some(extracted);
                 }
-                Ok(analysis_cache::CacheLookup::Miss) => {}
+                Ok(database::CacheLookup::Miss) => {}
                 Err(error) => cache_warnings.push(error),
             }
             Some(path)
@@ -260,7 +262,7 @@ async fn analyze_pdf(
     let mut warnings = cache_warnings;
     let cache_started = Instant::now();
     let cache_hits = if let Some(cache_path) = cache_path.as_ref() {
-        match analysis_cache::apply_shared_references(cache_path, &mut result.references) {
+        match database::apply_shared_references(cache_path, &mut result) {
             Ok(hits) => hits,
             Err(error) => {
                 warnings.push(error);
@@ -272,8 +274,9 @@ async fn analyze_pdf(
     };
     let cache_elapsed = cache_started.elapsed();
     let inputs = result
-        .references
+        .source_reference
         .iter()
+        .chain(result.references.iter())
         .filter(|reference| reference.resolution_status != ResolutionStatus::Resolved.as_str())
         .map(reference_input)
         .collect::<Vec<_>>();
@@ -282,7 +285,7 @@ async fn analyze_pdf(
     let resolution_batch = reference_resolver::resolve_references(&client, inputs).await;
     let resolution_elapsed = resolution_started.elapsed();
     warnings.extend(resolution_batch.warning);
-    apply_resolutions(&mut result.references, resolution_batch.items);
+    apply_resolutions(&mut result, resolution_batch.items);
     eprintln!(
         "[resolver] references={} cache_hits={} network_references={} cache_ms={} resolution_ms={}",
         result.references.len(),
@@ -292,19 +295,20 @@ async fn analyze_pdf(
         resolution_elapsed.as_millis(),
     );
     if let Some(cache_path) = cache_path.as_ref() {
-        if let Err(error) = analysis_cache::store_pdf(
+        match database::store_pdf(
             cache_path,
             &document_digest,
-            analysis_cache::EXTRACTION_VERSION,
+            database::EXTRACTION_VERSION,
             REFERENCE_RESOLVER_VERSION,
             &extracted,
             &result,
         ) {
-            warnings.push(error);
+            Ok(reference_ids) => apply_shared_ids(&mut result, &reference_ids),
+            Err(error) => warnings.push(error),
         }
     }
     result.enrichment_warning = (!warnings.is_empty()).then(|| warnings.join(" "));
-    if needs_semantic_enrichment(&result.references) {
+    if needs_semantic_enrichment(&result) {
         let app = app.clone();
         let event_path = path.clone();
         let cache_path = cache_path.clone();
@@ -319,19 +323,20 @@ async fn analyze_pdf(
                 .take()
                 .into_iter()
                 .collect::<Vec<_>>();
-            if let Err(error) = enrich_references(&client, &mut enriched.references).await {
+            if let Err(error) = enrich_references(&client, &mut enriched).await {
                 background_warnings.push(error);
             }
             if let Some(cache_path) = cache_path.as_ref() {
-                if let Err(error) = analysis_cache::store_pdf(
+                match database::store_pdf(
                     cache_path,
                     &document_digest,
-                    analysis_cache::EXTRACTION_VERSION,
+                    database::EXTRACTION_VERSION,
                     REFERENCE_RESOLVER_VERSION,
                     &extracted,
                     &enriched,
                 ) {
-                    background_warnings.push(error);
+                    Ok(reference_ids) => apply_shared_ids(&mut enriched, &reference_ids),
+                    Err(error) => background_warnings.push(error),
                 }
             }
             enriched.enrichment_warning =
@@ -389,106 +394,150 @@ fn parse_tei(tei: &str, document_digest: &str) -> Result<AnalysisResult, String>
             .extend(parse_boxes(node.attribute("coords")));
     }
 
+    let source_reference = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("biblStruct")
+                && node
+                    .ancestors()
+                    .any(|ancestor| ancestor.has_tag_name("sourceDesc"))
+        })
+        .map(|node| {
+            reference_from_bibl_struct(
+                node,
+                document_digest,
+                0,
+                bibl_source_id(node, "source"),
+                Vec::new(),
+                Vec::new(),
+            )
+        })
+        .filter(has_identifying_metadata);
+
     let mut references = Vec::new();
     for (index, node) in document
         .descendants()
         .filter(|node| node.has_tag_name("biblStruct"))
+        .filter(|node| {
+            !node
+                .ancestors()
+                .any(|ancestor| ancestor.has_tag_name("sourceDesc"))
+        })
         .enumerate()
     {
-        if node
-            .ancestors()
-            .any(|ancestor| ancestor.has_tag_name("sourceDesc"))
-        {
-            continue;
-        }
-
-        let source_id = node
-            .attribute(("http://www.w3.org/XML/1998/namespace", "id"))
-            .or_else(|| node.attribute("id"))
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| format!("b{index}"));
-        let article_title = title_at_level(node, "a");
-        let monograph_title = title_at_level(node, "m");
-        let title = article_title.clone().or_else(|| monograph_title.clone());
-        let venue = title_at_level(node, "j").or_else(|| {
-            if article_title.is_some() {
-                monograph_title.clone()
-            } else {
-                None
-            }
-        });
-        let authors = parse_authors(node);
-        let year = parse_year(node);
-        let volume = bibliographic_scope(node, "volume");
-        let issue = bibliographic_scope(node, "issue");
-        let pages =
-            bibliographic_scope(node, "page").or_else(|| bibliographic_scope(node, "pages"));
-        let doi = identifier(node, "doi").map(|value| reference_resolver::normalize_doi(&value));
-        let arxiv_id = identifier(node, "arxiv").map(normalize_arxiv);
-        let pmid = identifier(node, "pmid");
-        let explicit_url = node
-            .descendants()
-            .find(|child| child.has_tag_name("ptr"))
-            .and_then(|child| child.attribute("target").or_else(|| child.text()))
-            .map(clean_text);
-        let link = doi
-            .as_ref()
-            .map(|value| format!("https://doi.org/{value}"))
-            .or_else(|| {
-                arxiv_id
-                    .as_ref()
-                    .map(|value| format!("https://arxiv.org/abs/{value}"))
-            })
-            .or(explicit_url);
-        let raw_citation = node
-            .descendants()
-            .find(|child| {
-                child.has_tag_name("note")
-                    && child
-                        .attribute("type")
-                        .is_some_and(|kind| kind == "raw_reference")
-            })
-            .and_then(node_text);
-        let id = reference_resolver::stable_reference_id(
+        let source_id = bibl_source_id(node, &format!("b{index}"));
+        let callout_boxes = callouts.remove(&source_id).unwrap_or_default();
+        references.push(reference_from_bibl_struct(
+            node,
             document_digest,
-            index,
-            raw_citation.as_deref(),
-            title.as_deref(),
-        );
-
-        references.push(Reference {
-            id,
-            source_id: source_id.clone(),
-            canonical_id: None,
-            raw_citation,
-            title,
-            authors,
-            year,
-            venue,
-            volume,
-            issue,
-            pages,
-            doi,
-            arxiv_id,
-            pmid,
-            bibtex: String::new(),
-            link,
-            resolution_status: ResolutionStatus::Unresolved.as_str().to_owned(),
-            resolution_confidence: None,
-            resolution_source: None,
-            resolution_error: None,
-            abstract_text: None,
-            open_access_pdf: None,
-            bibliography_boxes: parse_boxes(node.attribute("coords")),
-            callout_boxes: callouts.remove(&source_id).unwrap_or_default(),
-        });
+            index + 1,
+            source_id,
+            parse_boxes(node.attribute("coords")),
+            callout_boxes,
+        ));
     }
 
     Ok(AnalysisResult {
         pages,
+        source_reference,
         references,
         enrichment_warning: None,
     })
+}
+
+fn reference_from_bibl_struct(
+    node: Node<'_, '_>,
+    document_digest: &str,
+    occurrence_index: usize,
+    source_id: String,
+    bibliography_boxes: Vec<PdfBox>,
+    callout_boxes: Vec<PdfBox>,
+) -> Reference {
+    let article_title = title_at_level(node, "a");
+    let monograph_title = title_at_level(node, "m");
+    let title = article_title.clone().or_else(|| monograph_title.clone());
+    let venue = title_at_level(node, "j").or_else(|| {
+        if article_title.is_some() {
+            monograph_title.clone()
+        } else {
+            None
+        }
+    });
+    let raw_citation = node
+        .descendants()
+        .find(|child| {
+            child.has_tag_name("note")
+                && child
+                    .attribute("type")
+                    .is_some_and(|kind| kind == "raw_reference")
+        })
+        .and_then(node_text);
+    let doi = identifier(node, "doi").map(|value| reference_resolver::normalize_doi(&value));
+    let arxiv_id = identifier(node, "arxiv").map(normalize_arxiv);
+    let pmid = identifier(node, "pmid");
+    let explicit_url = node
+        .descendants()
+        .find(|child| child.has_tag_name("ptr"))
+        .and_then(|child| child.attribute("target").or_else(|| child.text()))
+        .map(clean_text);
+    let link = doi
+        .as_ref()
+        .map(|value| format!("https://doi.org/{value}"))
+        .or_else(|| {
+            arxiv_id
+                .as_ref()
+                .map(|value| format!("https://arxiv.org/abs/{value}"))
+        })
+        .or(explicit_url);
+    let id = reference_resolver::stable_reference_id(
+        document_digest,
+        occurrence_index,
+        raw_citation.as_deref(),
+        title.as_deref(),
+    );
+
+    Reference {
+        id,
+        source_id,
+        shared_id: None,
+        canonical_id: None,
+        raw_citation,
+        title,
+        authors: parse_authors(node),
+        year: parse_year(node),
+        venue,
+        volume: bibliographic_scope(node, "volume"),
+        issue: bibliographic_scope(node, "issue"),
+        pages: bibliographic_scope(node, "page").or_else(|| bibliographic_scope(node, "pages")),
+        doi,
+        arxiv_id,
+        pmid,
+        bibtex: String::new(),
+        link,
+        resolution_status: ResolutionStatus::Unresolved.as_str().to_owned(),
+        resolution_confidence: None,
+        resolution_source: None,
+        resolution_error: None,
+        abstract_text: None,
+        open_access_pdf: None,
+        bibliography_boxes,
+        callout_boxes,
+    }
+}
+
+fn bibl_source_id(node: Node<'_, '_>, fallback: &str) -> String {
+    node.attribute(("http://www.w3.org/XML/1998/namespace", "id"))
+        .or_else(|| node.attribute("id"))
+        .unwrap_or(fallback)
+        .to_owned()
+}
+
+fn has_identifying_metadata(reference: &Reference) -> bool {
+    reference.title.is_some()
+        || !reference.authors.is_empty()
+        || reference.doi.is_some()
+        || reference.arxiv_id.is_some()
+        || reference.pmid.is_some()
 }
 
 fn reference_input(reference: &Reference) -> ReferenceInput {
@@ -509,56 +558,75 @@ fn reference_input(reference: &Reference) -> ReferenceInput {
     }
 }
 
-fn apply_resolutions(references: &mut [Reference], resolutions: Vec<ReferenceResolution>) {
+fn apply_resolutions(analysis: &mut AnalysisResult, resolutions: Vec<ReferenceResolution>) {
     let mut by_id: HashMap<String, ReferenceResolution> = resolutions
         .into_iter()
         .map(|resolution| (resolution.reference_id.clone(), resolution))
         .collect();
-    for reference in references {
-        let Some(resolution) = by_id.remove(&reference.id) else {
-            continue;
-        };
-        reference.canonical_id = resolution.canonical_id;
-        reference.doi = resolution.doi.or_else(|| reference.doi.clone());
-        reference.arxiv_id = resolution.arxiv_id.or_else(|| reference.arxiv_id.clone());
-        reference.pmid = resolution.pmid.or_else(|| reference.pmid.clone());
-        reference.bibtex = resolution.bibtex;
-        reference.link = resolution.link;
-        reference.resolution_status = resolution.status.as_str().to_owned();
-        reference.resolution_confidence = resolution.confidence;
-        reference.resolution_source = resolution.source;
-        reference.resolution_error = resolution.error;
-        if reference.abstract_text.is_none() {
-            reference.abstract_text = resolution.abstract_text;
-        }
-        if reference.open_access_pdf.is_none() {
-            reference.open_access_pdf = resolution.open_access_pdf;
-        }
+    if let Some(reference) = analysis.source_reference.as_mut() {
+        apply_resolution(reference, &mut by_id);
+    }
+    for reference in &mut analysis.references {
+        apply_resolution(reference, &mut by_id);
+    }
+}
 
-        if resolution.status == ResolutionStatus::Resolved {
-            if let Some(metadata) = resolution.metadata {
-                if metadata.title.is_some() {
-                    reference.title = metadata.title;
-                }
-                if !metadata.authors.is_empty() {
-                    reference.authors = metadata.authors;
-                }
-                if metadata.year.is_some() {
-                    reference.year = metadata.year;
-                }
-                if metadata.venue.is_some() {
-                    reference.venue = metadata.venue;
-                }
-                if metadata.volume.is_some() {
-                    reference.volume = metadata.volume;
-                }
-                if metadata.issue.is_some() {
-                    reference.issue = metadata.issue;
-                }
-                if metadata.pages.is_some() {
-                    reference.pages = metadata.pages;
-                }
+fn apply_resolution(reference: &mut Reference, by_id: &mut HashMap<String, ReferenceResolution>) {
+    let Some(resolution) = by_id.remove(&reference.id) else {
+        return;
+    };
+    reference.canonical_id = resolution.canonical_id;
+    reference.doi = resolution.doi.or_else(|| reference.doi.clone());
+    reference.arxiv_id = resolution.arxiv_id.or_else(|| reference.arxiv_id.clone());
+    reference.pmid = resolution.pmid.or_else(|| reference.pmid.clone());
+    reference.bibtex = resolution.bibtex;
+    reference.link = resolution.link;
+    reference.resolution_status = resolution.status.as_str().to_owned();
+    reference.resolution_confidence = resolution.confidence;
+    reference.resolution_source = resolution.source;
+    reference.resolution_error = resolution.error;
+    if reference.abstract_text.is_none() {
+        reference.abstract_text = resolution.abstract_text;
+    }
+    if reference.open_access_pdf.is_none() {
+        reference.open_access_pdf = resolution.open_access_pdf;
+    }
+
+    if resolution.status == ResolutionStatus::Resolved {
+        if let Some(metadata) = resolution.metadata {
+            if metadata.title.is_some() {
+                reference.title = metadata.title;
             }
+            if !metadata.authors.is_empty() {
+                reference.authors = metadata.authors;
+            }
+            if metadata.year.is_some() {
+                reference.year = metadata.year;
+            }
+            if metadata.venue.is_some() {
+                reference.venue = metadata.venue;
+            }
+            if metadata.volume.is_some() {
+                reference.volume = metadata.volume;
+            }
+            if metadata.issue.is_some() {
+                reference.issue = metadata.issue;
+            }
+            if metadata.pages.is_some() {
+                reference.pages = metadata.pages;
+            }
+        }
+    }
+}
+
+fn apply_shared_ids(analysis: &mut AnalysisResult, shared_ids: &HashMap<String, String>) {
+    for reference in analysis
+        .source_reference
+        .iter_mut()
+        .chain(analysis.references.iter_mut())
+    {
+        if let Some(shared_id) = shared_ids.get(&reference.id) {
+            reference.shared_id = Some(shared_id.clone());
         }
     }
 }
@@ -689,28 +757,51 @@ fn normalize_arxiv(value: String) -> String {
         .to_owned()
 }
 
-fn needs_semantic_enrichment(references: &[Reference]) -> bool {
-    references.iter().any(|reference| {
-        matches!(
-            reference.resolution_status.as_str(),
-            "resolved" | "identified"
-        ) && reference.abstract_text.is_none()
-            && reference.open_access_pdf.is_none()
-            && !reference
-                .resolution_source
-                .as_deref()
-                .is_some_and(|source| source.starts_with("semantic-scholar"))
-            && (reference.doi.is_some() || reference.arxiv_id.is_some() || reference.pmid.is_some())
-    })
+fn needs_semantic_enrichment(analysis: &AnalysisResult) -> bool {
+    analysis
+        .source_reference
+        .iter()
+        .chain(analysis.references.iter())
+        .any(|reference| {
+            matches!(
+                reference.resolution_status.as_str(),
+                "resolved" | "identified"
+            ) && reference.abstract_text.is_none()
+                && reference.open_access_pdf.is_none()
+                && !reference
+                    .resolution_source
+                    .as_deref()
+                    .is_some_and(|source| source.starts_with("semantic-scholar"))
+                && (reference.doi.is_some()
+                    || reference.arxiv_id.is_some()
+                    || reference.pmid.is_some())
+        })
 }
 
 async fn enrich_references(
     client: &reqwest::Client,
-    references: &mut [Reference],
+    analysis: &mut AnalysisResult,
 ) -> Result<(), String> {
-    let mut identified: Vec<(String, Vec<usize>)> = Vec::new();
+    #[derive(Clone, Copy)]
+    enum ReferencePosition {
+        Source,
+        Bibliography(usize),
+    }
+
+    let mut identified: Vec<(String, Vec<ReferencePosition>)> = Vec::new();
     let mut identifier_positions: HashMap<String, usize> = HashMap::new();
-    for (index, reference) in references.iter().enumerate() {
+    let references = analysis
+        .source_reference
+        .iter()
+        .map(|reference| (ReferencePosition::Source, reference))
+        .chain(
+            analysis
+                .references
+                .iter()
+                .enumerate()
+                .map(|(index, reference)| (ReferencePosition::Bibliography(index), reference)),
+        );
+    for (reference_position, reference) in references {
         if !matches!(
             reference.resolution_status.as_str(),
             "resolved" | "identified"
@@ -743,10 +834,10 @@ async fn enrich_references(
             continue;
         };
         if let Some(position) = identifier_positions.get(&identifier).copied() {
-            identified[position].1.push(index);
+            identified[position].1.push(reference_position);
         } else {
             identifier_positions.insert(identifier.clone(), identified.len());
-            identified.push((identifier, vec![index]));
+            identified.push((identifier, vec![reference_position]));
         }
     }
     if identified.is_empty() {
@@ -758,12 +849,18 @@ async fn enrich_references(
         .map(|(identifier, _)| identifier.clone())
         .collect::<Vec<_>>();
     let papers = reference_resolver::semantic::lookup_many(client, &ids).await?;
-    for (identifier, reference_indices) in &identified {
+    for (identifier, reference_positions) in &identified {
         let Some(paper) = papers.get(identifier) else {
             continue;
         };
-        for reference_index in reference_indices {
-            apply_semantic_scholar_paper(&mut references[*reference_index], paper);
+        for reference_position in reference_positions {
+            let reference = match reference_position {
+                ReferencePosition::Source => analysis.source_reference.as_mut(),
+                ReferencePosition::Bibliography(index) => analysis.references.get_mut(*index),
+            };
+            if let Some(reference) = reference {
+                apply_semantic_scholar_paper(reference, paper);
+            }
         }
     }
 
@@ -809,7 +906,22 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![analyze_pdf, resolve_grobid])
+        .invoke_handler(tauri::generate_handler![
+            analyze_pdf,
+            document_library::import_document,
+            document_library::list_documents,
+            document_library::get_document,
+            document_library::open_document,
+            document_library::rename_document,
+            document_library::delete_document,
+            document_library::create_stack,
+            document_library::list_stacks,
+            document_library::rename_stack,
+            document_library::delete_stack,
+            document_library::set_document_stacks,
+            document_library::link_document_reference,
+            document_library::unlink_document_reference,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -900,6 +1012,42 @@ mod tests {
             reference.link.as_deref(),
             Some("https://doi.org/10.1000/example")
         );
+    }
+
+    #[test]
+    fn extracts_the_source_header_separately_from_the_bibliography() {
+        let tei = r##"
+            <TEI xmlns="http://www.tei-c.org/ns/1.0">
+              <teiHeader><fileDesc>
+                <sourceDesc>
+                  <biblStruct>
+                    <analytic>
+                      <title level="a">The document itself</title>
+                      <author><persName><forename>Ada</forename><surname>Lovelace</surname></persName></author>
+                    </analytic>
+                    <monogr><title level="j">Example Journal</title><imprint><date when="2025"/></imprint></monogr>
+                    <idno type="DOI">10.1000/source</idno>
+                  </biblStruct>
+                </sourceDesc>
+              </fileDesc></teiHeader>
+              <text><back><listBibl>
+                <biblStruct xml:id="b0"><analytic><title level="a">A cited paper</title></analytic></biblStruct>
+              </listBibl></back></text>
+            </TEI>
+        "##;
+
+        let result = parse_tei(tei, "source-document").unwrap();
+        let source = result
+            .source_reference
+            .expect("expected a source reference");
+        assert_eq!(source.title.as_deref(), Some("The document itself"));
+        assert_eq!(source.authors, vec!["Ada Lovelace"]);
+        assert_eq!(source.doi.as_deref(), Some("10.1000/source"));
+        assert!(source.bibliography_boxes.is_empty());
+        assert!(source.callout_boxes.is_empty());
+        assert_eq!(result.references.len(), 1);
+        assert_eq!(result.references[0].title.as_deref(), Some("A cited paper"));
+        assert_ne!(source.id, result.references[0].id);
     }
 
     #[test]

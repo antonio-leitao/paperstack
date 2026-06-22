@@ -15,6 +15,7 @@ export type PdfBox = {
 export type Reference = {
   id: string;
   sourceId: string;
+  sharedId: string | null;
   canonicalId: string | null;
   rawCitation: string | null;
   title: string | null;
@@ -41,11 +42,28 @@ export type Reference = {
 
 export type AnalysisResult = {
   pages: PageSize[];
+  sourceReference: Reference | null;
   references: Reference[];
   enrichmentWarning: string | null;
 };
 
-export type GrobidService = {
-  url: string;
-  kind: "local" | "hosted";
+export type Stack = {
+  id: string;
+  name: string;
+};
+
+export type LibraryDocument = {
+  id: string;
+  contentHash: string;
+  originalFilename: string;
+  title: string;
+  byteSize: number;
+  storedPath: string;
+  referenceId: string | null;
+  stacks: Stack[];
+  referenceTitle: string | null;
+  referenceAuthors: string[];
+  createdAt: number;
+  updatedAt: number;
+  lastViewedAt: number;
 };
