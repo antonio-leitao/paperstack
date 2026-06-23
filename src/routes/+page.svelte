@@ -5,6 +5,11 @@
   import { readFile } from "@tauri-apps/plugin-fs";
   import { onMount } from "svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
+  import ConfirmDialog from "$lib/ConfirmDialog.svelte";
+  import DocumentStackMenu from "$lib/DocumentStackMenu.svelte";
+  import LibrarySearch from "$lib/LibrarySearch.svelte";
+  import NamePrompt from "$lib/NamePrompt.svelte";
+  import StackActions from "$lib/StackActions.svelte";
   import { copyToClipboard } from "$lib/copyToClipboard";
   import { openExternal } from "$lib/openExternal";
   import { hasTrustedBibtex } from "$lib/referenceBibtex";
@@ -29,16 +34,24 @@
   let documents = $state<LibraryDocument[]>([]);
   let stacks = $state<Stack[]>([]);
   let currentDocument = $state<LibraryDocument | null>(null);
+  let centerView = $state<"library" | "viewer">("library");
+  let libraryQuery = $state("");
+  let libraryScope = $state("all");
   let leftSidebarOpen = $state(true);
   let rightSidebarOpen = $state(true);
   let dismissedSourceId = $state<string | null>(null);
   let resolvingReferenceIds = $state<string[]>([]);
+  let stackNamePrompt = $state<
+    { mode: "create" } | { mode: "rename"; stack: Stack } | null
+  >(null);
+  let stackToRemove = $state<Stack | null>(null);
   let analysisRequest = 0;
 
   const desktop = isTauri();
   const calloutCount = $derived(
     analysis?.references.reduce((total, reference) => total + reference.calloutBoxes.length, 0) ?? 0,
   );
+  const showingLibrary = $derived(centerView === "library" || !pdfBuffer);
   const unstackedDocuments = $derived(documents.filter((document) => document.stacks.length === 0));
   const sourceMatch = $derived(
     analysis?.sourceReference?.resolutionStatus === "resolved" &&
@@ -78,8 +91,9 @@
     return error instanceof Error ? error.message : String(error);
   }
 
-  function fileNameFromPath(path: string): string {
-    return path.split(/[\\/]/).pop() || "document.pdf";
+  function showLibrary(scope = "all") {
+    libraryScope = scope;
+    centerView = "library";
   }
 
   function sortDocuments(items: LibraryDocument[]): LibraryDocument[] {
@@ -133,6 +147,7 @@
       const document = await invoke<LibraryDocument>("open_document", { id });
       const bytes = await readFile(document.storedPath);
       currentDocument = document;
+      centerView = "viewer";
       upsertDocument(document);
       loadPdf(bytes.slice().buffer, document.originalFilename, document.storedPath);
       void analyzePdf(document.storedPath);
@@ -154,6 +169,7 @@
 
   function loadPdf(buffer: ArrayBuffer, name: string, path: string | null) {
     analysisRequest += 1;
+    centerView = "viewer";
     pdfBuffer = buffer;
     pdfName = name;
     pdfPath = path;
@@ -192,9 +208,7 @@
     }
   }
 
-  async function createStack() {
-    const name = window.prompt("Stack name");
-    if (!name?.trim()) return;
+  async function createStack(name: string) {
     try {
       const stack = await invoke<Stack>("create_stack", { name });
       stacks = [...stacks, stack].sort((left, right) => left.name.localeCompare(right.name));
@@ -204,9 +218,8 @@
     }
   }
 
-  async function renameStack(stack: Stack) {
-    const name = window.prompt("Rename stack", stack.name);
-    if (!name?.trim() || name.trim() === stack.name) return;
+  async function renameStack(stack: Stack, name: string) {
+    if (name === stack.name) return;
     try {
       const renamed = await invoke<Stack>("rename_stack", { id: stack.id, name });
       stacks = stacks
@@ -226,7 +239,6 @@
   }
 
   async function deleteStack(stack: Stack) {
-    if (!window.confirm(`Delete stack “${stack.name}”? Its PDFs will remain in the library.`)) return;
     try {
       await invoke("delete_stack", { id: stack.id });
       stacks = stacks.filter((item) => item.id !== stack.id);
@@ -234,6 +246,7 @@
         ...document,
         stacks: document.stacks.filter((item) => item.id !== stack.id),
       }));
+      if (libraryScope === stack.id) libraryScope = "all";
       if (currentDocument) {
         currentDocument = documents.find((item) => item.id === currentDocument?.id) ?? null;
       }
@@ -243,23 +256,46 @@
     }
   }
 
-  async function toggleCurrentStack(stackId: string, checked: boolean) {
-    if (!currentDocument) return;
-    const stackIds = currentDocument.stacks.map((stack) => stack.id);
-    const nextIds = checked
-      ? [...new Set([...stackIds, stackId])]
-      : stackIds.filter((id) => id !== stackId);
+  function submitStackName(name: string) {
+    const prompt = stackNamePrompt;
+    stackNamePrompt = null;
+    if (prompt?.mode === "create") {
+      void createStack(name);
+    } else if (prompt?.mode === "rename") {
+      void renameStack(prompt.stack, name);
+    }
+  }
+
+  function confirmRemoveStack() {
+    const stack = stackToRemove;
+    stackToRemove = null;
+    if (stack) void deleteStack(stack);
+  }
+
+  async function setDocumentStackIds(document: LibraryDocument, stackIds: string[]) {
+    const nextIds = [...new Set(stackIds)];
     try {
       const updated = await invoke<LibraryDocument>("set_document_stacks", {
-        documentId: currentDocument.id,
+        documentId: document.id,
         stackIds: nextIds,
       });
-      currentDocument = updated;
       upsertDocument(updated);
       libraryError = null;
     } catch (error) {
       libraryError = errorMessage(error);
     }
+  }
+
+  async function toggleDocumentStack(document: LibraryDocument, stackId: string, checked: boolean) {
+    const stackIds = document.stacks.map((stack) => stack.id);
+    const nextIds = checked
+      ? [...new Set([...stackIds, stackId])]
+      : stackIds.filter((id) => id !== stackId);
+    await setDocumentStackIds(document, nextIds);
+  }
+
+  async function removeDocumentFromStack(document: LibraryDocument, stackId: string) {
+    await toggleDocumentStack(document, stackId, false);
   }
 
   async function renameCurrentDocument() {
@@ -291,6 +327,7 @@
       pdfName = "";
       pdfPath = null;
       analysis = null;
+      centerView = "library";
       analysisRequest += 1;
       libraryError = null;
     } catch (error) {
@@ -346,21 +383,36 @@
   }
 </script>
 
-{#snippet documentItems(items: LibraryDocument[])}
+{#snippet documentItems(items: LibraryDocument[], stackId: string | null = null)}
   {#if items.length}
     <ul class="document-list">
       {#each items as document (document.id)}
         <li>
-          <button
-            type="button"
-            class:active={document.id === currentDocument?.id}
-            onclick={() => void openLibraryDocument(document.id)}
-          >
-            <span>{document.referenceTitle ?? document.title}</span>
-            {#if document.referenceAuthors.length}
-              <small>{document.referenceAuthors.join(", ")}</small>
+          <div class="document-list-row">
+            <button
+              type="button"
+              class:active={document.id === currentDocument?.id && !showingLibrary}
+              onclick={() => void openLibraryDocument(document.id)}
+            >
+              <span>{document.referenceTitle ?? document.title}</span>
+              {#if document.referenceAuthors.length}
+                <small>{document.referenceAuthors.join(", ")}</small>
+              {/if}
+            </button>
+            {#if stackId}
+              <details class="document-actions">
+                <summary aria-label={`Actions for ${document.referenceTitle ?? document.title}`}>...</summary>
+                <div>
+                  <button
+                    type="button"
+                    onclick={() => void removeDocumentFromStack(document, stackId)}
+                  >
+                    Remove from this stack
+                  </button>
+                </div>
+              </details>
             {/if}
-          </button>
+          </div>
         </li>
       {/each}
     </ul>
@@ -379,29 +431,36 @@
       <button type="button" onclick={() => (leftSidebarOpen = true)}>Show stacks</button>
     {/if}
     <button type="button" onclick={choosePdf}>Add PDF</button>
-    <strong>{currentDocument?.referenceTitle ?? currentDocument?.title ?? "Research PDF"}</strong>
+    <strong>
+      {#if showingLibrary}
+        Library
+      {:else}
+        {currentDocument?.referenceTitle ?? currentDocument?.title ?? "Research PDF"}
+      {/if}
+    </strong>
 
-    {#if currentDocument}
-      <details class="menu">
-        <summary>Stacks</summary>
-        <div class="menu-panel">
-          {#if stacks.length}
-            {#each stacks as stack (stack.id)}
-              <label>
-                <input
-                  type="checkbox"
-                  checked={currentDocument.stacks.some((item) => item.id === stack.id)}
-                  onchange={(event) =>
-                    void toggleCurrentStack(stack.id, event.currentTarget.checked)}
-                />
-                {stack.name}
-              </label>
-            {/each}
-          {:else}
-            <small>No stacks yet</small>
-          {/if}
-        </div>
-      </details>
+    {#if currentDocument && !showingLibrary}
+      <div class="stack-chips" aria-label="Document stacks">
+        {#if currentDocument.stacks.length}
+          {#each currentDocument.stacks as stack (stack.id)}
+            <button
+              type="button"
+              title={`Remove ${stack.name}`}
+              onclick={() => currentDocument && void removeDocumentFromStack(currentDocument, stack.id)}
+            >
+              {stack.name} x
+            </button>
+          {/each}
+        {:else}
+          <small>No stacks</small>
+        {/if}
+        <DocumentStackMenu
+          document={currentDocument}
+          {stacks}
+          summary="+ Stack"
+          onchange={toggleDocumentStack}
+        />
+      </div>
 
       <details class="menu">
         <summary>Document</summary>
@@ -417,11 +476,15 @@
       <button type="button" onclick={() => void analyzePdf(pdfPath, true)} disabled={analyzing}>
         {analyzing ? "Analyzing…" : "Analyze again"}
       </button>
+    {:else if currentDocument && showingLibrary}
+      <button type="button" onclick={() => (centerView = "viewer")}>Back to PDF</button>
     {/if}
 
     <span class="status">
       {#if analyzing}
         {grobidStatus ?? `Analyzing ${pdfName}…`}
+      {:else if showingLibrary}
+        {documents.length} PDFs in library
       {:else if analysis}
         {analysis.references.length} references, {calloutCount} callouts
       {:else if pdfName}
@@ -461,7 +524,8 @@
       <aside class="library" aria-label="Document library">
         <header>
           <h2>Stacks</h2>
-          <button type="button" onclick={() => void createStack()}>New</button>
+          <button type="button" onclick={() => showLibrary("all")}>Search</button>
+          <button type="button" onclick={() => (stackNamePrompt = { mode: "create" })}>New</button>
           <button type="button" aria-label="Hide stacks" onclick={() => (leftSidebarOpen = false)}>
             Hide
           </button>
@@ -481,20 +545,26 @@
           {@const stackDocuments = documents.filter((document) =>
             document.stacks.some((item) => item.id === stack.id),
           )}
-          <details open>
-            <summary>{stack.name} ({stackDocuments.length})</summary>
-            <div class="stack-actions">
-              <button type="button" onclick={() => void renameStack(stack)}>Rename</button>
-              <button type="button" onclick={() => void deleteStack(stack)}>Delete</button>
+          <section class="stack-block">
+            <details open>
+              <summary>{stack.name} ({stackDocuments.length})</summary>
+              {@render documentItems(stackDocuments, stack.id)}
+            </details>
+            <div class="stack-menu">
+              <button type="button" onclick={() => showLibrary(stack.id)}>Search</button>
+              <StackActions
+                name={stack.name}
+                onrename={() => (stackNamePrompt = { mode: "rename", stack })}
+                onremove={() => (stackToRemove = stack)}
+              />
             </div>
-            {@render documentItems(stackDocuments)}
-          </details>
+          </section>
         {/each}
       </aside>
     {/if}
 
     <section class="center">
-      {#if sourceMatch && currentDocument}
+      {#if sourceMatch && currentDocument && !showingLibrary}
         <div class="match-prompt">
           <span>
             This PDF looks like <strong>{sourceMatch.title ?? "this paper"}</strong>
@@ -509,7 +579,20 @@
       {/if}
 
       <div class="viewer-panel">
-        {#if pdfBuffer}
+        {#if showingLibrary}
+          <LibrarySearch
+            {documents}
+            {stacks}
+            currentDocumentId={currentDocument?.id ?? null}
+            query={libraryQuery}
+            scope={libraryScope}
+            onquery={(value) => (libraryQuery = value)}
+            onscopechange={(value) => (libraryScope = value)}
+            onopen={(documentId) => void openLibraryDocument(documentId)}
+            onchoosepdf={choosePdf}
+            onstackchange={toggleDocumentStack}
+          />
+        {:else if pdfBuffer}
           {#key pdfBuffer}
             <PdfViewer
               buffer={pdfBuffer}
@@ -583,6 +666,25 @@
       </aside>
     {/if}
   </section>
+
+  <NamePrompt
+    open={stackNamePrompt !== null}
+    title={stackNamePrompt?.mode === "rename" ? "Rename stack" : "New stack"}
+    initialValue={stackNamePrompt?.mode === "rename" ? stackNamePrompt.stack.name : ""}
+    confirmLabel={stackNamePrompt?.mode === "rename" ? "Rename" : "Create"}
+    onconfirm={submitStackName}
+    oncancel={() => (stackNamePrompt = null)}
+  />
+  <ConfirmDialog
+    open={stackToRemove !== null}
+    title="Remove stack"
+    message={stackToRemove
+      ? `Remove “${stackToRemove.name}”? Its PDFs will remain in the library.`
+      : ""}
+    confirmLabel="Remove"
+    onconfirm={confirmRemoveStack}
+    oncancel={() => (stackToRemove = null)}
+  />
 </main>
 
 <style>
@@ -599,7 +701,8 @@
   }
 
   :global(button),
-  :global(input) {
+  :global(input),
+  :global(select) {
     font: inherit;
   }
 
@@ -633,6 +736,21 @@
 
   .status {
     font-size: 13px;
+  }
+
+  .stack-chips {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 5px;
+    overflow: hidden;
+  }
+
+  .stack-chips > button {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .push-right {
@@ -702,14 +820,27 @@
     border-left: 1px solid #aaa;
   }
 
-  .library details {
+  .library > details,
+  .stack-block > details {
     margin-bottom: 10px;
   }
 
-  .stack-actions {
+  .stack-block {
+    position: relative;
+    margin-bottom: 10px;
+  }
+
+  .stack-block > details > summary {
+    padding-right: 95px;
+  }
+
+  .stack-menu {
+    position: absolute;
+    top: 0;
+    right: 0;
     display: flex;
-    gap: 5px;
-    margin: 5px 0;
+    align-items: start;
+    gap: 4px;
   }
 
   .document-list {
@@ -718,7 +849,13 @@
     list-style: none;
   }
 
-  .document-list button {
+  .document-list-row {
+    display: flex;
+    align-items: start;
+    gap: 4px;
+  }
+
+  .document-list-row > button {
     display: block;
     width: 100%;
     padding: 6px;
@@ -727,7 +864,7 @@
     text-align: left;
   }
 
-  .document-list button.active {
+  .document-list-row > button.active {
     background: #ddd;
   }
 
@@ -748,6 +885,21 @@
 
   .empty-list {
     margin: 5px 0 5px 12px;
+  }
+
+  .document-actions {
+    position: relative;
+  }
+
+  .document-actions > div {
+    position: absolute;
+    right: 0;
+    z-index: 10;
+    display: grid;
+    min-width: 160px;
+    padding: 4px;
+    border: 1px solid #888;
+    background: white;
   }
 
   .center {
@@ -796,10 +948,6 @@
     padding: 8px;
     border: 1px solid #888;
     background: white;
-  }
-
-  .menu-panel label {
-    white-space: nowrap;
   }
 
   .references ol {

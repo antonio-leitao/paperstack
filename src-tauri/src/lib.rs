@@ -784,7 +784,26 @@ pub fn run() {
 }
 
 fn load_local_env() {
-    let Ok(contents) = std::fs::read_to_string(".env") else {
+    let mut candidates = Vec::new();
+    if let Ok(current_dir) = std::env::current_dir() {
+        candidates.push(current_dir.join(".env"));
+    }
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    candidates.push(manifest_dir.join(".env"));
+    if let Some(repo_root) = manifest_dir.parent() {
+        candidates.push(repo_root.join(".env"));
+    }
+
+    let mut seen = HashSet::new();
+    for path in candidates {
+        if seen.insert(path.clone()) {
+            load_local_env_file(&path);
+        }
+    }
+}
+
+fn load_local_env_file(path: &Path) {
+    let Ok(contents) = std::fs::read_to_string(path) else {
         return;
     };
     for line in contents.lines() {
