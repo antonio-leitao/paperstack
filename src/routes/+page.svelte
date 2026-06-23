@@ -7,6 +7,7 @@
   import PdfViewer from "$lib/PdfViewer.svelte";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
   import DocumentStackMenu from "$lib/DocumentStackMenu.svelte";
+  import LastOpened from "$lib/LastOpened.svelte";
   import LibrarySearch from "$lib/LibrarySearch.svelte";
   import NamePrompt from "$lib/NamePrompt.svelte";
   import StackActions from "$lib/StackActions.svelte";
@@ -52,7 +53,6 @@
     analysis?.references.reduce((total, reference) => total + reference.calloutBoxes.length, 0) ?? 0,
   );
   const showingLibrary = $derived(centerView === "library" || !pdfBuffer);
-  const unstackedDocuments = $derived(documents.filter((document) => document.stacks.length === 0));
   const sourceMatch = $derived(
     analysis?.sourceReference?.resolutionStatus === "resolved" &&
       (analysis.sourceReference.resolutionConfidence ?? 0) >= 0.9 &&
@@ -394,10 +394,13 @@
               class:active={document.id === currentDocument?.id && !showingLibrary}
               onclick={() => void openLibraryDocument(document.id)}
             >
-              <span>{document.referenceTitle ?? document.title}</span>
-              {#if document.referenceAuthors.length}
-                <small>{document.referenceAuthors.join(", ")}</small>
-              {/if}
+              <span class="document-summary">
+                <span>{document.referenceTitle ?? document.title}</span>
+                {#if document.referenceAuthors.length}
+                  <small>{document.referenceAuthors.join(", ")}</small>
+                {/if}
+              </span>
+              <LastOpened timestamp={document.lastViewedAt} />
             </button>
             {#if stackId}
               <details class="document-actions">
@@ -429,8 +432,8 @@
   <header class="toolbar">
     {#if !leftSidebarOpen}
       <button type="button" onclick={() => (leftSidebarOpen = true)}>Show stacks</button>
+      <button type="button" onclick={choosePdf}>Open PDF</button>
     {/if}
-    <button type="button" onclick={choosePdf}>Add PDF</button>
     <strong>
       {#if showingLibrary}
         Library
@@ -522,44 +525,53 @@
   >
     {#if leftSidebarOpen}
       <aside class="library" aria-label="Document library">
-        <header>
-          <h2>Stacks</h2>
+        <header class="library-header">
           <button type="button" onclick={() => showLibrary("all")}>Search</button>
-          <button type="button" onclick={() => (stackNamePrompt = { mode: "create" })}>New</button>
+          <button type="button" onclick={() => (stackNamePrompt = { mode: "create" })}>
+            New Stack
+          </button>
+          <button type="button" onclick={choosePdf}>Open PDF</button>
           <button type="button" aria-label="Hide stacks" onclick={() => (leftSidebarOpen = false)}>
             Hide
           </button>
         </header>
 
-        <details open>
-          <summary>All documents ({documents.length})</summary>
+        <details class="sidebar-section" open>
+          <summary>
+            <span class="eyebrow">Stacks</span>
+          </summary>
+          {#if stacks.length}
+            {#each stacks as stack (stack.id)}
+              {@const stackDocuments = documents.filter((document) =>
+                document.stacks.some((item) => item.id === stack.id),
+              )}
+              <section class="stack-block">
+                <details open>
+                  <summary>{stack.name} ({stackDocuments.length})</summary>
+                  {@render documentItems(stackDocuments, stack.id)}
+                </details>
+                <div class="stack-menu">
+                  <button type="button" onclick={() => showLibrary(stack.id)}>Search</button>
+                  <StackActions
+                    name={stack.name}
+                    onrename={() => (stackNamePrompt = { mode: "rename", stack })}
+                    onremove={() => (stackToRemove = stack)}
+                  />
+                </div>
+              </section>
+            {/each}
+          {:else}
+            <p class="empty-list">No stacks</p>
+          {/if}
+        </details>
+
+        <details class="sidebar-section" open>
+          <summary>
+            <span class="eyebrow">Documents</span>
+            <small>{documents.length}</small>
+          </summary>
           {@render documentItems(documents)}
         </details>
-
-        <details open>
-          <summary>Unstacked ({unstackedDocuments.length})</summary>
-          {@render documentItems(unstackedDocuments)}
-        </details>
-
-        {#each stacks as stack (stack.id)}
-          {@const stackDocuments = documents.filter((document) =>
-            document.stacks.some((item) => item.id === stack.id),
-          )}
-          <section class="stack-block">
-            <details open>
-              <summary>{stack.name} ({stackDocuments.length})</summary>
-              {@render documentItems(stackDocuments, stack.id)}
-            </details>
-            <div class="stack-menu">
-              <button type="button" onclick={() => showLibrary(stack.id)}>Search</button>
-              <StackActions
-                name={stack.name}
-                onrename={() => (stackNamePrompt = { mode: "rename", stack })}
-                onremove={() => (stackToRemove = stack)}
-              />
-            </div>
-          </section>
-        {/each}
       </aside>
     {/if}
 
@@ -604,8 +616,8 @@
         {:else}
           <div class="empty">
             <h1>Research PDF</h1>
-            <p>Add a PDF or choose one from a stack.</p>
-            <button type="button" onclick={choosePdf}>Add PDF</button>
+            <p>Open a PDF or choose one from a stack.</p>
+            <button type="button" onclick={choosePdf}>Open PDF</button>
           </div>
         {/if}
       </div>
@@ -807,9 +819,8 @@
     margin-bottom: 10px;
   }
 
-  aside h2 {
-    margin: 0 auto 0 0;
-    font-size: 17px;
+  .library-header {
+    flex-wrap: wrap;
   }
 
   .library {
@@ -820,9 +831,25 @@
     border-left: 1px solid #aaa;
   }
 
-  .library > details,
+  .sidebar-section,
   .stack-block > details {
     margin-bottom: 10px;
+  }
+
+  .sidebar-section > summary {
+    margin-bottom: 6px;
+  }
+
+  .sidebar-section > summary small {
+    color: #555;
+    font-size: 12px;
+  }
+
+  .eyebrow {
+    color: #555;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
   .stack-block {
@@ -856,8 +883,12 @@
   }
 
   .document-list-row > button {
-    display: block;
+    display: flex;
     width: 100%;
+    min-width: 0;
+    align-items: start;
+    justify-content: space-between;
+    gap: 8px;
     padding: 6px;
     border: 0;
     background: transparent;
@@ -868,7 +899,12 @@
     background: #ddd;
   }
 
-  .document-list span,
+  .document-summary {
+    min-width: 0;
+  }
+
+  .document-list .document-summary,
+  .document-list .document-summary span,
   .document-list small {
     display: block;
     overflow: hidden;

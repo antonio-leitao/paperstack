@@ -1,9 +1,9 @@
 <script lang="ts">
   import DocumentStackMenu from "./DocumentStackMenu.svelte";
+  import LastOpened from "./LastOpened.svelte";
   import type { LibraryDocument, Stack } from "./types";
 
   const ALL_SCOPE = "all";
-  const UNSTACKED_SCOPE = "unstacked";
 
   let {
     documents,
@@ -34,12 +34,12 @@
   } = $props();
 
   const selectedStack = $derived(stacks.find((stack) => stack.id === scope) ?? null);
-  const scopedDocuments = $derived(documents.filter((document) => isInScope(document, scope)));
+  const activeScope = $derived(selectedStack?.id ?? ALL_SCOPE);
+  const scopedDocuments = $derived(documents.filter((document) => isInScope(document, activeScope)));
   const results = $derived(searchDocuments(scopedDocuments, query));
 
   function isInScope(document: LibraryDocument, scopeId: string): boolean {
     if (scopeId === ALL_SCOPE) return true;
-    if (scopeId === UNSTACKED_SCOPE) return document.stacks.length === 0;
     return document.stacks.some((stack) => stack.id === scopeId);
   }
 
@@ -145,14 +145,12 @@
       <p>
         {#if selectedStack}
           Searching {selectedStack.name}
-        {:else if scope === UNSTACKED_SCOPE}
-          Searching unstacked PDFs
         {:else}
           Searching all PDFs
         {/if}
       </p>
     </div>
-    <button type="button" onclick={onchoosepdf}>Add PDF</button>
+    <button type="button" onclick={onchoosepdf}>Open PDF</button>
   </header>
 
   <div class="search-controls">
@@ -166,9 +164,8 @@
     </label>
     <label>
       Scope
-      <select value={scope} onchange={(event) => onscopechange(event.currentTarget.value)}>
+      <select value={activeScope} onchange={(event) => onscopechange(event.currentTarget.value)}>
         <option value={ALL_SCOPE}>All documents</option>
-        <option value={UNSTACKED_SCOPE}>Unstacked</option>
         {#each stacks as stack (stack.id)}
           <option value={stack.id}>{stack.name}</option>
         {/each}
@@ -182,7 +179,10 @@
         <li class:active={document.id === currentDocumentId}>
           <article>
             <div>
-              <h2>{documentTitle(document)}</h2>
+              <div class="result-heading">
+                <h2>{documentTitle(document)}</h2>
+                <LastOpened timestamp={document.lastViewedAt} />
+              </div>
               {#if documentAuthors(document)}
                 <p>{documentAuthors(document)}</p>
               {:else}
@@ -194,7 +194,7 @@
                     <span>{stack.name}</span>
                   {/each}
                 {:else}
-                  <span>Unstacked</span>
+                  <span>No stacks</span>
                 {/if}
               </div>
             </div>
@@ -216,7 +216,7 @@
   {:else}
     <div class="empty-library">
       <p>No PDFs in the library yet.</p>
-      <button type="button" onclick={onchoosepdf}>Add PDF</button>
+      <button type="button" onclick={onchoosepdf}>Open PDF</button>
     </div>
   {/if}
 </section>
@@ -256,6 +256,19 @@
 
   h2 {
     font-size: 16px;
+  }
+
+  .result-heading {
+    display: flex;
+    min-width: 0;
+    align-items: start;
+    gap: 8px;
+  }
+
+  .result-heading h2 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .search-controls {
