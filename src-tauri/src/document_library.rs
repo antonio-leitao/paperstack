@@ -1,12 +1,15 @@
 use super::{database, reference_resolver};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
 };
 use tauri::AppHandle;
 use uuid::Uuid;
+
+const HIGHLIGHT_ANNOTATION_SUBTYPE: i64 = 9;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +34,21 @@ pub(crate) struct LibraryDocument {
     created_at: i64,
     updated_at: i64,
     last_viewed_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DocumentAnnotation {
+    id: String,
+    document_id: String,
+    kind: String,
+    page_index: u32,
+    color: String,
+    opacity: f64,
+    selected_text: Option<String>,
+    annotation: Value,
+    created_at: i64,
+    updated_at: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -395,6 +413,172 @@ pub(crate) fn unlink_document_reference(
     load_document(&app, &connection, &document_id)
 }
 
+#[tauri::command]
+pub(crate) fn list_document_annotations(
+    app: AppHandle,
+    document_id: String,
+) -> Result<Vec<DocumentAnnotation>, String> {
+    let connection = database::connection(&app)?;
+    require_document(&connection, &document_id)?;
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT id, document_id, kind, page_index, color, opacity,
+                   selected_text, annotation_json, created_at, updated_at
+            FROM document_annotations
+            WHERE document_id = ?1
+            ORDER BY page_index, created_at, id
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare document annotations: {error}"))?;
+    let annotations = statement
+        .query_map(params![document_id], row_to_document_annotation)
+        .map_err(|error| format!("Could not load document annotations: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read document annotations: {error}"))?;
+    Ok(annotations)
+}
+
+#[tauri::command]
+pub(crate) fn save_document_annotation(
+    app: AppHandle,
+    document_id: String,
+    annotation: Value,
+    selected_text: Option<String>,
+) -> Result<DocumentAnnotation, String> {
+    let annotation_id = string_field(&annotation, "id")?;
+    let annotation_type = integer_field(&annotation, "type")?;
+    if annotation_type != HIGHLIGHT_ANNOTATION_SUBTYPE {
+        return Err("Only highlight annotations can be saved right now".to_owned());
+    }
+    let page_index = integer_field(&annotation, "pageIndex")?;
+    if page_index < 0 {
+        return Err("Annotation page index cannot be negative".to_owned());
+    }
+    let segment_rects = annotation
+        .get("segmentRects")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Highlight annotation is missing segment rectangles".to_owned())?;
+    if segment_rects.is_empty() {
+        return Err("Highlight annotation must include at least one segment rectangle".to_owned());
+    }
+    let color = annotation
+        .get("strokeColor")
+        .or_else(|| annotation.get("color"))
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("#FFCD45")
+        .to_owned();
+    let opacity = annotation
+        .get("opacity")
+        .and_then(Value::as_f64)
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0);
+    let annotation_json = serde_json::to_string(&annotation)
+        .map_err(|error| format!("Could not serialize the annotation: {error}"))?;
+
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start saving the annotation: {error}"))?;
+    require_document(&transaction, &document_id)?;
+
+    if let Some(existing_document_id) = transaction
+        .query_row(
+            "SELECT document_id FROM document_annotations WHERE id = ?1",
+            params![annotation_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not check the annotation id: {error}"))?
+    {
+        if existing_document_id != document_id {
+            return Err("Annotation id already belongs to another document".to_owned());
+        }
+    }
+
+    let now = database::unix_timestamp();
+    let created_at = transaction
+        .query_row(
+            "SELECT created_at FROM document_annotations WHERE id = ?1 AND document_id = ?2",
+            params![annotation_id, document_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not read the existing annotation: {error}"))?
+        .unwrap_or(now);
+    transaction
+        .execute(
+            r#"
+            INSERT INTO document_annotations (
+                id, document_id, kind, page_index, color, opacity,
+                selected_text, annotation_json, created_at, updated_at
+            ) VALUES (?1, ?2, 'highlight', ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(id) DO UPDATE SET
+                page_index = excluded.page_index,
+                color = excluded.color,
+                opacity = excluded.opacity,
+                selected_text = excluded.selected_text,
+                annotation_json = excluded.annotation_json,
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                annotation_id,
+                document_id,
+                page_index,
+                color,
+                opacity,
+                selected_text,
+                annotation_json,
+                created_at,
+                now
+            ],
+        )
+        .map_err(|error| format!("Could not save the annotation: {error}"))?;
+    transaction
+        .execute(
+            "UPDATE documents SET updated_at = ?1 WHERE id = ?2",
+            params![now, document_id],
+        )
+        .map_err(|error| format!("Could not update the document timestamp: {error}"))?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish saving the annotation: {error}"))?;
+    load_document_annotation(&connection, &document_id, &annotation_id)
+}
+
+#[tauri::command]
+pub(crate) fn delete_document_annotation(
+    app: AppHandle,
+    document_id: String,
+    annotation_id: String,
+) -> Result<(), String> {
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start deleting the annotation: {error}"))?;
+    require_document(&transaction, &document_id)?;
+    let changed = transaction
+        .execute(
+            "DELETE FROM document_annotations WHERE document_id = ?1 AND id = ?2",
+            params![document_id, annotation_id],
+        )
+        .map_err(|error| format!("Could not delete the annotation: {error}"))?;
+    if changed == 0 {
+        return Err("Annotation not found".to_owned());
+    }
+    transaction
+        .execute(
+            "UPDATE documents SET updated_at = ?1 WHERE id = ?2",
+            params![database::unix_timestamp(), document_id],
+        )
+        .map_err(|error| format!("Could not update the document timestamp: {error}"))?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish deleting the annotation: {error}"))?;
+    Ok(())
+}
+
 fn load_document(
     app: &AppHandle,
     connection: &Connection,
@@ -476,6 +660,51 @@ fn load_document(
     })
 }
 
+fn load_document_annotation(
+    connection: &Connection,
+    document_id: &str,
+    annotation_id: &str,
+) -> Result<DocumentAnnotation, String> {
+    connection
+        .query_row(
+            r#"
+            SELECT id, document_id, kind, page_index, color, opacity,
+                   selected_text, annotation_json, created_at, updated_at
+            FROM document_annotations
+            WHERE document_id = ?1 AND id = ?2
+            "#,
+            params![document_id, annotation_id],
+            row_to_document_annotation,
+        )
+        .optional()
+        .map_err(|error| format!("Could not load the saved annotation: {error}"))?
+        .ok_or_else(|| "Annotation not found".to_owned())
+}
+
+fn row_to_document_annotation(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentAnnotation> {
+    let annotation_json: String = row.get(7)?;
+    let annotation = serde_json::from_str(&annotation_json).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(
+            7,
+            rusqlite::types::Type::Text,
+            Box::new(error),
+        )
+    })?;
+    let page_index = row.get::<_, i64>(3)?.max(0) as u32;
+    Ok(DocumentAnnotation {
+        id: row.get(0)?,
+        document_id: row.get(1)?,
+        kind: row.get(2)?,
+        page_index,
+        color: row.get(4)?,
+        opacity: row.get(5)?,
+        selected_text: row.get(6)?,
+        annotation,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
 fn document_id_by_hash(connection: &Connection, hash: &str) -> Result<Option<String>, String> {
     connection
         .query_row(
@@ -500,6 +729,22 @@ fn require_document(connection: &Connection, id: &str) -> Result<(), String> {
     } else {
         Err("Document not found".to_owned())
     }
+}
+
+fn string_field(value: &Value, field: &str) -> Result<String, String> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| format!("Annotation is missing {field}"))
+}
+
+fn integer_field(value: &Value, field: &str) -> Result<i64, String> {
+    value
+        .get(field)
+        .and_then(Value::as_i64)
+        .ok_or_else(|| format!("Annotation is missing numeric {field}"))
 }
 
 fn document_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {

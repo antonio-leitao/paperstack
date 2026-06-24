@@ -778,6 +778,9 @@ pub fn run() {
             document_library::set_document_stacks,
             document_library::link_document_reference,
             document_library::unlink_document_reference,
+            document_library::list_document_annotations,
+            document_library::save_document_annotation,
+            document_library::delete_document_annotation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

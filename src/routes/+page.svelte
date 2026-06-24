@@ -609,6 +609,7 @@
             <PdfViewer
               buffer={pdfBuffer}
               fileName={pdfName}
+              libraryDocumentId={currentDocument?.id ?? null}
               {analysis}
               {resolvingReferenceIds}
             />

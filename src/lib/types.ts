@@ -1,3 +1,5 @@
+import type { PdfHighlightAnnoObject } from "@embedpdf/models";
+
 export type PageSize = {
   page: number;
   width: number;
@@ -66,4 +68,22 @@ export type LibraryDocument = {
   createdAt: number;
   updatedAt: number;
   lastViewedAt: number;
+};
+
+export type StoredHighlightAnnotation = Omit<PdfHighlightAnnoObject, "created" | "modified"> & {
+  created?: Date | string;
+  modified?: Date | string;
+};
+
+export type DocumentAnnotation = {
+  id: string;
+  documentId: string;
+  kind: "highlight";
+  pageIndex: number;
+  color: string;
+  opacity: number;
+  selectedText: string | null;
+  annotation: StoredHighlightAnnotation;
+  createdAt: number;
+  updatedAt: number;
 };

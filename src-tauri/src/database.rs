@@ -245,7 +245,22 @@ fn initialize(connection: &Connection) -> Result<(), String> {
                 PRIMARY KEY (document_id, stack_id)
             );
 
+            CREATE TABLE IF NOT EXISTS document_annotations (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL,
+                page_index INTEGER NOT NULL,
+                color TEXT NOT NULL,
+                opacity REAL NOT NULL,
+                selected_text TEXT,
+                annotation_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS document_stacks_by_stack ON document_stacks(stack_id);
+            CREATE INDEX IF NOT EXISTS document_annotations_by_document_page
+                ON document_annotations(document_id, page_index);
             CREATE INDEX IF NOT EXISTS documents_by_last_viewed
                 ON documents(last_viewed_at DESC);
             "#,
