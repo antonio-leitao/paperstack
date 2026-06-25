@@ -2,10 +2,7 @@ use super::{database, reference_resolver};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{
-    collections::BTreeSet,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use uuid::Uuid;
 
@@ -13,9 +10,32 @@ const HIGHLIGHT_ANNOTATION_SUBTYPE: i64 = 9;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Stack {
+pub(crate) struct Project {
     id: String,
     name: String,
+    created_at: i64,
+    updated_at: i64,
+    last_opened_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectStack {
+    id: String,
+    project_id: String,
+    name: String,
+    created_at: i64,
+    updated_at: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectDocument {
+    project_id: String,
+    document: LibraryDocument,
+    stack: ProjectStack,
+    added_at: i64,
+    updated_at: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -28,7 +48,6 @@ pub(crate) struct LibraryDocument {
     byte_size: u64,
     stored_path: String,
     reference_id: Option<String>,
-    stacks: Vec<Stack>,
     reference_title: Option<String>,
     reference_authors: Vec<String>,
     created_at: i64,
@@ -207,120 +226,336 @@ pub(crate) fn delete_document(app: AppHandle, id: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub(crate) fn create_stack(app: AppHandle, name: String) -> Result<Stack, String> {
-    let name = clean_name(&name).ok_or_else(|| "Stack name cannot be empty".to_owned())?;
+pub(crate) fn create_project(app: AppHandle, name: String) -> Result<Project, String> {
+    let name = clean_name(&name).ok_or_else(|| "Project name cannot be empty".to_owned())?;
     let id = Uuid::new_v4().to_string();
+    let now = database::unix_timestamp();
     let connection = database::connection(&app)?;
     connection
         .execute(
-            "INSERT INTO stacks (id, name, name_key, created_at) VALUES (?1, ?2, ?3, ?4)",
-            params![id, name, name_key(&name), database::unix_timestamp()],
+            r#"
+            INSERT INTO projects (id, name, name_key, created_at, updated_at, last_opened_at)
+            VALUES (?1, ?2, ?3, ?4, ?4, ?4)
+            "#,
+            params![id, name, name_key(&name), now],
         )
         .map_err(|error| {
-            format!("Could not create the stack; its name may already exist: {error}")
+            format!("Could not create the project; its name may already exist: {error}")
         })?;
-    Ok(Stack { id, name })
+    load_project(&connection, &id)
 }
 
 #[tauri::command]
-pub(crate) fn list_stacks(app: AppHandle) -> Result<Vec<Stack>, String> {
+pub(crate) fn list_projects(app: AppHandle) -> Result<Vec<Project>, String> {
     let connection = database::connection(&app)?;
     let mut statement = connection
-        .prepare("SELECT id, name FROM stacks ORDER BY name_key, id")
-        .map_err(|error| format!("Could not prepare the stack list: {error}"))?;
-    let stacks = statement
-        .query_map([], |row| {
-            Ok(Stack {
-                id: row.get(0)?,
-                name: row.get(1)?,
-            })
-        })
-        .map_err(|error| format!("Could not list stacks: {error}"))?
+        .prepare(
+            r#"
+            SELECT id, name, created_at, updated_at, last_opened_at
+            FROM projects
+            ORDER BY last_opened_at DESC, name_key, id
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare the project list: {error}"))?;
+    let projects = statement
+        .query_map([], row_to_project)
+        .map_err(|error| format!("Could not list projects: {error}"))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("Could not read the stack list: {error}"))?;
-    Ok(stacks)
+        .map_err(|error| format!("Could not read the project list: {error}"))?;
+    Ok(projects)
 }
 
 #[tauri::command]
-pub(crate) fn rename_stack(app: AppHandle, id: String, name: String) -> Result<Stack, String> {
-    let name = clean_name(&name).ok_or_else(|| "Stack name cannot be empty".to_owned())?;
+pub(crate) fn get_project(app: AppHandle, id: String) -> Result<Project, String> {
     let connection = database::connection(&app)?;
     let changed = connection
         .execute(
-            "UPDATE stacks SET name = ?1, name_key = ?2 WHERE id = ?3",
-            params![name, name_key(&name), id],
+            "UPDATE projects SET last_opened_at = ?1 WHERE id = ?2",
+            params![database::unix_timestamp(), id],
         )
-        .map_err(|error| {
-            format!("Could not rename the stack; its name may already exist: {error}")
-        })?;
+        .map_err(|error| format!("Could not mark the project as opened: {error}"))?;
     if changed == 0 {
-        return Err("Stack not found".to_owned());
+        return Err("Project not found".to_owned());
     }
-    Ok(Stack { id, name })
+    load_project(&connection, &id)
 }
 
 #[tauri::command]
-pub(crate) fn delete_stack(app: AppHandle, id: String) -> Result<(), String> {
+pub(crate) fn rename_project(app: AppHandle, id: String, name: String) -> Result<Project, String> {
+    let name = clean_name(&name).ok_or_else(|| "Project name cannot be empty".to_owned())?;
     let connection = database::connection(&app)?;
     let changed = connection
-        .execute("DELETE FROM stacks WHERE id = ?1", params![id])
-        .map_err(|error| format!("Could not delete the stack: {error}"))?;
+        .execute(
+            "UPDATE projects SET name = ?1, name_key = ?2, updated_at = ?3 WHERE id = ?4",
+            params![name, name_key(&name), database::unix_timestamp(), id],
+        )
+        .map_err(|error| {
+            format!("Could not rename the project; its name may already exist: {error}")
+        })?;
     if changed == 0 {
-        return Err("Stack not found".to_owned());
+        return Err("Project not found".to_owned());
+    }
+    load_project(&connection, &id)
+}
+
+#[tauri::command]
+pub(crate) fn delete_project(app: AppHandle, id: String) -> Result<(), String> {
+    let connection = database::connection(&app)?;
+    let changed = connection
+        .execute("DELETE FROM projects WHERE id = ?1", params![id])
+        .map_err(|error| format!("Could not delete the project: {error}"))?;
+    if changed == 0 {
+        return Err("Project not found".to_owned());
     }
     Ok(())
 }
 
 #[tauri::command]
-pub(crate) fn set_document_stacks(
+pub(crate) fn create_project_stack(
     app: AppHandle,
+    project_id: String,
+    name: String,
+) -> Result<ProjectStack, String> {
+    let name = clean_name(&name).ok_or_else(|| "Stack name cannot be empty".to_owned())?;
+    let id = Uuid::new_v4().to_string();
+    let now = database::unix_timestamp();
+    let connection = database::connection(&app)?;
+    require_project(&connection, &project_id)?;
+    connection
+        .execute(
+            r#"
+            INSERT INTO project_stacks (
+                id, project_id, name, name_key, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+            "#,
+            params![id, project_id, name, name_key(&name), now],
+        )
+        .map_err(|error| {
+            format!("Could not create the project stack; its name may already exist: {error}")
+        })?;
+    load_project_stack(&connection, &project_id, &id)
+}
+
+#[tauri::command]
+pub(crate) fn list_project_stacks(
+    app: AppHandle,
+    project_id: String,
+) -> Result<Vec<ProjectStack>, String> {
+    let connection = database::connection(&app)?;
+    require_project(&connection, &project_id)?;
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT id, project_id, name, created_at, updated_at
+            FROM project_stacks
+            WHERE project_id = ?1
+            ORDER BY name_key, id
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare the project stack list: {error}"))?;
+    let stacks = statement
+        .query_map(params![project_id], row_to_project_stack)
+        .map_err(|error| format!("Could not list project stacks: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read the project stack list: {error}"))?;
+    Ok(stacks)
+}
+
+#[tauri::command]
+pub(crate) fn rename_project_stack(
+    app: AppHandle,
+    project_id: String,
+    stack_id: String,
+    name: String,
+) -> Result<ProjectStack, String> {
+    let name = clean_name(&name).ok_or_else(|| "Stack name cannot be empty".to_owned())?;
+    let connection = database::connection(&app)?;
+    let changed = connection
+        .execute(
+            r#"
+            UPDATE project_stacks
+            SET name = ?1, name_key = ?2, updated_at = ?3
+            WHERE project_id = ?4 AND id = ?5
+            "#,
+            params![
+                name,
+                name_key(&name),
+                database::unix_timestamp(),
+                project_id,
+                stack_id
+            ],
+        )
+        .map_err(|error| {
+            format!("Could not rename the project stack; its name may already exist: {error}")
+        })?;
+    if changed == 0 {
+        return Err("Project stack not found".to_owned());
+    }
+    load_project_stack(&connection, &project_id, &stack_id)
+}
+
+#[tauri::command]
+pub(crate) fn delete_project_stack(
+    app: AppHandle,
+    project_id: String,
+    stack_id: String,
+) -> Result<(), String> {
+    let connection = database::connection(&app)?;
+    let document_count: i64 = connection
+        .query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM project_documents
+            WHERE project_id = ?1 AND stack_id = ?2
+            "#,
+            params![project_id, stack_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not check project stack documents: {error}"))?;
+    if document_count > 0 {
+        return Err("Project stack still contains documents".to_owned());
+    }
+    let changed = connection
+        .execute(
+            "DELETE FROM project_stacks WHERE project_id = ?1 AND id = ?2",
+            params![project_id, stack_id],
+        )
+        .map_err(|error| format!("Could not delete the project stack: {error}"))?;
+    if changed == 0 {
+        return Err("Project stack not found".to_owned());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn list_project_documents(
+    app: AppHandle,
+    project_id: String,
+) -> Result<Vec<ProjectDocument>, String> {
+    let connection = database::connection(&app)?;
+    require_project(&connection, &project_id)?;
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT pd.document_id
+            FROM project_documents pd
+            JOIN project_stacks ps ON ps.project_id = pd.project_id AND ps.id = pd.stack_id
+            JOIN documents d ON d.id = pd.document_id
+            WHERE pd.project_id = ?1
+            ORDER BY ps.name_key, d.title, d.id
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare project documents: {error}"))?;
+    let document_ids = statement
+        .query_map(params![project_id], |row| row.get::<_, String>(0))
+        .map_err(|error| format!("Could not list project documents: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read project documents: {error}"))?;
+    document_ids
+        .iter()
+        .map(|document_id| load_project_document(&app, &connection, &project_id, document_id))
+        .collect()
+}
+
+#[tauri::command]
+pub(crate) fn add_document_to_project(
+    app: AppHandle,
+    project_id: String,
     document_id: String,
-    stack_ids: Vec<String>,
-) -> Result<LibraryDocument, String> {
+    stack_id: String,
+) -> Result<ProjectDocument, String> {
     let mut connection = database::connection(&app)?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(|error| format!("Could not start updating document stacks: {error}"))?;
+        .map_err(|error| format!("Could not start adding the document to the project: {error}"))?;
     require_document(&transaction, &document_id)?;
-    let stack_ids = stack_ids.into_iter().collect::<BTreeSet<_>>();
-    for stack_id in &stack_ids {
-        let exists = transaction
-            .query_row(
-                "SELECT 1 FROM stacks WHERE id = ?1",
-                params![stack_id],
-                |_| Ok(()),
-            )
-            .optional()
-            .map_err(|error| format!("Could not validate a stack: {error}"))?
-            .is_some();
-        if !exists {
-            return Err(format!("Stack not found: {stack_id}"));
-        }
-    }
+    require_project_stack(&transaction, &project_id, &stack_id)?;
+    let now = database::unix_timestamp();
+    let added_at = transaction
+        .query_row(
+            r#"
+            SELECT added_at
+            FROM project_documents
+            WHERE project_id = ?1 AND document_id = ?2
+            "#,
+            params![project_id, document_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not check project document membership: {error}"))?
+        .unwrap_or(now);
     transaction
         .execute(
-            "DELETE FROM document_stacks WHERE document_id = ?1",
-            params![document_id],
+            r#"
+            INSERT INTO project_documents (
+                project_id, document_id, stack_id, added_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(project_id, document_id) DO UPDATE SET
+                stack_id = excluded.stack_id,
+                updated_at = excluded.updated_at
+            "#,
+            params![project_id, document_id, stack_id, added_at, now],
         )
-        .map_err(|error| format!("Could not clear document stacks: {error}"))?;
-    for stack_id in stack_ids {
-        transaction
-            .execute(
-                "INSERT INTO document_stacks (document_id, stack_id) VALUES (?1, ?2)",
-                params![document_id, stack_id],
-            )
-            .map_err(|error| format!("Could not attach a stack: {error}"))?;
-    }
-    transaction
-        .execute(
-            "UPDATE documents SET updated_at = ?1 WHERE id = ?2",
-            params![database::unix_timestamp(), document_id],
-        )
-        .map_err(|error| format!("Could not update the document timestamp: {error}"))?;
+        .map_err(|error| format!("Could not add the document to the project: {error}"))?;
     transaction
         .commit()
-        .map_err(|error| format!("Could not finish updating document stacks: {error}"))?;
-    load_document(&app, &connection, &document_id)
+        .map_err(|error| format!("Could not finish adding the document to the project: {error}"))?;
+    load_project_document(&app, &connection, &project_id, &document_id)
+}
+
+#[tauri::command]
+pub(crate) fn move_project_document(
+    app: AppHandle,
+    project_id: String,
+    document_id: String,
+    stack_id: String,
+) -> Result<ProjectDocument, String> {
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start moving the project document: {error}"))?;
+    require_project_stack(&transaction, &project_id, &stack_id)?;
+    let changed = transaction
+        .execute(
+            r#"
+            UPDATE project_documents
+            SET stack_id = ?1, updated_at = ?2
+            WHERE project_id = ?3 AND document_id = ?4
+            "#,
+            params![
+                stack_id,
+                database::unix_timestamp(),
+                project_id,
+                document_id
+            ],
+        )
+        .map_err(|error| format!("Could not move the project document: {error}"))?;
+    if changed == 0 {
+        return Err("Document is not in this project".to_owned());
+    }
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish moving the project document: {error}"))?;
+    load_project_document(&app, &connection, &project_id, &document_id)
+}
+
+#[tauri::command]
+pub(crate) fn remove_document_from_project(
+    app: AppHandle,
+    project_id: String,
+    document_id: String,
+) -> Result<(), String> {
+    let connection = database::connection(&app)?;
+    let changed = connection
+        .execute(
+            "DELETE FROM project_documents WHERE project_id = ?1 AND document_id = ?2",
+            params![project_id, document_id],
+        )
+        .map_err(|error| format!("Could not remove the document from the project: {error}"))?;
+    if changed == 0 {
+        return Err("Document is not in this project".to_owned());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -612,27 +847,6 @@ fn load_document(
         .optional()
         .map_err(|error| format!("Could not load the document: {error}"))?
         .ok_or_else(|| "Document not found".to_owned())?;
-    let mut statement = connection
-        .prepare(
-            r#"
-            SELECT s.id, s.name
-            FROM stacks s
-            JOIN document_stacks ds ON ds.stack_id = s.id
-            WHERE ds.document_id = ?1
-            ORDER BY s.name_key, s.id
-            "#,
-        )
-        .map_err(|error| format!("Could not prepare document stacks: {error}"))?;
-    let stacks = statement
-        .query_map(params![id], |row| {
-            Ok(Stack {
-                id: row.get(0)?,
-                name: row.get(1)?,
-            })
-        })
-        .map_err(|error| format!("Could not load document stacks: {error}"))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("Could not read document stacks: {error}"))?;
     let linked_reference = row
         .5
         .as_deref()
@@ -647,7 +861,6 @@ fn load_document(
         byte_size: row.3.max(0) as u64,
         stored_path: document_path(app, id)?.to_string_lossy().into_owned(),
         reference_id: row.4,
-        stacks,
         reference_title: linked_reference
             .as_ref()
             .and_then(|reference| reference.title.clone()),
@@ -657,6 +870,100 @@ fn load_document(
         created_at: row.6,
         updated_at: row.7,
         last_viewed_at: row.8,
+    })
+}
+
+fn load_project(connection: &Connection, id: &str) -> Result<Project, String> {
+    connection
+        .query_row(
+            "SELECT id, name, created_at, updated_at, last_opened_at FROM projects WHERE id = ?1",
+            params![id],
+            row_to_project,
+        )
+        .optional()
+        .map_err(|error| format!("Could not load the project: {error}"))?
+        .ok_or_else(|| "Project not found".to_owned())
+}
+
+fn load_project_stack(
+    connection: &Connection,
+    project_id: &str,
+    stack_id: &str,
+) -> Result<ProjectStack, String> {
+    connection
+        .query_row(
+            r#"
+            SELECT id, project_id, name, created_at, updated_at
+            FROM project_stacks
+            WHERE project_id = ?1 AND id = ?2
+            "#,
+            params![project_id, stack_id],
+            row_to_project_stack,
+        )
+        .optional()
+        .map_err(|error| format!("Could not load the project stack: {error}"))?
+        .ok_or_else(|| "Project stack not found".to_owned())
+}
+
+fn load_project_document(
+    app: &AppHandle,
+    connection: &Connection,
+    project_id: &str,
+    document_id: &str,
+) -> Result<ProjectDocument, String> {
+    let row = connection
+        .query_row(
+            r#"
+            SELECT ps.id, ps.project_id, ps.name, ps.created_at, ps.updated_at,
+                   pd.added_at, pd.updated_at
+            FROM project_documents pd
+            JOIN project_stacks ps ON ps.project_id = pd.project_id AND ps.id = pd.stack_id
+            WHERE pd.project_id = ?1 AND pd.document_id = ?2
+            "#,
+            params![project_id, document_id],
+            |row| {
+                Ok((
+                    ProjectStack {
+                        id: row.get(0)?,
+                        project_id: row.get(1)?,
+                        name: row.get(2)?,
+                        created_at: row.get(3)?,
+                        updated_at: row.get(4)?,
+                    },
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, i64>(6)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Could not load the project document: {error}"))?
+        .ok_or_else(|| "Document is not in this project".to_owned())?;
+    Ok(ProjectDocument {
+        project_id: project_id.to_owned(),
+        document: load_document(app, connection, document_id)?,
+        stack: row.0,
+        added_at: row.1,
+        updated_at: row.2,
+    })
+}
+
+fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
+    Ok(Project {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        created_at: row.get(2)?,
+        updated_at: row.get(3)?,
+        last_opened_at: row.get(4)?,
+    })
+}
+
+fn row_to_project_stack(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectStack> {
+    Ok(ProjectStack {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        name: row.get(2)?,
+        created_at: row.get(3)?,
+        updated_at: row.get(4)?,
     })
 }
 
@@ -684,11 +991,7 @@ fn load_document_annotation(
 fn row_to_document_annotation(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentAnnotation> {
     let annotation_json: String = row.get(7)?;
     let annotation = serde_json::from_str(&annotation_json).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(
-            7,
-            rusqlite::types::Type::Text,
-            Box::new(error),
-        )
+        rusqlite::Error::FromSqlConversionFailure(7, rusqlite::types::Type::Text, Box::new(error))
     })?;
     let page_index = row.get::<_, i64>(3)?.max(0) as u32;
     Ok(DocumentAnnotation {
@@ -728,6 +1031,42 @@ fn require_document(connection: &Connection, id: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err("Document not found".to_owned())
+    }
+}
+
+fn require_project(connection: &Connection, id: &str) -> Result<(), String> {
+    let exists = connection
+        .query_row("SELECT 1 FROM projects WHERE id = ?1", params![id], |_| {
+            Ok(())
+        })
+        .optional()
+        .map_err(|error| format!("Could not validate the project: {error}"))?
+        .is_some();
+    if exists {
+        Ok(())
+    } else {
+        Err("Project not found".to_owned())
+    }
+}
+
+fn require_project_stack(
+    connection: &Connection,
+    project_id: &str,
+    stack_id: &str,
+) -> Result<(), String> {
+    let exists = connection
+        .query_row(
+            "SELECT 1 FROM project_stacks WHERE project_id = ?1 AND id = ?2",
+            params![project_id, stack_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|error| format!("Could not validate the project stack: {error}"))?
+        .is_some();
+    if exists {
+        Ok(())
+    } else {
+        Err("Project stack not found".to_owned())
     }
 }
 

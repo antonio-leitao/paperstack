@@ -49,9 +49,20 @@ export type AnalysisResult = {
   enrichmentWarning: string | null;
 };
 
-export type Stack = {
+export type Project = {
   id: string;
   name: string;
+  createdAt: number;
+  updatedAt: number;
+  lastOpenedAt: number;
+};
+
+export type ProjectStack = {
+  id: string;
+  projectId: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type LibraryDocument = {
@@ -62,12 +73,19 @@ export type LibraryDocument = {
   byteSize: number;
   storedPath: string;
   referenceId: string | null;
-  stacks: Stack[];
   referenceTitle: string | null;
   referenceAuthors: string[];
   createdAt: number;
   updatedAt: number;
   lastViewedAt: number;
+};
+
+export type ProjectDocument = {
+  projectId: string;
+  document: LibraryDocument;
+  stack: ProjectStack;
+  addedAt: number;
+  updatedAt: number;
 };
 
 export type StoredHighlightAnnotation = Omit<PdfHighlightAnnoObject, "created" | "modified"> & {

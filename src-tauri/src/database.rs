@@ -232,17 +232,35 @@ fn initialize(connection: &Connection) -> Result<(), String> {
                 linked_at INTEGER NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS stacks (
+            CREATE TABLE IF NOT EXISTS projects (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 name_key TEXT NOT NULL UNIQUE,
-                created_at INTEGER NOT NULL
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_opened_at INTEGER NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS document_stacks (
+            CREATE TABLE IF NOT EXISTS project_stacks (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                name_key TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                UNIQUE(project_id, id),
+                UNIQUE(project_id, name_key)
+            );
+
+            CREATE TABLE IF NOT EXISTS project_documents (
+                project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
                 document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-                stack_id TEXT NOT NULL REFERENCES stacks(id) ON DELETE CASCADE,
-                PRIMARY KEY (document_id, stack_id)
+                stack_id TEXT NOT NULL,
+                added_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (project_id, document_id),
+                FOREIGN KEY (project_id, stack_id)
+                    REFERENCES project_stacks(project_id, id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS document_annotations (
@@ -258,7 +276,10 @@ fn initialize(connection: &Connection) -> Result<(), String> {
                 updated_at INTEGER NOT NULL
             );
 
-            CREATE INDEX IF NOT EXISTS document_stacks_by_stack ON document_stacks(stack_id);
+            CREATE INDEX IF NOT EXISTS project_stacks_by_project
+                ON project_stacks(project_id, name_key, id);
+            CREATE INDEX IF NOT EXISTS project_documents_by_stack
+                ON project_documents(project_id, stack_id);
             CREATE INDEX IF NOT EXISTS document_annotations_by_document_page
                 ON document_annotations(document_id, page_index);
             CREATE INDEX IF NOT EXISTS documents_by_last_viewed
@@ -266,6 +287,38 @@ fn initialize(connection: &Connection) -> Result<(), String> {
             "#,
         )
         .map_err(|error| format!("Could not initialize analysis cache: {error}"))?;
+    ensure_column(
+        connection,
+        "projects",
+        "last_opened_at",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    Ok(())
+}
+
+fn ensure_column(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<(), String> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|error| format!("Could not inspect {table}: {error}"))?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| format!("Could not inspect {table}: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read {table} columns: {error}"))?;
+    if columns.iter().any(|name| name == column) {
+        return Ok(());
+    }
+    connection
+        .execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
+            [],
+        )
+        .map_err(|error| format!("Could not add {table}.{column}: {error}"))?;
     Ok(())
 }
 
