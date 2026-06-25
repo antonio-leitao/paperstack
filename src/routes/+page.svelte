@@ -6,11 +6,9 @@
   import { onMount } from "svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
-  import DocumentStackMenu from "$lib/DocumentStackMenu.svelte";
-  import LastOpened from "$lib/LastOpened.svelte";
+  import DocumentLibrary from "$lib/DocumentLibrary.svelte";
   import LibrarySearch from "$lib/LibrarySearch.svelte";
   import NamePrompt from "$lib/NamePrompt.svelte";
-  import StackActions from "$lib/StackActions.svelte";
   import { copyToClipboard } from "$lib/copyToClipboard";
   import { openExternal } from "$lib/openExternal";
   import { hasTrustedBibtex } from "$lib/referenceBibtex";
@@ -37,7 +35,7 @@
   let currentDocument = $state<LibraryDocument | null>(null);
   let centerView = $state<"library" | "viewer">("library");
   let libraryQuery = $state("");
-  let libraryScope = $state("all");
+  let libraryLinkFilter = $state<"all" | "linked" | "unlinked">("all");
   let leftSidebarOpen = $state(true);
   let rightSidebarOpen = $state(true);
   let dismissedSourceId = $state<string | null>(null);
@@ -52,7 +50,8 @@
   const calloutCount = $derived(
     analysis?.references.reduce((total, reference) => total + reference.calloutBoxes.length, 0) ?? 0,
   );
-  const showingLibrary = $derived(centerView === "library" || !pdfBuffer);
+  const showingLibrary = $derived(centerView === "library");
+  const referencesPanelOpen = $derived(rightSidebarOpen && !showingLibrary && Boolean(pdfBuffer));
   const sourceMatch = $derived(
     analysis?.sourceReference?.resolutionStatus === "resolved" &&
       (analysis.sourceReference.resolutionConfidence ?? 0) >= 0.9 &&
@@ -91,9 +90,12 @@
     return error instanceof Error ? error.message : String(error);
   }
 
-  function showLibrary(scope = "all") {
-    libraryScope = scope;
+  function showLibrary() {
     centerView = "library";
+  }
+
+  function showViewer() {
+    centerView = "viewer";
   }
 
   function sortDocuments(items: LibraryDocument[]): LibraryDocument[] {
@@ -246,7 +248,6 @@
         ...document,
         stacks: document.stacks.filter((item) => item.id !== stack.id),
       }));
-      if (libraryScope === stack.id) libraryScope = "all";
       if (currentDocument) {
         currentDocument = documents.find((item) => item.id === currentDocument?.id) ?? null;
       }
@@ -292,10 +293,6 @@
       ? [...new Set([...stackIds, stackId])]
       : stackIds.filter((id) => id !== stackId);
     await setDocumentStackIds(document, nextIds);
-  }
-
-  async function removeDocumentFromStack(document: LibraryDocument, stackId: string) {
-    await toggleDocumentStack(document, stackId, false);
   }
 
   async function renameCurrentDocument() {
@@ -383,47 +380,6 @@
   }
 </script>
 
-{#snippet documentItems(items: LibraryDocument[], stackId: string | null = null)}
-  {#if items.length}
-    <ul class="document-list">
-      {#each items as document (document.id)}
-        <li>
-          <div class="document-list-row">
-            <button
-              type="button"
-              class:active={document.id === currentDocument?.id && !showingLibrary}
-              onclick={() => void openLibraryDocument(document.id)}
-            >
-              <span class="document-summary">
-                <span>{document.referenceTitle ?? document.title}</span>
-                {#if document.referenceAuthors.length}
-                  <small>{document.referenceAuthors.join(", ")}</small>
-                {/if}
-              </span>
-              <LastOpened timestamp={document.lastViewedAt} />
-            </button>
-            {#if stackId}
-              <details class="document-actions">
-                <summary aria-label={`Actions for ${document.referenceTitle ?? document.title}`}>...</summary>
-                <div>
-                  <button
-                    type="button"
-                    onclick={() => void removeDocumentFromStack(document, stackId)}
-                  >
-                    Remove from this stack
-                  </button>
-                </div>
-              </details>
-            {/if}
-          </div>
-        </li>
-      {/each}
-    </ul>
-  {:else}
-    <p class="empty-list">No PDFs</p>
-  {/if}
-{/snippet}
-
 <svelte:head>
   <title>Research PDF</title>
 </svelte:head>
@@ -431,40 +387,39 @@
 <main>
   <header class="toolbar">
     {#if !leftSidebarOpen}
-      <button type="button" onclick={() => (leftSidebarOpen = true)}>Show stacks</button>
+      <button type="button" onclick={() => (leftSidebarOpen = true)}>Show library</button>
       <button type="button" onclick={choosePdf}>Open PDF</button>
     {/if}
     <strong>
       {#if showingLibrary}
-        Library
+        Documents
       {:else}
         {currentDocument?.referenceTitle ?? currentDocument?.title ?? "Research PDF"}
       {/if}
     </strong>
 
-    {#if currentDocument && !showingLibrary}
-      <div class="stack-chips" aria-label="Document stacks">
-        {#if currentDocument.stacks.length}
-          {#each currentDocument.stacks as stack (stack.id)}
-            <button
-              type="button"
-              title={`Remove ${stack.name}`}
-              onclick={() => currentDocument && void removeDocumentFromStack(currentDocument, stack.id)}
-            >
-              {stack.name} x
-            </button>
-          {/each}
-        {:else}
-          <small>No stacks</small>
-        {/if}
-        <DocumentStackMenu
-          document={currentDocument}
-          {stacks}
-          summary="+ Stack"
-          onchange={toggleDocumentStack}
+    <fieldset class="view-toggle" aria-label="Workspace view">
+      <label>
+        <input
+          type="radio"
+          name="workspace-view"
+          checked={showingLibrary}
+          onchange={showLibrary}
         />
-      </div>
+        Documents
+      </label>
+      <label>
+        <input
+          type="radio"
+          name="workspace-view"
+          checked={!showingLibrary}
+          onchange={showViewer}
+        />
+        PDF
+      </label>
+    </fieldset>
 
+    {#if currentDocument && !showingLibrary}
       <details class="menu">
         <summary>Document</summary>
         <div class="menu-panel">
@@ -479,8 +434,6 @@
       <button type="button" onclick={() => void analyzePdf(pdfPath, true)} disabled={analyzing}>
         {analyzing ? "Analyzing…" : "Analyze again"}
       </button>
-    {:else if currentDocument && showingLibrary}
-      <button type="button" onclick={() => (centerView = "viewer")}>Back to PDF</button>
     {/if}
 
     <span class="status">
@@ -497,7 +450,7 @@
       {/if}
     </span>
 
-    {#if !rightSidebarOpen}
+    {#if !rightSidebarOpen && !showingLibrary && pdfBuffer}
       <button type="button" class="push-right" onclick={() => (rightSidebarOpen = true)}>
         Show references
       </button>
@@ -521,57 +474,30 @@
   <section
     class="workspace"
     class:left-closed={!leftSidebarOpen}
-    class:right-closed={!rightSidebarOpen}
+    class:right-closed={!referencesPanelOpen}
   >
     {#if leftSidebarOpen}
       <aside class="library" aria-label="Document library">
         <header class="library-header">
-          <button type="button" onclick={() => showLibrary("all")}>Search</button>
           <button type="button" onclick={() => (stackNamePrompt = { mode: "create" })}>
             New Stack
           </button>
           <button type="button" onclick={choosePdf}>Open PDF</button>
-          <button type="button" aria-label="Hide stacks" onclick={() => (leftSidebarOpen = false)}>
+          <button type="button" aria-label="Hide library" onclick={() => (leftSidebarOpen = false)}>
             Hide
           </button>
         </header>
 
-        <details class="sidebar-section" open>
-          <summary>
-            <span class="eyebrow">Stacks</span>
-          </summary>
-          {#if stacks.length}
-            {#each stacks as stack (stack.id)}
-              {@const stackDocuments = documents.filter((document) =>
-                document.stacks.some((item) => item.id === stack.id),
-              )}
-              <section class="stack-block">
-                <details open>
-                  <summary>{stack.name} ({stackDocuments.length})</summary>
-                  {@render documentItems(stackDocuments, stack.id)}
-                </details>
-                <div class="stack-menu">
-                  <button type="button" onclick={() => showLibrary(stack.id)}>Search</button>
-                  <StackActions
-                    name={stack.name}
-                    onrename={() => (stackNamePrompt = { mode: "rename", stack })}
-                    onremove={() => (stackToRemove = stack)}
-                  />
-                </div>
-              </section>
-            {/each}
-          {:else}
-            <p class="empty-list">No stacks</p>
-          {/if}
-        </details>
-
-        <details class="sidebar-section" open>
-          <summary>
-            <span class="eyebrow">Documents</span>
-            <small>{documents.length}</small>
-          </summary>
-          {@render documentItems(documents)}
-        </details>
+        <DocumentLibrary
+          {documents}
+          currentDocumentId={currentDocument?.id ?? null}
+          query={libraryQuery}
+          linkFilter={libraryLinkFilter}
+          onquery={(value) => (libraryQuery = value)}
+          onfilterchange={(value) => (libraryLinkFilter = value)}
+          onopen={(documentId) => void openLibraryDocument(documentId)}
+          onchoosepdf={choosePdf}
+        />
       </aside>
     {/if}
 
@@ -596,10 +522,6 @@
             {documents}
             {stacks}
             currentDocumentId={currentDocument?.id ?? null}
-            query={libraryQuery}
-            scope={libraryScope}
-            onquery={(value) => (libraryQuery = value)}
-            onscopechange={(value) => (libraryScope = value)}
             onopen={(documentId) => void openLibraryDocument(documentId)}
             onchoosepdf={choosePdf}
             onstackchange={toggleDocumentStack}
@@ -616,15 +538,13 @@
           {/key}
         {:else}
           <div class="empty">
-            <h1>Research PDF</h1>
-            <p>Open a PDF or choose one from a stack.</p>
             <button type="button" onclick={choosePdf}>Open PDF</button>
           </div>
         {/if}
       </div>
     </section>
 
-    {#if rightSidebarOpen}
+    {#if referencesPanelOpen}
       <aside class="references" aria-label="Extracted references">
         <header>
           <h2>References</h2>
@@ -751,19 +671,12 @@
     font-size: 13px;
   }
 
-  .stack-chips {
+  .view-toggle {
     display: flex;
-    min-width: 0;
     align-items: center;
-    gap: 5px;
-    overflow: hidden;
-  }
-
-  .stack-chips > button {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    gap: 8px;
+    margin: 0;
+    padding: 2px 6px;
   }
 
   .push-right {
@@ -832,111 +745,9 @@
     border-left: 1px solid #aaa;
   }
 
-  .sidebar-section,
-  .stack-block > details {
-    margin-bottom: 10px;
-  }
-
-  .sidebar-section > summary {
-    margin-bottom: 6px;
-  }
-
-  .sidebar-section > summary small {
-    color: #555;
-    font-size: 12px;
-  }
-
-  .eyebrow {
-    color: #555;
-    font-size: 12px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .stack-block {
-    position: relative;
-    margin-bottom: 10px;
-  }
-
-  .stack-block > details > summary {
-    padding-right: 95px;
-  }
-
-  .stack-menu {
-    position: absolute;
-    top: 0;
-    right: 0;
-    display: flex;
-    align-items: start;
-    gap: 4px;
-  }
-
-  .document-list {
-    margin: 5px 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .document-list-row {
-    display: flex;
-    align-items: start;
-    gap: 4px;
-  }
-
-  .document-list-row > button {
-    display: flex;
-    width: 100%;
-    min-width: 0;
-    align-items: start;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 6px;
-    border: 0;
-    background: transparent;
-    text-align: left;
-  }
-
-  .document-list-row > button.active {
-    background: #ddd;
-  }
-
-  .document-summary {
-    min-width: 0;
-  }
-
-  .document-list .document-summary,
-  .document-list .document-summary span,
-  .document-list small {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .document-list small,
-  .empty-list,
   .references small {
     color: #555;
     font-size: 12px;
-  }
-
-  .empty-list {
-    margin: 5px 0 5px 12px;
-  }
-
-  .document-actions {
-    position: relative;
-  }
-
-  .document-actions > div {
-    position: absolute;
-    right: 0;
-    z-index: 10;
-    display: grid;
-    min-width: 160px;
-    padding: 4px;
-    border: 1px solid #888;
-    background: white;
   }
 
   .center {
