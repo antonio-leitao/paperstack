@@ -179,20 +179,22 @@
   </fieldset>
 
   {#if filteredDocuments.length}
-    <ul>
+    <ul class="document-list">
       {#each filteredDocuments as document (document.id)}
         <li>
-          <button
-            type="button"
-            class:active={document.id === currentDocumentId}
-            onclick={() => void onopen(document.id)}
-          >
-            <span class="document-summary">
-              <span>{documentTitle(document)}</span>
-              <small>{documentMeta(document)}</small>
-            </span>
-            <LastOpened timestamp={document.lastViewedAt} />
-          </button>
+          <div class="document-list-row">
+            <button
+              type="button"
+              class:active={document.id === currentDocumentId}
+              onclick={() => void onopen(document.id)}
+            >
+              <span class="document-summary">
+                <span>{documentTitle(document)}</span>
+                <small>{documentMeta(document)}</small>
+              </span>
+              <LastOpened timestamp={document.lastViewedAt} />
+            </button>
+          </div>
         </li>
       {/each}
     </ul>
@@ -232,7 +234,7 @@
     align-items: center;
   }
 
-  ul {
+  .document-list {
     margin: 5px 0;
     padding: 0;
     list-style: none;
@@ -244,12 +246,17 @@
     list-style: none;
   }
 
-  li > button {
+  .document-list-row {
     display: flex;
+    align-items: start;
+    gap: 4px;
+  }
+
+  .document-list-row > button {
+    display: grid;
     width: 100%;
     min-width: 0;
-    align-items: start;
-    justify-content: space-between;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     padding: 6px;
     border: 0;
@@ -257,7 +264,7 @@
     text-align: left;
   }
 
-  li > button.active {
+  .document-list-row > button.active {
     background: #ddd;
   }
 
@@ -265,9 +272,9 @@
     min-width: 0;
   }
 
-  .document-summary,
-  .document-summary span,
-  small {
+  .document-list .document-summary,
+  .document-list .document-summary span,
+  .document-list small {
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
