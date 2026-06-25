@@ -75,6 +75,10 @@
     return error instanceof Error ? error.message : String(error);
   }
 
+  function clearNativeSelection() {
+    window.getSelection()?.removeAllRanges();
+  }
+
   function normalizeDate(value: Date | string | undefined): Date | undefined {
     if (value instanceof Date) return value;
     if (!value) return undefined;
@@ -227,6 +231,7 @@
       );
       upsertSavedAnnotations(saved);
       selection.clear(documentId);
+      clearNativeSelection();
       annotationError = null;
     } catch (error) {
       if (saved.length) {
@@ -275,11 +280,13 @@
 
 <div class="viewer">
   <ViewerControls {documentId} />
-  {#if annotationError}
-    <div class="annotation-status error" role="status">{annotationError}</div>
-  {:else if loadingAnnotations}
-    <div class="annotation-status" role="status">Loading highlights...</div>
-  {/if}
+  <div class="annotation-status-slot">
+    {#if annotationError}
+      <div class="annotation-status error" role="status">{annotationError}</div>
+    {:else if loadingAnnotations}
+      <div class="annotation-status" role="status">Loading highlights...</div>
+    {/if}
+  </div>
   <DocumentContent {documentId}>
     {#snippet children(documentContent)}
       {#if documentContent.isLoading}
@@ -315,6 +322,7 @@
                 <SelectionLayer
                   {documentId}
                   pageIndex={page.pageIndex}
+                  background="rgba(255, 205, 69, 0.38)"
                   textStyle={{ background: "rgba(255, 205, 69, 0.38)" }}
                   selectionMenuSnippet={highlightSelectionMenu}
                 />
@@ -337,6 +345,8 @@
     height: 100%;
     min-height: 0;
     grid-template-rows: auto auto 1fr;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   :global(.viewport) {
@@ -344,11 +354,17 @@
     background: #d8d8d8;
   }
 
+  .annotation-status-slot {
+    min-height: 0;
+  }
+
   .page {
     position: relative;
     overflow: visible;
     background: white;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .message {
