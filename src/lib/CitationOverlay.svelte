@@ -1,8 +1,9 @@
 <script lang="ts">
-  import type { PageSize, Reference } from "./types";
+  import type { LibraryDocument, PageSize, Reference } from "./types";
   import { copyToClipboard } from "./copyToClipboard";
   import { openExternal } from "./openExternal";
   import { hasTrustedBibtex } from "./referenceBibtex";
+  import { openViewerWindow } from "./viewerWindows";
 
   let {
     page,
@@ -10,13 +11,20 @@
     renderedHeight,
     references,
     resolvingReferenceIds = [],
+    linkedDocuments = {},
   }: {
     page: PageSize;
     renderedWidth: number;
     renderedHeight: number;
     references: Reference[];
     resolvingReferenceIds?: string[];
+    linkedDocuments?: Record<string, LibraryDocument>;
   } = $props();
+
+  async function openLinkedDocument(event: MouseEvent, document: LibraryDocument) {
+    event.stopPropagation();
+    await openViewerWindow(document);
+  }
 
   let activeKey = $state<string | null>(null);
   let copiedBibtexId = $state<string | null>(null);
@@ -89,6 +97,9 @@
       </button>
 
       {#if activeKey === callout.key}
+        {@const linkedDoc = callout.reference.sharedId
+          ? linkedDocuments[callout.reference.sharedId]
+          : undefined}
         <div class="card">
           <strong>{referenceLabel(callout.reference)}</strong>
           {#if callout.reference.authors.length}
@@ -126,6 +137,15 @@
                 void openExternal(event, callout.reference.openAccessPdf!);
               }}
             >Open PDF</a>
+          {/if}
+          {#if linkedDoc}
+            <button
+              type="button"
+              aria-label={`Open the linked PDF for ${referenceLabel(callout.reference)}`}
+              onclick={(event) => void openLinkedDocument(event, linkedDoc)}
+            >
+              Open document
+            </button>
           {/if}
           {#if hasTrustedBibtex(callout.reference) && !resolving}
             <button

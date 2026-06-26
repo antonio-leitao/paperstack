@@ -1,15 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "identifier": "viewer",
+  "description": "Capability for standalone PDF viewer windows (label: viewer:<documentId>)",
+  "windows": ["viewer:*"],
   "permissions": [
     "core:default",
     "opener:default",
-    "dialog:allow-open",
+    "core:window:allow-close",
     "core:webview:allow-create-webview-window",
     "core:webview:allow-get-all-webviews",
-    "core:window:allow-get-all-windows",
     "core:window:allow-set-focus",
     {
       "identifier": "fs:allow-read-file",

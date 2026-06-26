@@ -6,7 +6,7 @@
 
   let {
     documents,
-    currentDocumentId = null,
+    openDocumentIds = [],
     query,
     linkFilter,
     onquery,
@@ -15,7 +15,7 @@
     onchoosepdf,
   }: {
     documents: LibraryDocument[];
-    currentDocumentId?: string | null;
+    openDocumentIds?: string[];
     query: string;
     linkFilter: LinkFilter;
     onquery: (query: string) => void;
@@ -132,7 +132,7 @@
 <section class="document-library" aria-label="Library">
   <header>
     <strong>Library</strong>
-    <button type="button" onclick={onchoosepdf}>Open PDF</button>
+    <button type="button" onclick={onchoosepdf}>Add PDF</button>
   </header>
 
   <label>
@@ -185,7 +185,7 @@
           <div class="document-list-row">
             <button
               type="button"
-              class:active={document.id === currentDocumentId}
+              class:open={openDocumentIds.includes(document.id)}
               onclick={() => void onopen(document.id)}
             >
               <span class="document-summary">
@@ -264,8 +264,9 @@
     text-align: left;
   }
 
-  .document-list-row > button.active {
-    background: #ddd;
+  .document-list-row > button.open {
+    background: #f2f7ff;
+    box-shadow: inset 3px 0 0 #3b82f6;
   }
 
   .document-summary {

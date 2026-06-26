@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 const HIGHLIGHT_ANNOTATION_SUBTYPE: i64 = 9;
@@ -77,6 +77,35 @@ struct LinkedReferenceData {
     authors: Vec<String>,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryChangedEvent {
+    kind: &'static str,
+    document_id: Option<String>,
+    action: &'static str,
+}
+
+// Library mutations happen in whichever window is focused, but the data is shown
+// in several windows at once (the organizer and any open viewers). After a
+// committed change we broadcast "library-changed" so every window can reconcile
+// from the database (the organizer refreshes its lists; a viewer closes when its
+// own document is deleted, or refreshes its metadata when it is updated).
+fn emit_library_changed(
+    app: &AppHandle,
+    kind: &'static str,
+    document_id: Option<&str>,
+    action: &'static str,
+) {
+    let _ = app.emit(
+        "library-changed",
+        LibraryChangedEvent {
+            kind,
+            document_id: document_id.map(ToOwned::to_owned),
+            action,
+        },
+    );
+}
+
 #[tauri::command]
 pub(crate) fn import_document(app: AppHandle, path: String) -> Result<LibraryDocument, String> {
     let source_path = Path::new(&path);
@@ -141,7 +170,9 @@ pub(crate) fn import_document(app: AppHandle, path: String) -> Result<LibraryDoc
         }
         return Err(format!("Could not add the PDF to the library: {error}"));
     }
-    load_document(&app, &connection, &id)
+    let document = load_document(&app, &connection, &id)?;
+    emit_library_changed(&app, "document", Some(&id), "created");
+    Ok(document)
 }
 
 #[tauri::command]
@@ -177,7 +208,10 @@ pub(crate) fn open_document(app: AppHandle, id: String) -> Result<LibraryDocumen
     if changed == 0 {
         return Err("Document not found".to_owned());
     }
-    load_document(&app, &connection, &id)
+    let document = load_document(&app, &connection, &id)?;
+    // Bumping last_viewed_at reorders the library, so let other windows know.
+    emit_library_changed(&app, "document", Some(&id), "opened");
+    Ok(document)
 }
 
 #[tauri::command]
@@ -197,7 +231,9 @@ pub(crate) fn rename_document(
     if changed == 0 {
         return Err("Document not found".to_owned());
     }
-    load_document(&app, &connection, &id)
+    let document = load_document(&app, &connection, &id)?;
+    emit_library_changed(&app, "document", Some(&id), "updated");
+    Ok(document)
 }
 
 #[tauri::command]
@@ -216,6 +252,7 @@ pub(crate) fn delete_document(app: AppHandle, id: String) -> Result<(), String> 
     transaction
         .commit()
         .map_err(|error| format!("Could not finish deleting the document: {error}"))?;
+    emit_library_changed(&app, "document", Some(&id), "deleted");
     match std::fs::remove_file(stored_path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -500,7 +537,9 @@ pub(crate) fn add_document_to_project(
     transaction
         .commit()
         .map_err(|error| format!("Could not finish adding the document to the project: {error}"))?;
-    load_project_document(&app, &connection, &project_id, &document_id)
+    let project_document = load_project_document(&app, &connection, &project_id, &document_id)?;
+    emit_library_changed(&app, "projectDocument", Some(&document_id), "added");
+    Ok(project_document)
 }
 
 #[tauri::command]
@@ -536,7 +575,9 @@ pub(crate) fn move_project_document(
     transaction
         .commit()
         .map_err(|error| format!("Could not finish moving the project document: {error}"))?;
-    load_project_document(&app, &connection, &project_id, &document_id)
+    let project_document = load_project_document(&app, &connection, &project_id, &document_id)?;
+    emit_library_changed(&app, "projectDocument", Some(&document_id), "moved");
+    Ok(project_document)
 }
 
 #[tauri::command]
@@ -555,6 +596,7 @@ pub(crate) fn remove_document_from_project(
     if changed == 0 {
         return Err("Document is not in this project".to_owned());
     }
+    emit_library_changed(&app, "projectDocument", Some(&document_id), "removed");
     Ok(())
 }
 
@@ -617,7 +659,9 @@ pub(crate) fn link_document_reference(
     transaction
         .commit()
         .map_err(|error| format!("Could not finish linking the document: {error}"))?;
-    load_document(&app, &connection, &document_id)
+    let document = load_document(&app, &connection, &document_id)?;
+    emit_library_changed(&app, "document", Some(&document_id), "updated");
+    Ok(document)
 }
 
 #[tauri::command]
@@ -645,7 +689,9 @@ pub(crate) fn unlink_document_reference(
     transaction
         .commit()
         .map_err(|error| format!("Could not finish unlinking the document: {error}"))?;
-    load_document(&app, &connection, &document_id)
+    let document = load_document(&app, &connection, &document_id)?;
+    emit_library_changed(&app, "document", Some(&document_id), "updated");
+    Ok(document)
 }
 
 #[tauri::command]

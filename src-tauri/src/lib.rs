@@ -181,10 +181,15 @@ fn normalize_url(url: &str) -> String {
 #[tauri::command]
 async fn analyze_pdf(
     app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
     path: String,
     grobid_url: Option<String>,
     force_resolve: bool,
 ) -> Result<AnalysisResult, String> {
+    // Resolution progress is streamed only to the window that asked for it, so
+    // multiple viewer windows analyzing in parallel never receive each other's
+    // (potentially large) payloads.
+    let target = window.label().to_owned();
     let pdf = std::fs::read(&path).map_err(|error| format!("Could not read PDF: {error}"))?;
     let document_digest = reference_resolver::document_digest(&pdf);
     let mut cache_warnings = Vec::new();
@@ -294,7 +299,7 @@ async fn analyze_pdf(
         .map(|input| input.id.clone())
         .collect::<HashSet<_>>();
     if !resolving_reference_ids.is_empty() {
-        emit_resolution_progress(&app, &path, &result, &resolving_reference_ids);
+        emit_resolution_progress(&app, &target, &path, &result, &resolving_reference_ids);
     }
     let resolution_started = Instant::now();
     let resolution_batch = reference_resolver::resolve_references(&client, inputs, |completed| {
@@ -302,7 +307,7 @@ async fn analyze_pdf(
             resolving_reference_ids.remove(&resolution.reference_id);
         }
         apply_resolutions(&mut result, completed);
-        emit_resolution_progress(&app, &path, &result, &resolving_reference_ids);
+        emit_resolution_progress(&app, &target, &path, &result, &resolving_reference_ids);
     })
     .await;
     let resolution_elapsed = resolution_started.elapsed();
@@ -334,13 +339,15 @@ async fn analyze_pdf(
 
 fn emit_resolution_progress(
     app: &tauri::AppHandle,
+    target: &str,
     path: &str,
     analysis: &AnalysisResult,
     resolving_reference_ids: &HashSet<String>,
 ) {
     let mut resolving_reference_ids = resolving_reference_ids.iter().cloned().collect::<Vec<_>>();
     resolving_reference_ids.sort();
-    let _ = app.emit(
+    let _ = app.emit_to(
+        target,
         "reference-resolution-progress",
         ReferenceResolutionProgressEvent {
             path: path.to_owned(),
@@ -763,6 +770,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        // Persists each window's size/position by label, so reopening a paper
+        // restores its previous geometry (the viewer label is stable per doc).
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             analyze_pdf,
             document_library::import_document,

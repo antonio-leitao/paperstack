@@ -12,7 +12,7 @@
   import { ViewportPluginPackage } from "@embedpdf/plugin-viewport/svelte";
   import { ZoomMode, ZoomPluginPackage } from "@embedpdf/plugin-zoom/svelte";
   import PdfViewerDocument from "./PdfViewerDocument.svelte";
-  import type { AnalysisResult } from "./types";
+  import type { AnalysisResult, LibraryDocument } from "./types";
 
   let {
     buffer,
@@ -20,12 +20,14 @@
     libraryDocumentId = null,
     analysis,
     resolvingReferenceIds = [],
+    linkedDocuments = {},
   }: {
     buffer: ArrayBuffer;
     fileName: string;
     libraryDocumentId?: string | null;
     analysis: AnalysisResult | null;
     resolvingReferenceIds?: string[];
+    linkedDocuments?: Record<string, LibraryDocument>;
   } = $props();
 
   const documentId = $derived(libraryDocumentId ?? "prototype-document");
@@ -68,6 +70,7 @@
           {libraryDocumentId}
           {analysis}
           {resolvingReferenceIds}
+          {linkedDocuments}
         />
       {/if}
     {/snippet}

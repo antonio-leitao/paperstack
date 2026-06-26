@@ -34,6 +34,7 @@
   import type {
     AnalysisResult,
     DocumentAnnotation,
+    LibraryDocument,
     StoredHighlightAnnotation,
   } from "./types";
 
@@ -42,11 +43,13 @@
     libraryDocumentId,
     analysis,
     resolvingReferenceIds = [],
+    linkedDocuments = {},
   }: {
     documentId: string;
     libraryDocumentId: string | null;
     analysis: AnalysisResult | null;
     resolvingReferenceIds?: string[];
+    linkedDocuments?: Record<string, LibraryDocument>;
   } = $props();
 
   const desktop = isTauri();
@@ -316,6 +319,7 @@
                   renderedHeight={page.height}
                   references={analysis.references}
                   {resolvingReferenceIds}
+                  {linkedDocuments}
                 />
               {/if}
               {#if highlightsAvailable}

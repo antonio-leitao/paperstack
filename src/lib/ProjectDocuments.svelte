@@ -5,7 +5,7 @@
   let {
     projectDocuments,
     stacks,
-    currentDocumentId = null,
+    openDocumentIds = [],
     onopen,
     onmove,
     onremove,
@@ -14,7 +14,7 @@
   }: {
     projectDocuments: ProjectDocument[];
     stacks: ProjectStack[];
-    currentDocumentId?: string | null;
+    openDocumentIds?: string[];
     onopen: (documentId: string) => void | Promise<void>;
     onmove: (documentId: string, stackId: string) => void | Promise<void>;
     onremove: (documentId: string) => void | Promise<void>;
@@ -49,14 +49,14 @@
     </div>
     <div class="actions">
       <button type="button" onclick={oncreatestack}>New Stack</button>
-      <button type="button" onclick={onchoosepdf}>Open PDF</button>
+      <button type="button" onclick={onchoosepdf}>Add PDF</button>
     </div>
   </header>
 
   {#if sortedDocuments.length}
     <ul>
       {#each sortedDocuments as item (item.document.id)}
-        <li class:active={item.document.id === currentDocumentId}>
+        <li class:open={openDocumentIds.includes(item.document.id)}>
           <article>
             <div>
               <div class="heading">
@@ -64,6 +64,7 @@
                 <LastOpened timestamp={item.document.lastViewedAt} />
               </div>
               <p>{documentMeta(item)}</p>
+              <p class="stack-label">{item.stack.name}</p>
             </div>
             <div class="actions">
               <label>
@@ -77,7 +78,7 @@
                   {/each}
                 </select>
               </label>
-              <button type="button" onclick={() => void onopen(item.document.id)}>Open PDF</button>
+              <button type="button" onclick={() => void onopen(item.document.id)}>Open</button>
               <button type="button" onclick={() => void onremove(item.document.id)}>Remove</button>
             </div>
           </article>
@@ -87,7 +88,7 @@
   {:else if stacks.length}
     <div class="empty">
       <p>No PDFs in this project yet.</p>
-      <button type="button" onclick={onchoosepdf}>Open PDF</button>
+      <button type="button" onclick={onchoosepdf}>Add PDF</button>
     </div>
   {:else}
     <div class="empty">
@@ -146,8 +147,18 @@
     border: 1px solid #aaa;
   }
 
-  li.active {
-    background: #eee;
+  li.open {
+    box-shadow: inset 3px 0 0 #3b82f6;
+  }
+
+  .stack-label {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 1px 7px;
+    border: 1px solid #ccc;
+    border-radius: 9px;
+    color: #444;
+    font-size: 11px;
   }
 
   article {
