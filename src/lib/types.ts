@@ -49,6 +49,22 @@ export type AnalysisResult = {
   enrichmentWarning: string | null;
 };
 
+export type AnalysisPhase = "queued" | "extracting" | "resolving" | "done" | "error";
+
+export type AnalysisStatus = {
+  documentId: string;
+  phase: AnalysisPhase;
+  resolved: number;
+  total: number;
+  error: string | null;
+};
+
+export type AnalysisProgress = {
+  documentId: string;
+  analysis: AnalysisResult;
+  resolvingReferenceIds: string[];
+};
+
 export type Project = {
   id: string;
   name: string;

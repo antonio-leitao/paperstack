@@ -2,7 +2,8 @@
   import { dndzone, TRIGGERS, type DndEvent } from "svelte-dnd-action";
   import LastOpened from "./LastOpened.svelte";
   import { BOARD_DND_TYPE, libraryCardId } from "./boardDnd";
-  import type { LibraryDocument } from "./types";
+  import { analysisLabel } from "./analysisLabel";
+  import type { AnalysisStatus, LibraryDocument } from "./types";
 
   type LinkFilter = "all" | "linked" | "unlinked";
 
@@ -11,6 +12,7 @@
   let {
     documents,
     openDocumentIds = [],
+    analysisStates = {},
     query,
     linkFilter,
     onquery,
@@ -20,6 +22,7 @@
   }: {
     documents: LibraryDocument[];
     openDocumentIds?: string[];
+    analysisStates?: Record<string, AnalysisStatus>;
     query: string;
     linkFilter: LinkFilter;
     onquery: (query: string) => void;
@@ -231,6 +234,7 @@
       onfinalize={handleLibraryFinalize}
     >
       {#each libraryCards as card (card.id)}
+        {@const status = analysisLabel(analysisStates[card.document.id])}
         <li aria-label={documentTitle(card.document)}>
           <div class="document-list-row">
             <button
@@ -241,6 +245,14 @@
               <span class="document-summary">
                 <span>{documentTitle(card.document)}</span>
                 <small>{documentMeta(card.document)}</small>
+                {#if status}
+                  <small
+                    class="analysis"
+                    class:failed={analysisStates[card.document.id]?.phase === "error"}
+                  >
+                    {status}
+                  </small>
+                {/if}
               </span>
               <LastOpened timestamp={card.document.lastViewedAt} />
             </button>
@@ -335,6 +347,14 @@
   small {
     color: #555;
     font-size: 12px;
+  }
+
+  .analysis {
+    color: #3b82f6;
+  }
+
+  .analysis.failed {
+    color: #7e1111;
   }
 
   p {

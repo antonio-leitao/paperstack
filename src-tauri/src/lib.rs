@@ -9,9 +9,11 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tauri::Emitter;
+use tauri::{Emitter, State};
+use tokio::sync::Semaphore;
 
 const LOCAL_GROBID_URL: &str = "http://127.0.0.1:8070";
 const FULL_GROBID_URL: &str = "https://grobidorg-grobid-full.hf.space";
@@ -19,6 +21,9 @@ const FULL_GROBID_MIRROR_URL: &str = "https://grobidorg-grobid-full2.hf.space";
 const HOSTED_WAKE_TIMEOUT: Duration = Duration::from_secs(180);
 const HOSTED_POLL_INTERVAL: Duration = Duration::from_secs(3);
 const REFERENCE_RESOLVER_VERSION: &str = "resolver-v8-staged-semantic";
+// How many PDFs may be analyzed at once. GROBID (especially the hosted space) is
+// the bottleneck, so this defaults to 1; raise it to widen the worker pool.
+const ANALYSIS_CONCURRENCY: usize = 1;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,10 +82,36 @@ struct AnalysisResult {
     enrichment_warning: Option<String>,
 }
 
+// Lightweight per-document status, broadcast app-wide so any window can show a
+// loader on the matching card. `done` is emitted once and the entry is dropped.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ReferenceResolutionProgressEvent {
-    path: String,
+struct AnalysisState {
+    document_id: String,
+    phase: String,
+    resolved: usize,
+    total: usize,
+    error: Option<String>,
+}
+
+impl AnalysisState {
+    fn new(document_id: &str, phase: &str) -> Self {
+        Self {
+            document_id: document_id.to_owned(),
+            phase: phase.to_owned(),
+            resolved: 0,
+            total: 0,
+            error: None,
+        }
+    }
+}
+
+// The full analysis, streamed during resolution. Only an open viewer of the
+// matching document reads it; everyone else ignores it by `documentId`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AnalysisProgressEvent {
+    document_id: String,
     analysis: AnalysisResult,
     resolving_reference_ids: Vec<String>,
 }
@@ -178,36 +209,130 @@ fn normalize_url(url: &str) -> String {
     url.trim().trim_end_matches('/').to_owned()
 }
 
-#[tauri::command]
-async fn analyze_pdf(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-    path: String,
-    grobid_url: Option<String>,
+// Owns background PDF analysis. Jobs are keyed by document id, deduped, and run
+// behind a semaphore so we never hammer GROBID; they outlive any window because
+// the manager (not a webview) owns them. Status is in-memory only — on restart a
+// document is simply "not analyzed" until reopened or re-imported.
+pub(crate) struct AnalysisManager {
+    states: Arc<Mutex<HashMap<String, AnalysisState>>>,
+    semaphore: Arc<Semaphore>,
+}
+
+impl AnalysisManager {
+    fn new() -> Self {
+        Self {
+            states: Arc::new(Mutex::new(HashMap::new())),
+            semaphore: Arc::new(Semaphore::new(ANALYSIS_CONCURRENCY)),
+        }
+    }
+
+    fn snapshot(&self) -> Vec<AnalysisState> {
+        self.states
+            .lock()
+            .map(|map| map.values().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    fn enqueue(&self, app: tauri::AppHandle, document_id: String, force: bool) {
+        {
+            let Ok(mut map) = self.states.lock() else {
+                return;
+            };
+            // Skip if already queued or in flight; an errored entry may be retried.
+            if map
+                .get(&document_id)
+                .is_some_and(|state| state.phase != "error")
+            {
+                return;
+            }
+            map.insert(document_id.clone(), AnalysisState::new(&document_id, "queued"));
+        }
+        let _ = app.emit("analysis-status", AnalysisState::new(&document_id, "queued"));
+        let states = self.states.clone();
+        let semaphore = self.semaphore.clone();
+        tauri::async_runtime::spawn(async move {
+            let _permit = match semaphore.acquire().await {
+                Ok(permit) => permit,
+                Err(_) => return,
+            };
+            match run_analysis(&app, &document_id, force, &states).await {
+                Ok(()) => publish_done(&app, &states, &document_id),
+                Err(error) => {
+                    let mut state = AnalysisState::new(&document_id, "error");
+                    state.error = Some(error);
+                    publish(&app, &states, state);
+                }
+            }
+        });
+    }
+}
+
+fn publish(
+    app: &tauri::AppHandle,
+    states: &Arc<Mutex<HashMap<String, AnalysisState>>>,
+    state: AnalysisState,
+) {
+    if let Ok(mut map) = states.lock() {
+        map.insert(state.document_id.clone(), state.clone());
+    }
+    let _ = app.emit("analysis-status", state);
+}
+
+fn publish_done(
+    app: &tauri::AppHandle,
+    states: &Arc<Mutex<HashMap<String, AnalysisState>>>,
+    document_id: &str,
+) {
+    if let Ok(mut map) = states.lock() {
+        map.remove(document_id);
+    }
+    let _ = app.emit("analysis-status", AnalysisState::new(document_id, "done"));
+}
+
+fn emit_analysis_progress(
+    app: &tauri::AppHandle,
+    document_id: &str,
+    analysis: &AnalysisResult,
+    resolving_reference_ids: &HashSet<String>,
+) {
+    let mut resolving_reference_ids = resolving_reference_ids.iter().cloned().collect::<Vec<_>>();
+    resolving_reference_ids.sort();
+    let _ = app.emit(
+        "analysis-progress",
+        AnalysisProgressEvent {
+            document_id: document_id.to_owned(),
+            analysis: analysis.clone(),
+            resolving_reference_ids,
+        },
+    );
+}
+
+// The analysis pipeline, owned by the worker. Reads from the document's stored
+// PDF, reuses the cache when possible, extracts via GROBID, resolves references,
+// and persists. Emits status (for card loaders) and progress (for an open
+// viewer) as it goes. Returns Ok(()) once the result is cached.
+async fn run_analysis(
+    app: &tauri::AppHandle,
+    document_id: &str,
     force_resolve: bool,
-) -> Result<AnalysisResult, String> {
-    // Resolution progress is streamed only to the window that asked for it, so
-    // multiple viewer windows analyzing in parallel never receive each other's
-    // (potentially large) payloads.
-    let target = window.label().to_owned();
+    states: &Arc<Mutex<HashMap<String, AnalysisState>>>,
+) -> Result<(), String> {
+    let path = document_library::document_path(app, document_id)?;
     let pdf = std::fs::read(&path).map_err(|error| format!("Could not read PDF: {error}"))?;
     let document_digest = reference_resolver::document_digest(&pdf);
     let mut cache_warnings = Vec::new();
     let mut cached_extraction = None;
-    let cache_path = match database::database_path(&app) {
-        Ok(path) => {
+    let cache_path = match database::database_path(app) {
+        Ok(db_path) => {
             match database::load_pdf(
-                &path,
+                &db_path,
                 &document_digest,
                 database::EXTRACTION_VERSION,
                 REFERENCE_RESOLVER_VERSION,
             ) {
-                Ok(database::CacheLookup::Fresh {
-                    extracted,
-                    resolved,
-                }) => {
+                Ok(database::CacheLookup::Fresh { extracted, .. }) => {
                     if !force_resolve {
-                        return Ok(resolved);
+                        return Ok(());
                     }
                     cached_extraction = Some(extracted);
                 }
@@ -217,7 +342,7 @@ async fn analyze_pdf(
                 Ok(database::CacheLookup::Miss) => {}
                 Err(error) => cache_warnings.push(error),
             }
-            Some(path)
+            Some(db_path)
         }
         Err(error) => {
             cache_warnings.push(error);
@@ -231,7 +356,8 @@ async fn analyze_pdf(
     let extracted = if let Some(extracted) = cached_extraction {
         extracted
     } else {
-        let file_name = Path::new(&path)
+        publish(app, states, AnalysisState::new(document_id, "extracting"));
+        let file_name = path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("document.pdf")
@@ -248,10 +374,7 @@ async fn analyze_pdf(
             .text("generateIDs", "1")
             .text("teiCoordinates", "ref")
             .text("teiCoordinates", "biblStruct");
-        let base_url = match grobid_url {
-            Some(url) => normalize_url(&url),
-            None => resolve_grobid(None).await?.url,
-        };
+        let base_url = resolve_grobid(None).await?.url;
         let response = client
             .post(format!("{base_url}/api/processFulltextDocument"))
             .multipart(form)
@@ -273,7 +396,6 @@ async fn analyze_pdf(
     };
     let mut result = extracted.clone();
     let mut warnings = cache_warnings;
-    let cache_started = Instant::now();
     let cache_hits = if let Some(cache_path) = cache_path.as_ref() {
         match database::apply_shared_references(cache_path, &mut result) {
             Ok(hits) => hits,
@@ -285,7 +407,6 @@ async fn analyze_pdf(
     } else {
         0
     };
-    let cache_elapsed = cache_started.elapsed();
     let inputs = result
         .source_reference
         .iter()
@@ -293,33 +414,31 @@ async fn analyze_pdf(
         .filter(|reference| reference.resolution_status != ResolutionStatus::Resolved.as_str())
         .map(reference_input)
         .collect::<Vec<_>>();
-    let network_reference_count = inputs.len();
+    let total = inputs.len();
     let mut resolving_reference_ids = inputs
         .iter()
         .map(|input| input.id.clone())
         .collect::<HashSet<_>>();
+    let mut resolving_state = AnalysisState::new(document_id, "resolving");
+    resolving_state.total = total;
+    resolving_state.resolved = total - resolving_reference_ids.len();
+    publish(app, states, resolving_state);
     if !resolving_reference_ids.is_empty() {
-        emit_resolution_progress(&app, &target, &path, &result, &resolving_reference_ids);
+        emit_analysis_progress(app, document_id, &result, &resolving_reference_ids);
     }
-    let resolution_started = Instant::now();
     let resolution_batch = reference_resolver::resolve_references(&client, inputs, |completed| {
         for resolution in &completed {
             resolving_reference_ids.remove(&resolution.reference_id);
         }
         apply_resolutions(&mut result, completed);
-        emit_resolution_progress(&app, &target, &path, &result, &resolving_reference_ids);
+        let mut progress_state = AnalysisState::new(document_id, "resolving");
+        progress_state.total = total;
+        progress_state.resolved = total - resolving_reference_ids.len();
+        publish(app, states, progress_state);
+        emit_analysis_progress(app, document_id, &result, &resolving_reference_ids);
     })
     .await;
-    let resolution_elapsed = resolution_started.elapsed();
     warnings.extend(resolution_batch.warning);
-    eprintln!(
-        "[resolver] references={} cache_hits={} network_references={} cache_ms={} resolution_ms={}",
-        result.references.len(),
-        cache_hits,
-        network_reference_count,
-        cache_elapsed.as_millis(),
-        resolution_elapsed.as_millis(),
-    );
     if let Some(cache_path) = cache_path.as_ref() {
         match database::store_pdf(
             cache_path,
@@ -334,27 +453,55 @@ async fn analyze_pdf(
         }
     }
     result.enrichment_warning = (!warnings.is_empty()).then(|| warnings.join(" "));
-    Ok(result)
+    eprintln!(
+        "[resolver] document={document_id} references={} cache_hits={} network_references={}",
+        result.references.len(),
+        cache_hits,
+        total,
+    );
+    // Final snapshot so an open viewer picks up the canonical result (shared ids
+    // and any warnings) rather than the last mid-resolution state.
+    emit_analysis_progress(app, document_id, &result, &HashSet::new());
+    Ok(())
 }
 
-fn emit_resolution_progress(
-    app: &tauri::AppHandle,
-    target: &str,
-    path: &str,
-    analysis: &AnalysisResult,
-    resolving_reference_ids: &HashSet<String>,
-) {
-    let mut resolving_reference_ids = resolving_reference_ids.iter().cloned().collect::<Vec<_>>();
-    resolving_reference_ids.sort();
-    let _ = app.emit_to(
-        target,
-        "reference-resolution-progress",
-        ReferenceResolutionProgressEvent {
-            path: path.to_owned(),
-            analysis: analysis.clone(),
-            resolving_reference_ids,
-        },
-    );
+#[tauri::command]
+fn enqueue_analysis(
+    app: tauri::AppHandle,
+    manager: State<'_, AnalysisManager>,
+    document_id: String,
+    force: bool,
+) -> Result<(), String> {
+    manager.enqueue(app, document_id, force);
+    Ok(())
+}
+
+#[tauri::command]
+fn analysis_states(manager: State<'_, AnalysisManager>) -> Vec<AnalysisState> {
+    manager.snapshot()
+}
+
+#[tauri::command]
+fn get_analysis(
+    app: tauri::AppHandle,
+    document_id: String,
+) -> Result<Option<AnalysisResult>, String> {
+    let path = document_library::document_path(&app, &document_id)?;
+    let pdf = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(_) => return Ok(None),
+    };
+    let document_digest = reference_resolver::document_digest(&pdf);
+    let db_path = database::database_path(&app)?;
+    match database::load_pdf(
+        &db_path,
+        &document_digest,
+        database::EXTRACTION_VERSION,
+        REFERENCE_RESOLVER_VERSION,
+    )? {
+        database::CacheLookup::Fresh { resolved, .. } => Ok(Some(resolved)),
+        _ => Ok(None),
+    }
 }
 
 fn parse_tei(tei: &str, document_digest: &str) -> Result<AnalysisResult, String> {
@@ -773,8 +920,11 @@ pub fn run() {
         // Persists each window's size/position by label, so reopening a paper
         // restores its previous geometry (the viewer label is stable per doc).
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .manage(AnalysisManager::new())
         .invoke_handler(tauri::generate_handler![
-            analyze_pdf,
+            enqueue_analysis,
+            analysis_states,
+            get_analysis,
             document_library::import_document,
             document_library::list_documents,
             document_library::get_document,

@@ -9,13 +9,18 @@
   import { openExternal } from "$lib/openExternal";
   import { hasTrustedBibtex } from "$lib/referenceBibtex";
   import { openViewerWindow } from "$lib/viewerWindows";
-  import type { AnalysisResult, LibraryDocument, Reference } from "$lib/types";
+  import type {
+    AnalysisProgress,
+    AnalysisResult,
+    AnalysisStatus,
+    LibraryDocument,
+    Reference,
+  } from "$lib/types";
 
   let documentId = $state<string | null>(null);
   let libraryDocument = $state<LibraryDocument | null>(null);
   let pdfBuffer = $state<ArrayBuffer | null>(null);
   let pdfName = $state("");
-  let pdfPath = $state<string | null>(null);
   let analysis = $state<AnalysisResult | null>(null);
   let analysisError = $state<string | null>(null);
   let loadError = $state<string | null>(null);
@@ -27,7 +32,6 @@
   let copiedBibtexId = $state<string | null>(null);
   let failedBibtexId = $state<string | null>(null);
   let libraryDocuments = $state<LibraryDocument[]>([]);
-  let analysisRequest = 0;
 
   // Maps a reference's shared id to a library document that holds its PDF, so we
   // can offer to open that PDF in its own window.
@@ -56,12 +60,6 @@
       : null,
   );
 
-  type ReferenceResolutionProgressEvent = {
-    path: string;
-    analysis: AnalysisResult;
-    resolvingReferenceIds: string[];
-  };
-
   type LibraryChangedEvent = {
     kind: string;
     documentId: string | null;
@@ -81,13 +79,36 @@
   onMount(() => {
     documentId = resolveDocumentId();
     const disposers: Array<() => void> = [];
-    void listen<ReferenceResolutionProgressEvent>("reference-resolution-progress", (event) => {
-      if (event.payload.path !== pdfPath) return;
+    // The background worker streams the full analysis for whichever document is
+    // processing; this window only reacts to events for the document it shows.
+    void listen<AnalysisProgress>("analysis-progress", (event) => {
+      if (event.payload.documentId !== documentId) return;
       analysis = event.payload.analysis;
       resolvingReferenceIds = event.payload.resolvingReferenceIds;
-      grobidStatus = resolvingReferenceIds.length
-        ? `Resolving ${resolvingReferenceIds.length} reference(s)...`
-        : "Resolution complete";
+    }).then((dispose) => disposers.push(dispose));
+    void listen<AnalysisStatus>("analysis-status", (event) => {
+      if (event.payload.documentId !== documentId) return;
+      const status = event.payload;
+      if (status.phase === "done") {
+        analyzing = false;
+        resolvingReferenceIds = [];
+        grobidStatus = "Analysis complete";
+        void refreshAnalysis();
+      } else if (status.phase === "error") {
+        analyzing = false;
+        resolvingReferenceIds = [];
+        analysisError = status.error ?? "Analysis failed";
+        grobidStatus = "Analysis failed";
+      } else {
+        analyzing = true;
+        analysisError = null;
+        grobidStatus =
+          status.phase === "extracting"
+            ? "Extracting references..."
+            : status.total
+              ? `Resolving ${Math.max(status.total - status.resolved, 0)} reference(s)...`
+              : "Resolving references...";
+      }
     }).then((dispose) => disposers.push(dispose));
     // If this document is deleted (from any window) close ourselves; if it is
     // renamed / (un)linked elsewhere, refresh our metadata.
@@ -137,42 +158,60 @@
       libraryDocument = document;
       pdfBuffer = bytes.slice().buffer;
       pdfName = document.originalFilename;
-      pdfPath = document.storedPath;
       analysis = null;
       analysisError = null;
       resolvingReferenceIds = [];
       dismissedSourceId = null;
       loadError = null;
-      void analyzePdf(document.storedPath);
+      await loadAnalysis();
     } catch (error) {
       loadError = errorMessage(error);
     }
   }
 
-  async function analyzePdf(path = pdfPath, forceResolve = false) {
-    if (!path) return;
-    const request = ++analysisRequest;
-    analyzing = true;
-    analysisError = null;
-    grobidStatus = "Loading analysis...";
+  // Analysis is owned by the backend worker. Show the cached result if there is
+  // one, otherwise enqueue a job and let the status/progress events drive the UI.
+  async function loadAnalysis() {
+    if (!documentId) return;
     try {
-      const result = await invoke<AnalysisResult>("analyze_pdf", {
-        path,
-        grobidUrl: null,
-        forceResolve,
-      });
-      if (request === analysisRequest) {
-        analysis = result;
-        resolvingReferenceIds = [];
+      const cached = await invoke<AnalysisResult | null>("get_analysis", { documentId });
+      if (cached) {
+        analysis = cached;
+        analyzing = false;
+        grobidStatus = null;
+      } else {
+        analysis = null;
+        analyzing = true;
+        grobidStatus = "Analyzing...";
+        await invoke("enqueue_analysis", { documentId, force: false });
       }
     } catch (error) {
-      if (request === analysisRequest) {
-        grobidStatus = "GROBID unavailable";
-        analysisError = errorMessage(error);
-        resolvingReferenceIds = [];
-      }
-    } finally {
-      if (request === analysisRequest) analyzing = false;
+      analyzing = false;
+      analysisError = errorMessage(error);
+    }
+  }
+
+  async function refreshAnalysis() {
+    if (!documentId) return;
+    try {
+      const cached = await invoke<AnalysisResult | null>("get_analysis", { documentId });
+      if (cached) analysis = cached;
+    } catch {
+      // Keep whatever the progress stream already delivered.
+    }
+  }
+
+  async function reanalyze() {
+    if (!documentId) return;
+    analyzing = true;
+    analysisError = null;
+    resolvingReferenceIds = [];
+    grobidStatus = "Re-analyzing...";
+    try {
+      await invoke("enqueue_analysis", { documentId, force: true });
+    } catch (error) {
+      analyzing = false;
+      analysisError = errorMessage(error);
     }
   }
 
@@ -260,7 +299,7 @@
         <button type="button" onclick={() => void unlinkDocument()}>Unlink reference</button>
       {/if}
       <button type="button" onclick={() => void deleteDocument()}>Delete</button>
-      <button type="button" onclick={() => void analyzePdf(pdfPath, true)} disabled={analyzing}>
+      <button type="button" onclick={() => void reanalyze()} disabled={analyzing}>
         {analyzing ? "Analyzing..." : "Analyze again"}
       </button>
     {/if}

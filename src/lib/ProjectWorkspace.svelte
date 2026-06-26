@@ -13,6 +13,7 @@
   import ProjectDocuments from "./ProjectDocuments.svelte";
   import { openViewerWindow as openDocumentWindow } from "./viewerWindows";
   import type {
+    AnalysisStatus,
     LibraryDocument,
     Project,
     ProjectDocument,
@@ -35,6 +36,8 @@
   let stackToDelete = $state<ProjectStack | null>(null);
   let projectDocumentToRemove = $state<ProjectDocument | null>(null);
   let openDocumentIds = $state<string[]>([]);
+  // documentId -> live background-analysis status, for the per-card loaders.
+  let analysisStates = $state<Record<string, AnalysisStatus>>({});
 
   const desktop = isTauri();
 
@@ -49,6 +52,22 @@
     void listen("library-changed", () => {
       void refreshProject();
       void refreshOpenWindows();
+    }).then((dispose) => disposers.push(dispose));
+    // Background analysis runs in the Rust worker; it broadcasts a status per
+    // document so cards can show a loader regardless of which window triggered it.
+    void invoke<AnalysisStatus[]>("analysis_states")
+      .then((states) => {
+        analysisStates = Object.fromEntries(states.map((state) => [state.documentId, state]));
+      })
+      .catch(() => {});
+    void listen<AnalysisStatus>("analysis-status", (event) => {
+      const status = event.payload;
+      if (status.phase === "done") {
+        const { [status.documentId]: _removed, ...rest } = analysisStates;
+        analysisStates = rest;
+      } else {
+        analysisStates = { ...analysisStates, [status.documentId]: status };
+      }
     }).then((dispose) => disposers.push(dispose));
     // Refresh which papers are open whenever we regain focus (e.g. after a
     // viewer window was closed) so the "open" highlight stays accurate.
@@ -124,15 +143,26 @@
   async function choosePdf() {
     if (!desktop) return;
     const selected = await open({
-      multiple: false,
+      multiple: true,
       directory: false,
       filters: [{ name: "PDF documents", extensions: ["pdf"] }],
     });
-    if (typeof selected !== "string") return;
+    const paths = Array.isArray(selected) ? selected : typeof selected === "string" ? [selected] : [];
+    if (!paths.length) return;
     try {
-      const imported = await invoke<LibraryDocument>("import_document", { path: selected });
-      upsertDocument(imported);
-      await addAndOpenDocument(imported.id);
+      const imported: LibraryDocument[] = [];
+      for (const path of paths) {
+        const document = await invoke<LibraryDocument>("import_document", { path });
+        upsertDocument(document);
+        // Kick off background analysis, then drop it into the project's default
+        // stack. Cards show a loader; the worker processes them one at a time.
+        await invoke("enqueue_analysis", { documentId: document.id, force: false });
+        await addDocumentToProject(document.id);
+        imported.push(document);
+      }
+      // Only auto-open when a single PDF was picked; a batch just streams in.
+      if (imported.length === 1) await openViewerWindow(imported[0]);
+      libraryError = null;
     } catch (error) {
       libraryError = errorMessage(error);
     }
@@ -313,6 +343,7 @@
         <DocumentLibrary
           {documents}
           {openDocumentIds}
+          {analysisStates}
           query={libraryQuery}
           linkFilter={libraryLinkFilter}
           onquery={(value) => (libraryQuery = value)}
@@ -328,6 +359,7 @@
         {projectDocuments}
         stacks={projectStacks}
         {openDocumentIds}
+        {analysisStates}
         onopen={(documentId) => void openLibraryDocument(documentId)}
         onremove={requestRemoveProjectDocument}
         onsetorder={setProjectDocumentOrder}

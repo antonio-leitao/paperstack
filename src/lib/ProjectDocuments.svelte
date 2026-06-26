@@ -3,7 +3,13 @@
   import { flip } from "svelte/animate";
   import LastOpened from "./LastOpened.svelte";
   import { BOARD_DND_TYPE, FLIP_DURATION_MS, realDocumentId } from "./boardDnd";
-  import type { LibraryDocument, ProjectDocument, ProjectStack } from "./types";
+  import { analysisLabel } from "./analysisLabel";
+  import type {
+    AnalysisStatus,
+    LibraryDocument,
+    ProjectDocument,
+    ProjectStack,
+  } from "./types";
 
   // A card is the unit dragged on the board. `projectDocument` is null only for
   // the brief moment a library card has been dropped but not yet persisted; we
@@ -18,6 +24,7 @@
     projectDocuments,
     stacks,
     openDocumentIds = [],
+    analysisStates = {},
     onopen,
     onremove,
     onsetorder,
@@ -29,6 +36,7 @@
     projectDocuments: ProjectDocument[];
     stacks: ProjectStack[];
     openDocumentIds?: string[];
+    analysisStates?: Record<string, AnalysisStatus>;
     onopen: (documentId: string) => void | Promise<void>;
     onremove: (documentId: string) => void | Promise<void>;
     onsetorder: (stackId: string, documentIds: string[]) => void | Promise<void>;
@@ -124,14 +132,24 @@
             onfinalize={(event) => finalize(stack.id, event)}
           >
             {#each columns[stack.id] ?? [] as card (card.id)}
+              {@const status = analysisLabel(analysisStates[realDocumentId(card.id)])}
               <li
                 class:open={openDocumentIds.includes(realDocumentId(card.id))}
+                class:busy={status !== null}
                 animate:flip={{ duration: FLIP_DURATION_MS }}
                 aria-label={cardTitle(card)}
               >
                 <div class="card-body">
                   <strong class="card-title">{cardTitle(card)}</strong>
                   <small>{cardMeta(card)}</small>
+                  {#if status}
+                    <small
+                      class="analysis"
+                      class:failed={analysisStates[realDocumentId(card.id)]?.phase === "error"}
+                    >
+                      {status}
+                    </small>
+                  {/if}
                   <LastOpened timestamp={card.document.lastViewedAt} />
                 </div>
                 <div class="card-actions">
@@ -240,6 +258,18 @@
 
   li.open {
     box-shadow: inset 3px 0 0 #3b82f6;
+  }
+
+  li.busy {
+    opacity: 0.75;
+  }
+
+  .analysis {
+    color: #3b82f6;
+  }
+
+  .analysis.failed {
+    color: #7e1111;
   }
 
   .card-body {

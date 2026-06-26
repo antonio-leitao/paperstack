@@ -1160,7 +1160,7 @@ fn integer_field(value: &Value, field: &str) -> Result<i64, String> {
         .ok_or_else(|| format!("Annotation is missing numeric {field}"))
 }
 
-fn document_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+pub(crate) fn document_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     let directory = database::app_data_directory(app)?.join("documents");
     std::fs::create_dir_all(&directory)
         .map_err(|error| format!("Could not create the document library directory: {error}"))?;
