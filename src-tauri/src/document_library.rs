@@ -34,6 +34,7 @@ pub(crate) struct ProjectDocument {
     project_id: String,
     document: LibraryDocument,
     stack: ProjectStack,
+    position: i64,
     added_at: i64,
     updated_at: i64,
 }
@@ -471,6 +472,14 @@ pub(crate) fn list_project_documents(
 ) -> Result<Vec<ProjectDocument>, String> {
     let connection = database::connection(&app)?;
     require_project(&connection, &project_id)?;
+    load_project_documents(&app, &connection, &project_id)
+}
+
+fn load_project_documents(
+    app: &AppHandle,
+    connection: &Connection,
+    project_id: &str,
+) -> Result<Vec<ProjectDocument>, String> {
     let mut statement = connection
         .prepare(
             r#"
@@ -479,7 +488,7 @@ pub(crate) fn list_project_documents(
             JOIN project_stacks ps ON ps.project_id = pd.project_id AND ps.id = pd.stack_id
             JOIN documents d ON d.id = pd.document_id
             WHERE pd.project_id = ?1
-            ORDER BY ps.name_key, d.title, d.id
+            ORDER BY ps.name_key, pd.position, d.title, d.id
             "#,
         )
         .map_err(|error| format!("Could not prepare project documents: {error}"))?;
@@ -490,7 +499,7 @@ pub(crate) fn list_project_documents(
         .map_err(|error| format!("Could not read project documents: {error}"))?;
     document_ids
         .iter()
-        .map(|document_id| load_project_document(&app, &connection, &project_id, document_id))
+        .map(|document_id| load_project_document(app, connection, project_id, document_id))
         .collect()
 }
 
@@ -521,17 +530,28 @@ pub(crate) fn add_document_to_project(
         .optional()
         .map_err(|error| format!("Could not check project document membership: {error}"))?
         .unwrap_or(now);
+    let next_position: i64 = transaction
+        .query_row(
+            r#"
+            SELECT COALESCE(MAX(position) + 1, 0)
+            FROM project_documents
+            WHERE project_id = ?1 AND stack_id = ?2
+            "#,
+            params![project_id, stack_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not determine the stack position: {error}"))?;
     transaction
         .execute(
             r#"
             INSERT INTO project_documents (
-                project_id, document_id, stack_id, added_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5)
+                project_id, document_id, stack_id, position, added_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             ON CONFLICT(project_id, document_id) DO UPDATE SET
                 stack_id = excluded.stack_id,
                 updated_at = excluded.updated_at
             "#,
-            params![project_id, document_id, stack_id, added_at, now],
+            params![project_id, document_id, stack_id, next_position, added_at, now],
         )
         .map_err(|error| format!("Could not add the document to the project: {error}"))?;
     transaction
@@ -542,42 +562,48 @@ pub(crate) fn add_document_to_project(
     Ok(project_document)
 }
 
+/// Rewrites the stack membership and ordering for one column. The frontend sends
+/// the full, ordered list of document ids that should live in `stack_id` after a
+/// drag. Each id is upserted into that stack at its new position, so this single
+/// command covers reordering within a column, moving a card between columns, and
+/// dropping a brand-new document in from the library. Documents not present in
+/// `document_ids` are left untouched (the column they moved to repositions them
+/// with its own call), so a card never falls out of the project by accident.
 #[tauri::command]
-pub(crate) fn move_project_document(
+pub(crate) fn set_project_document_order(
     app: AppHandle,
     project_id: String,
-    document_id: String,
     stack_id: String,
-) -> Result<ProjectDocument, String> {
+    document_ids: Vec<String>,
+) -> Result<Vec<ProjectDocument>, String> {
     let mut connection = database::connection(&app)?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(|error| format!("Could not start moving the project document: {error}"))?;
+        .map_err(|error| format!("Could not start reordering the project documents: {error}"))?;
     require_project_stack(&transaction, &project_id, &stack_id)?;
-    let changed = transaction
-        .execute(
-            r#"
-            UPDATE project_documents
-            SET stack_id = ?1, updated_at = ?2
-            WHERE project_id = ?3 AND document_id = ?4
-            "#,
-            params![
-                stack_id,
-                database::unix_timestamp(),
-                project_id,
-                document_id
-            ],
-        )
-        .map_err(|error| format!("Could not move the project document: {error}"))?;
-    if changed == 0 {
-        return Err("Document is not in this project".to_owned());
+    let now = database::unix_timestamp();
+    for (position, document_id) in document_ids.iter().enumerate() {
+        require_document(&transaction, document_id)?;
+        transaction
+            .execute(
+                r#"
+                INSERT INTO project_documents (
+                    project_id, document_id, stack_id, position, added_at, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+                ON CONFLICT(project_id, document_id) DO UPDATE SET
+                    stack_id = excluded.stack_id,
+                    position = excluded.position,
+                    updated_at = excluded.updated_at
+                "#,
+                params![project_id, document_id, stack_id, position as i64, now],
+            )
+            .map_err(|error| format!("Could not reorder the project document: {error}"))?;
     }
     transaction
         .commit()
-        .map_err(|error| format!("Could not finish moving the project document: {error}"))?;
-    let project_document = load_project_document(&app, &connection, &project_id, &document_id)?;
-    emit_library_changed(&app, "projectDocument", Some(&document_id), "moved");
-    Ok(project_document)
+        .map_err(|error| format!("Could not finish reordering the project documents: {error}"))?;
+    emit_library_changed(&app, "projectDocument", None, "reordered");
+    load_project_documents(&app, &connection, &project_id)
 }
 
 #[tauri::command]
@@ -961,7 +987,7 @@ fn load_project_document(
         .query_row(
             r#"
             SELECT ps.id, ps.project_id, ps.name, ps.created_at, ps.updated_at,
-                   pd.added_at, pd.updated_at
+                   pd.position, pd.added_at, pd.updated_at
             FROM project_documents pd
             JOIN project_stacks ps ON ps.project_id = pd.project_id AND ps.id = pd.stack_id
             WHERE pd.project_id = ?1 AND pd.document_id = ?2
@@ -978,6 +1004,7 @@ fn load_project_document(
                     },
                     row.get::<_, i64>(5)?,
                     row.get::<_, i64>(6)?,
+                    row.get::<_, i64>(7)?,
                 ))
             },
         )
@@ -988,8 +1015,9 @@ fn load_project_document(
         project_id: project_id.to_owned(),
         document: load_document(app, connection, document_id)?,
         stack: row.0,
-        added_at: row.1,
-        updated_at: row.2,
+        position: row.1,
+        added_at: row.2,
+        updated_at: row.3,
     })
 }
 

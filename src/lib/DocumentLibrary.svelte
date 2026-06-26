@@ -1,8 +1,12 @@
 <script lang="ts">
+  import { dndzone, TRIGGERS, type DndEvent } from "svelte-dnd-action";
   import LastOpened from "./LastOpened.svelte";
+  import { BOARD_DND_TYPE, libraryCardId } from "./boardDnd";
   import type { LibraryDocument } from "./types";
 
   type LinkFilter = "all" | "linked" | "unlinked";
+
+  type LibraryCard = { id: string; document: LibraryDocument };
 
   let {
     documents,
@@ -27,6 +31,41 @@
   const filteredDocuments = $derived(
     searchDocuments(documents.filter((document) => isInLinkFilter(document, linkFilter)), query),
   );
+
+  // The library is a drag *palette*: cards can be dragged out onto the board but
+  // never leave the library. We keep a separate dnd copy and, the moment a drag
+  // starts, drop a fresh-id replica back into the list so the original can travel
+  // to a column while the library still shows the document.
+  function buildLibraryCards(items: LibraryDocument[]): LibraryCard[] {
+    return items.map((document) => ({ id: libraryCardId(document.id), document }));
+  }
+
+  let libraryCards = $state<LibraryCard[]>([]);
+  let replicaCounter = 0;
+  $effect(() => {
+    libraryCards = buildLibraryCards(filteredDocuments);
+  });
+
+  function handleLibraryConsider(event: CustomEvent<DndEvent<LibraryCard>>) {
+    const { items, info } = event.detail;
+    if (info.trigger === TRIGGERS.DRAG_STARTED) {
+      const index = items.findIndex((card) => card.id === info.id);
+      if (index !== -1) {
+        replicaCounter += 1;
+        items.splice(index + 1, 0, {
+          ...items[index],
+          id: `${items[index].id}#copy-${replicaCounter}`,
+        });
+      }
+    }
+    libraryCards = items;
+  }
+
+  function handleLibraryFinalize() {
+    // Restore the canonical palette (drops the in-flight replica, brings back the
+    // original card). Any actual import is persisted by the receiving column.
+    libraryCards = buildLibraryCards(filteredDocuments);
+  }
 
   function isInLinkFilter(document: LibraryDocument, filter: LinkFilter): boolean {
     if (filter === "linked") return Boolean(document.referenceId);
@@ -179,20 +218,31 @@
   </fieldset>
 
   {#if filteredDocuments.length}
-    <ul class="document-list">
-      {#each filteredDocuments as document (document.id)}
-        <li>
+    <ul
+      class="document-list"
+      aria-label="Library documents (drag onto a stack)"
+      use:dndzone={{
+        items: libraryCards,
+        type: BOARD_DND_TYPE,
+        dropFromOthersDisabled: true,
+        flipDurationMs: 0,
+      }}
+      onconsider={handleLibraryConsider}
+      onfinalize={handleLibraryFinalize}
+    >
+      {#each libraryCards as card (card.id)}
+        <li aria-label={documentTitle(card.document)}>
           <div class="document-list-row">
             <button
               type="button"
-              class:open={openDocumentIds.includes(document.id)}
-              onclick={() => void onopen(document.id)}
+              class:open={openDocumentIds.includes(card.document.id)}
+              onclick={() => void onopen(card.document.id)}
             >
               <span class="document-summary">
-                <span>{documentTitle(document)}</span>
-                <small>{documentMeta(document)}</small>
+                <span>{documentTitle(card.document)}</span>
+                <small>{documentMeta(card.document)}</small>
               </span>
-              <LastOpened timestamp={document.lastViewedAt} />
+              <LastOpened timestamp={card.document.lastViewedAt} />
             </button>
           </div>
         </li>

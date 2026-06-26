@@ -792,7 +792,7 @@ pub fn run() {
             document_library::delete_project_stack,
             document_library::list_project_documents,
             document_library::add_document_to_project,
-            document_library::move_project_document,
+            document_library::set_project_document_order,
             document_library::remove_document_from_project,
             document_library::link_document_reference,
             document_library::unlink_document_reference,

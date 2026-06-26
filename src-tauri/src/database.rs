@@ -256,6 +256,7 @@ fn initialize(connection: &Connection) -> Result<(), String> {
                 project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
                 document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
                 stack_id TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
                 added_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 PRIMARY KEY (project_id, document_id),
@@ -278,8 +279,9 @@ fn initialize(connection: &Connection) -> Result<(), String> {
 
             CREATE INDEX IF NOT EXISTS project_stacks_by_project
                 ON project_stacks(project_id, name_key, id);
+            DROP INDEX IF EXISTS project_documents_by_stack;
             CREATE INDEX IF NOT EXISTS project_documents_by_stack
-                ON project_documents(project_id, stack_id);
+                ON project_documents(project_id, stack_id, position);
             CREATE INDEX IF NOT EXISTS document_annotations_by_document_page
                 ON document_annotations(document_id, page_index);
             CREATE INDEX IF NOT EXISTS documents_by_last_viewed
@@ -291,6 +293,12 @@ fn initialize(connection: &Connection) -> Result<(), String> {
         connection,
         "projects",
         "last_opened_at",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        connection,
+        "project_documents",
+        "position",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
     Ok(())

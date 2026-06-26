@@ -84,6 +84,7 @@ export type ProjectDocument = {
   projectId: string;
   document: LibraryDocument;
   stack: ProjectStack;
+  position: number;
   addedAt: number;
   updatedAt: number;
 };

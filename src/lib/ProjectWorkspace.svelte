@@ -29,7 +29,10 @@
   let libraryQuery = $state("");
   let libraryLinkFilter = $state<"all" | "linked" | "unlinked">("all");
   let leftSidebarOpen = $state(true);
-  let stackNamePrompt = $state<{ mode: "create" } | null>(null);
+  let stackNamePrompt = $state<
+    { mode: "create" } | { mode: "rename"; stack: ProjectStack } | null
+  >(null);
+  let stackToDelete = $state<ProjectStack | null>(null);
   let projectDocumentToRemove = $state<ProjectDocument | null>(null);
   let openDocumentIds = $state<string[]>([]);
 
@@ -202,21 +205,60 @@
   }
 
   function submitStackName(name: string) {
+    const prompt = stackNamePrompt;
     stackNamePrompt = null;
-    void createProjectStack(name);
+    if (prompt?.mode === "create") {
+      void createProjectStack(name);
+    } else if (prompt?.mode === "rename") {
+      void renameStack(prompt.stack, name);
+    }
   }
 
-  async function moveProjectDocument(documentId: string, stackId: string) {
+  async function renameStack(stack: ProjectStack, name: string) {
+    if (name === stack.name) return;
     try {
-      const item = await invoke<ProjectDocument>("move_project_document", {
+      const renamed = await invoke<ProjectStack>("rename_project_stack", {
         projectId,
-        documentId,
-        stackId,
+        stackId: stack.id,
+        name,
       });
-      upsertProjectDocument(item);
+      projectStacks = sortStacks(projectStacks.map((item) => (item.id === renamed.id ? renamed : item)));
+      projectDocuments = projectDocuments.map((item) =>
+        item.stack.id === renamed.id ? { ...item, stack: renamed } : item,
+      );
       libraryError = null;
     } catch (error) {
       libraryError = errorMessage(error);
+    }
+  }
+
+  async function confirmDeleteStack() {
+    const stack = stackToDelete;
+    stackToDelete = null;
+    if (!stack) return;
+    try {
+      await invoke("delete_project_stack", { projectId, stackId: stack.id });
+      projectStacks = projectStacks.filter((item) => item.id !== stack.id);
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+    }
+  }
+
+  // One call persists a column after any drag: reorder within a column, a move
+  // between columns, or a fresh drop in from the library. The backend returns the
+  // whole project's documents so our board state stays authoritative.
+  async function setProjectDocumentOrder(stackId: string, documentIds: string[]) {
+    try {
+      projectDocuments = await invoke<ProjectDocument[]>("set_project_document_order", {
+        projectId,
+        stackId,
+        documentIds,
+      });
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+      void refreshProject();
     }
   }
 
@@ -287,21 +329,33 @@
         stacks={projectStacks}
         {openDocumentIds}
         onopen={(documentId) => void openLibraryDocument(documentId)}
-        onmove={moveProjectDocument}
         onremove={requestRemoveProjectDocument}
+        onsetorder={setProjectDocumentOrder}
         onchoosepdf={choosePdf}
         oncreatestack={() => (stackNamePrompt = { mode: "create" })}
+        onrequestrenamestack={(stack) => (stackNamePrompt = { mode: "rename", stack })}
+        onrequestdeletestack={(stack) => (stackToDelete = stack)}
       />
     </section>
   </section>
 
   <NamePrompt
     open={stackNamePrompt !== null}
-    title="New stack"
-    initialValue=""
-    confirmLabel="Create"
+    title={stackNamePrompt?.mode === "rename" ? "Rename stack" : "New stack"}
+    initialValue={stackNamePrompt?.mode === "rename" ? stackNamePrompt.stack.name : ""}
+    confirmLabel={stackNamePrompt?.mode === "rename" ? "Rename" : "Create"}
     onconfirm={submitStackName}
     oncancel={() => (stackNamePrompt = null)}
+  />
+  <ConfirmDialog
+    open={stackToDelete !== null}
+    title="Delete stack"
+    message={stackToDelete
+      ? `Delete the "${stackToDelete.name}" stack? Move its PDFs to another stack first if it still has any.`
+      : ""}
+    confirmLabel="Delete"
+    onconfirm={confirmDeleteStack}
+    oncancel={() => (stackToDelete = null)}
   />
   <ConfirmDialog
     open={projectDocumentToRemove !== null}
