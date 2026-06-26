@@ -82,36 +82,53 @@ pub(super) async fn lookup_dois(
 ) -> Result<HashMap<String, OpenAlexWork>, String> {
     let mut dois = dois
         .iter()
-        .map(|doi| normalize_doi(doi))
+        .map(|doi| super::normalize_doi(doi))
         .filter(|doi| !doi.is_empty())
         .collect::<Vec<_>>();
     dois.sort();
     dois.dedup();
 
     let mut found = HashMap::new();
+    let mut last_error = None;
     for batch in dois.chunks(OPENALEX_DOI_BATCH_SIZE) {
         let filter = format!("doi:{}", batch.join("|"));
-        let response = send_with_retries(
+        let response = match send_with_retries(
             openalex_request(client.get(format!("{OPENALEX_API}/works"))).query(&[
                 ("filter", filter.as_str()),
                 ("per_page", "100"),
                 ("select", SELECT_FIELDS),
             ]),
         )
-        .await?;
+        .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                last_error = Some(error);
+                continue;
+            }
+        };
         if !response.status().is_success() {
-            return Err(response_error("OpenAlex DOI batch lookup", response).await);
+            last_error = Some(response_error("OpenAlex DOI batch lookup", response).await);
+            continue;
         }
-        let envelope: OpenAlexEnvelope = response
-            .json()
-            .await
-            .map_err(|error| format!("Invalid OpenAlex DOI batch response: {error}"))?;
+        let envelope: OpenAlexEnvelope = match response.json().await {
+            Ok(envelope) => envelope,
+            Err(error) => {
+                last_error = Some(format!("Invalid OpenAlex DOI batch response: {error}"));
+                continue;
+            }
+        };
         for work in envelope.results {
-            if let Some(doi) = work.doi.as_deref().map(normalize_doi) {
+            if let Some(doi) = work.doi.as_deref().map(super::normalize_doi) {
                 if !doi.is_empty() {
                     found.insert(doi, work);
                 }
             }
+        }
+    }
+    if found.is_empty() {
+        if let Some(error) = last_error {
+            return Err(error);
         }
     }
     Ok(found)
@@ -341,16 +358,6 @@ fn retry_jitter() -> Duration {
         .unwrap_or_default()
         .subsec_millis() as u64;
     Duration::from_millis(50 + millis % 200)
-}
-
-fn normalize_doi(value: &str) -> String {
-    value
-        .trim()
-        .trim_start_matches("https://doi.org/")
-        .trim_start_matches("http://doi.org/")
-        .trim_start_matches("doi:")
-        .trim_end_matches(['.', ',', ';'])
-        .to_ascii_lowercase()
 }
 
 fn retry_delay(response: &Response, attempt: usize) -> Duration {

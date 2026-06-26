@@ -40,16 +40,34 @@ pub(super) async fn lookup_many(
     ids.dedup();
 
     let mut found = HashMap::new();
+    let mut last_error = None;
     for batch in ids.chunks(ARXIV_ID_BATCH_SIZE) {
         let id_list = batch.join(",");
         let max_results = batch.len().to_string();
-        let response = send_api_with_retries(client.get(ARXIV_API).query(&[
+        let response = match send_api_with_retries(client.get(ARXIV_API).query(&[
             ("id_list", id_list.as_str()),
             ("max_results", max_results.as_str()),
         ]))
-        .await?;
-        for work in parse_response(response, "arXiv ID batch lookup").await? {
-            found.insert(normalize_id(&work.id), work);
+        .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                last_error = Some(error);
+                continue;
+            }
+        };
+        match parse_response(response, "arXiv ID batch lookup").await {
+            Ok(works) => {
+                for work in works {
+                    found.insert(normalize_id(&work.id), work);
+                }
+            }
+            Err(error) => last_error = Some(error),
+        }
+    }
+    if found.is_empty() {
+        if let Some(error) = last_error {
+            return Err(error);
         }
     }
     Ok(found)

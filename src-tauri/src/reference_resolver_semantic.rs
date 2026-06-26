@@ -81,13 +81,21 @@ pub(crate) async fn lookup_many(
     }
 
     let mut found = HashMap::new();
+    let mut last_error = None;
     for batch in identifiers.chunks(SEMANTIC_BATCH_SIZE) {
-        let response = send_with_retries(
+        let response = match send_with_retries(
             semantic_request(client.post(format!("{SEMANTIC_API}/paper/batch")))
                 .query(&[("fields", FIELDS)])
                 .json(&serde_json::json!({ "ids": batch })),
         )
-        .await?;
+        .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                last_error = Some(error);
+                continue;
+            }
+        };
         if response.status() == StatusCode::BAD_REQUEST {
             let detail = response.text().await.unwrap_or_default();
             if detail
@@ -96,23 +104,33 @@ pub(crate) async fn lookup_many(
             {
                 continue;
             }
-            return Err(response_error_from_detail(
+            last_error = Some(response_error_from_detail(
                 "Semantic Scholar batch lookup",
                 StatusCode::BAD_REQUEST,
                 &detail,
             ));
+            continue;
         }
         if !response.status().is_success() {
-            return Err(response_error("Semantic Scholar batch lookup", response).await);
+            last_error = Some(response_error("Semantic Scholar batch lookup", response).await);
+            continue;
         }
-        let papers: Vec<Option<SemanticWork>> = response
-            .json()
-            .await
-            .map_err(|error| format!("Invalid Semantic Scholar batch response: {error}"))?;
+        let papers: Vec<Option<SemanticWork>> = match response.json().await {
+            Ok(papers) => papers,
+            Err(error) => {
+                last_error = Some(format!("Invalid Semantic Scholar batch response: {error}"));
+                continue;
+            }
+        };
         for (identifier, paper) in batch.iter().zip(papers) {
             if let Some(paper) = paper {
                 found.insert(identifier.clone(), paper);
             }
+        }
+    }
+    if found.is_empty() {
+        if let Some(error) = last_error {
+            return Err(error);
         }
     }
     Ok(found)

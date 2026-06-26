@@ -1168,10 +1168,15 @@ fn crossref_gate() -> &'static CrossrefGate {
 }
 
 fn crossref_mailto() -> Option<String> {
-    std::env::var("CROSSREF_MAILTO")
-        .ok()
-        .map(|mailto| mailto.trim().to_owned())
-        .filter(|mailto| !mailto.is_empty())
+    static MAILTO: OnceLock<Option<String>> = OnceLock::new();
+    MAILTO
+        .get_or_init(|| {
+            std::env::var("CROSSREF_MAILTO")
+                .ok()
+                .map(|mailto| mailto.trim().to_owned())
+                .filter(|mailto| !mailto.is_empty())
+        })
+        .clone()
 }
 
 fn retry_jitter() -> Duration {
