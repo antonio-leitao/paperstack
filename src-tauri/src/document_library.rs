@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 const HIGHLIGHT_ANNOTATION_SUBTYPE: i64 = 9;
@@ -238,7 +238,11 @@ pub(crate) fn rename_document(
 }
 
 #[tauri::command]
-pub(crate) fn delete_document(app: AppHandle, id: String) -> Result<(), String> {
+pub(crate) fn delete_document(
+    app: AppHandle,
+    analysis: State<'_, crate::AnalysisManager>,
+    id: String,
+) -> Result<(), String> {
     let mut connection = database::connection(&app)?;
     let stored_path = document_path(&app, &id)?;
     let transaction = connection
@@ -253,6 +257,8 @@ pub(crate) fn delete_document(app: AppHandle, id: String) -> Result<(), String> 
     transaction
         .commit()
         .map_err(|error| format!("Could not finish deleting the document: {error}"))?;
+    // Stop (or forget) any background analysis for the document we just removed.
+    analysis.cancel(&app, &id);
     emit_library_changed(&app, "document", Some(&id), "deleted");
     match std::fs::remove_file(stored_path) {
         Ok(()) => Ok(()),
@@ -1080,6 +1086,19 @@ fn row_to_document_annotation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Docum
         created_at: row.get(8)?,
         updated_at: row.get(9)?,
     })
+}
+
+pub(crate) fn all_document_ids(app: &AppHandle) -> Result<Vec<String>, String> {
+    let connection = database::connection(app)?;
+    let mut statement = connection
+        .prepare("SELECT id FROM documents")
+        .map_err(|error| format!("Could not prepare the document id list: {error}"))?;
+    let ids = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| format!("Could not list document ids: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read document ids: {error}"))?;
+    Ok(ids)
 }
 
 fn document_id_by_hash(connection: &Connection, hash: &str) -> Result<Option<String>, String> {

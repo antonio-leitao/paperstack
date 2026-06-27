@@ -12,7 +12,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 use tokio::sync::Semaphore;
 
 const LOCAL_GROBID_URL: &str = "http://127.0.0.1:8070";
@@ -215,6 +215,7 @@ fn normalize_url(url: &str) -> String {
 // document is simply "not analyzed" until reopened or re-imported.
 pub(crate) struct AnalysisManager {
     states: Arc<Mutex<HashMap<String, AnalysisState>>>,
+    cancelled: Arc<Mutex<HashSet<String>>>,
     semaphore: Arc<Semaphore>,
 }
 
@@ -222,6 +223,7 @@ impl AnalysisManager {
     fn new() -> Self {
         Self {
             states: Arc::new(Mutex::new(HashMap::new())),
+            cancelled: Arc::new(Mutex::new(HashSet::new())),
             semaphore: Arc::new(Semaphore::new(ANALYSIS_CONCURRENCY)),
         }
     }
@@ -233,7 +235,26 @@ impl AnalysisManager {
             .unwrap_or_default()
     }
 
+    fn state_for(&self, document_id: &str) -> Option<AnalysisState> {
+        self.states.lock().ok()?.get(document_id).cloned()
+    }
+
+    // Removing a PDF is our "cancel": forget its status (clearing any loader) and
+    // flag it so an in-flight job bails at its next checkpoint instead of caching.
+    pub(crate) fn cancel(&self, app: &tauri::AppHandle, document_id: &str) {
+        if let Ok(mut map) = self.states.lock() {
+            map.remove(document_id);
+        }
+        if let Ok(mut cancelled) = self.cancelled.lock() {
+            cancelled.insert(document_id.to_owned());
+        }
+        let _ = app.emit("analysis-status", AnalysisState::new(document_id, "done"));
+    }
+
     fn enqueue(&self, app: tauri::AppHandle, document_id: String, force: bool) {
+        if let Ok(mut cancelled) = self.cancelled.lock() {
+            cancelled.remove(&document_id);
+        }
         {
             let Ok(mut map) = self.states.lock() else {
                 return;
@@ -249,22 +270,43 @@ impl AnalysisManager {
         }
         let _ = app.emit("analysis-status", AnalysisState::new(&document_id, "queued"));
         let states = self.states.clone();
+        let cancelled = self.cancelled.clone();
         let semaphore = self.semaphore.clone();
         tauri::async_runtime::spawn(async move {
             let _permit = match semaphore.acquire().await {
                 Ok(permit) => permit,
                 Err(_) => return,
             };
-            match run_analysis(&app, &document_id, force, &states).await {
-                Ok(()) => publish_done(&app, &states, &document_id),
+            match run_analysis(&app, &document_id, force, &states, &cancelled).await {
+                Ok(RunOutcome::Completed) => publish_done(&app, &states, &document_id),
+                Ok(RunOutcome::Cancelled) => {
+                    if let Ok(mut map) = states.lock() {
+                        map.remove(&document_id);
+                    }
+                }
                 Err(error) => {
                     let mut state = AnalysisState::new(&document_id, "error");
                     state.error = Some(error);
                     publish(&app, &states, state);
                 }
             }
+            if let Ok(mut cancelled) = cancelled.lock() {
+                cancelled.remove(&document_id);
+            }
         });
     }
+}
+
+enum RunOutcome {
+    Completed,
+    Cancelled,
+}
+
+fn is_cancelled(cancelled: &Arc<Mutex<HashSet<String>>>, document_id: &str) -> bool {
+    cancelled
+        .lock()
+        .map(|set| set.contains(document_id))
+        .unwrap_or(false)
 }
 
 fn publish(
@@ -316,7 +358,8 @@ async fn run_analysis(
     document_id: &str,
     force_resolve: bool,
     states: &Arc<Mutex<HashMap<String, AnalysisState>>>,
-) -> Result<(), String> {
+    cancelled: &Arc<Mutex<HashSet<String>>>,
+) -> Result<RunOutcome, String> {
     let path = document_library::document_path(app, document_id)?;
     let pdf = std::fs::read(&path).map_err(|error| format!("Could not read PDF: {error}"))?;
     let document_digest = reference_resolver::document_digest(&pdf);
@@ -332,7 +375,7 @@ async fn run_analysis(
             ) {
                 Ok(database::CacheLookup::Fresh { extracted, .. }) => {
                     if !force_resolve {
-                        return Ok(());
+                        return Ok(RunOutcome::Completed);
                     }
                     cached_extraction = Some(extracted);
                 }
@@ -356,6 +399,9 @@ async fn run_analysis(
     let extracted = if let Some(extracted) = cached_extraction {
         extracted
     } else {
+        if is_cancelled(cancelled, document_id) {
+            return Ok(RunOutcome::Cancelled);
+        }
         publish(app, states, AnalysisState::new(document_id, "extracting"));
         let file_name = path
             .file_name()
@@ -407,6 +453,9 @@ async fn run_analysis(
     } else {
         0
     };
+    if is_cancelled(cancelled, document_id) {
+        return Ok(RunOutcome::Cancelled);
+    }
     let inputs = result
         .source_reference
         .iter()
@@ -427,6 +476,9 @@ async fn run_analysis(
         emit_analysis_progress(app, document_id, &result, &resolving_reference_ids);
     }
     let resolution_batch = reference_resolver::resolve_references(&client, inputs, |completed| {
+        if is_cancelled(cancelled, document_id) {
+            return;
+        }
         for resolution in &completed {
             resolving_reference_ids.remove(&resolution.reference_id);
         }
@@ -439,6 +491,9 @@ async fn run_analysis(
     })
     .await;
     warnings.extend(resolution_batch.warning);
+    if is_cancelled(cancelled, document_id) {
+        return Ok(RunOutcome::Cancelled);
+    }
     if let Some(cache_path) = cache_path.as_ref() {
         match database::store_pdf(
             cache_path,
@@ -462,7 +517,7 @@ async fn run_analysis(
     // Final snapshot so an open viewer picks up the canonical result (shared ids
     // and any warnings) rather than the last mid-resolution state.
     emit_analysis_progress(app, document_id, &result, &HashSet::new());
-    Ok(())
+    Ok(RunOutcome::Completed)
 }
 
 #[tauri::command]
@@ -482,17 +537,34 @@ fn analysis_states(manager: State<'_, AnalysisManager>) -> Vec<AnalysisState> {
 }
 
 #[tauri::command]
+fn analysis_state(
+    manager: State<'_, AnalysisManager>,
+    document_id: String,
+) -> Option<AnalysisState> {
+    manager.state_for(&document_id)
+}
+
+#[tauri::command]
 fn get_analysis(
     app: tauri::AppHandle,
     document_id: String,
 ) -> Result<Option<AnalysisResult>, String> {
-    let path = document_library::document_path(&app, &document_id)?;
+    load_cached_analysis(&app, &document_id)
+}
+
+// Returns the cached, fully resolved analysis for a document if one exists for
+// the current extraction/resolver versions, otherwise None.
+fn load_cached_analysis(
+    app: &tauri::AppHandle,
+    document_id: &str,
+) -> Result<Option<AnalysisResult>, String> {
+    let path = document_library::document_path(app, document_id)?;
     let pdf = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(_) => return Ok(None),
     };
     let document_digest = reference_resolver::document_digest(&pdf);
-    let db_path = database::database_path(&app)?;
+    let db_path = database::database_path(app)?;
     match database::load_pdf(
         &db_path,
         &document_digest,
@@ -501,6 +573,23 @@ fn get_analysis(
     )? {
         database::CacheLookup::Fresh { resolved, .. } => Ok(Some(resolved)),
         _ => Ok(None),
+    }
+}
+
+// On startup, re-queue any library document that has no fresh cached analysis,
+// so a batch interrupted by quitting resumes on its own (bounded by the same
+// worker). Runs off-thread; hashing every PDF is one-time startup cost.
+fn recover_pending_analyses(app: tauri::AppHandle) {
+    let document_ids = match document_library::all_document_ids(&app) {
+        Ok(ids) => ids,
+        Err(_) => return,
+    };
+    let manager = app.state::<AnalysisManager>();
+    for document_id in document_ids {
+        if matches!(load_cached_analysis(&app, &document_id), Ok(Some(_))) {
+            continue;
+        }
+        manager.enqueue(app.clone(), document_id, false);
     }
 }
 
@@ -921,9 +1010,17 @@ pub fn run() {
         // restores its previous geometry (the viewer label is stable per doc).
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AnalysisManager::new())
+        .setup(|app| {
+            // Resume any analysis left unfinished by a previous run, in the
+            // background so startup isn't blocked.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || recover_pending_analyses(handle));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             enqueue_analysis,
             analysis_states,
+            analysis_state,
             get_analysis,
             document_library::import_document,
             document_library::list_documents,

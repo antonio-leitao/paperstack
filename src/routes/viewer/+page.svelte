@@ -179,6 +179,25 @@
         analysis = cached;
         analyzing = false;
         grobidStatus = null;
+        return;
+      }
+      // Not cached: check the worker's current status so we neither double-enqueue
+      // a running job nor auto-retry a failed one (the user retries explicitly).
+      const status = await invoke<AnalysisStatus | null>("analysis_state", { documentId });
+      if (status?.phase === "error") {
+        analysis = null;
+        analyzing = false;
+        analysisError = status.error ?? "Analysis failed";
+        grobidStatus = "Analysis failed";
+      } else if (status) {
+        analysis = null;
+        analyzing = true;
+        grobidStatus =
+          status.phase === "extracting"
+            ? "Extracting references..."
+            : status.total
+              ? `Resolving ${Math.max(status.total - status.resolved, 0)} reference(s)...`
+              : "Resolving references...";
       } else {
         analysis = null;
         analyzing = true;
@@ -300,7 +319,7 @@
       {/if}
       <button type="button" onclick={() => void deleteDocument()}>Delete</button>
       <button type="button" onclick={() => void reanalyze()} disabled={analyzing}>
-        {analyzing ? "Analyzing..." : "Analyze again"}
+        {analyzing ? "Analyzing..." : analysisError ? "Retry analysis" : "Analyze again"}
       </button>
     {/if}
 
