@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Modal from "./Modal.svelte";
+
   let {
     open,
     title,
@@ -14,31 +16,16 @@
     onconfirm: () => void;
     oncancel: () => void;
   } = $props();
-
-  let dialog = $state<HTMLDialogElement>();
-
-  $effect(() => {
-    if (open && dialog && !dialog.open) {
-      dialog.showModal();
-    } else if (!open && dialog?.open) {
-      dialog.close();
-    }
-  });
 </script>
 
-<dialog
-  bind:this={dialog}
-  onclose={() => {
-    if (open) oncancel();
-  }}
->
+<Modal {open} onclose={oncancel}>
   <h2>{title}</h2>
   <p>{message}</p>
   <div>
     <button type="button" onclick={oncancel}>Cancel</button>
     <button type="button" onclick={onconfirm}>{confirmLabel}</button>
   </div>
-</dialog>
+</Modal>
 
 <style>
   h2 {

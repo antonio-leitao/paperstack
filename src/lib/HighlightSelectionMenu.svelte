@@ -40,18 +40,18 @@
 
   button {
     padding: 5px 9px;
-    border: 1px solid #8a741f;
+    border: 1px solid var(--highlight-menu-border);
     border-radius: 4px;
-    background: #ffdf65;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
-    color: #211a05;
+    background: var(--highlight-menu-bg);
+    box-shadow: var(--shadow-menu);
+    color: var(--highlight-menu-text);
     font: 12px system-ui, sans-serif;
     white-space: nowrap;
   }
 
   button:hover,
   button:focus-visible {
-    background: #ffd033;
+    background: var(--highlight-strong);
     outline: none;
   }
 </style>

@@ -1,9 +1,6 @@
 <script lang="ts">
   import type { LibraryDocument, PageSize, Reference } from "./types";
-  import { copyToClipboard } from "./copyToClipboard";
-  import { openExternal } from "./openExternal";
-  import { hasTrustedBibtex } from "./referenceBibtex";
-  import { openViewerWindow } from "./viewerWindows";
+  import ReferenceCard from "./ReferenceCard.svelte";
 
   let {
     page,
@@ -21,14 +18,7 @@
     linkedDocuments?: Record<string, LibraryDocument>;
   } = $props();
 
-  async function openLinkedDocument(event: MouseEvent, document: LibraryDocument) {
-    event.stopPropagation();
-    await openViewerWindow(document);
-  }
-
   let activeKey = $state<string | null>(null);
-  let copiedBibtexId = $state<string | null>(null);
-  let failedBibtexId = $state<string | null>(null);
 
   const pageCallouts = $derived(
     references.flatMap((reference) =>
@@ -49,21 +39,6 @@
       if (activeKey === key) activeKey = null;
     }
   }
-
-  async function copyBibtex(event: MouseEvent, reference: Reference) {
-    event.stopPropagation();
-    try {
-      await copyToClipboard(reference.bibtex);
-      copiedBibtexId = reference.id;
-      failedBibtexId = null;
-      window.setTimeout(() => {
-        if (copiedBibtexId === reference.id) copiedBibtexId = null;
-      }, 1500);
-    } catch {
-      copiedBibtexId = null;
-      failedBibtexId = reference.id;
-    }
-  }
 </script>
 
 <div class="overlay" aria-label={`Citation links on page ${page.page}`}>
@@ -75,7 +50,7 @@
     {@const resolving = resolvingReferenceIds.includes(callout.reference.id)}
     <div
       class="callout"
-      class:resolving
+      class:is-busy={resolving}
       role="group"
       aria-busy={resolving}
       aria-label={`Citation details for ${referenceLabel(callout.reference)}`}
@@ -90,7 +65,7 @@
     >
       <button
         class="citation"
-        class:active={activeKey === callout.key}
+        class:is-active={activeKey === callout.key}
         aria-label={`Citation: ${referenceLabel(callout.reference)}`}
       >
         <span class="sr-only">{referenceLabel(callout.reference)}</span>
@@ -98,68 +73,10 @@
 
       {#if activeKey === callout.key}
         {@const linkedDoc = callout.reference.sharedId
-          ? linkedDocuments[callout.reference.sharedId]
-          : undefined}
+          ? linkedDocuments[callout.reference.sharedId] ?? null
+          : null}
         <div class="card">
-          <strong>{referenceLabel(callout.reference)}</strong>
-          {#if callout.reference.authors.length}
-            <span>{callout.reference.authors.join(", ")}</span>
-          {/if}
-          {#if callout.reference.venue || callout.reference.year}
-            <span>
-              {[callout.reference.venue, callout.reference.year].filter(Boolean).join(" · ")}
-            </span>
-          {/if}
-          {#if callout.reference.abstractText}
-            <span class="abstract">{callout.reference.abstractText}</span>
-          {/if}
-          {#if resolving}
-            <span>Resolving metadata…</span>
-          {/if}
-          {#if callout.reference.link && !resolving}
-            <a
-              href={callout.reference.link}
-              target="_blank"
-              rel="noreferrer"
-              onclick={(event) => {
-                event.stopPropagation();
-                void openExternal(event, callout.reference.link!);
-              }}
-            >Open paper</a>
-          {/if}
-          {#if callout.reference.openAccessPdf && !resolving}
-            <a
-              href={callout.reference.openAccessPdf}
-              target="_blank"
-              rel="noreferrer"
-              onclick={(event) => {
-                event.stopPropagation();
-                void openExternal(event, callout.reference.openAccessPdf!);
-              }}
-            >Open PDF</a>
-          {/if}
-          {#if linkedDoc}
-            <button
-              type="button"
-              aria-label={`Open the linked PDF for ${referenceLabel(callout.reference)}`}
-              onclick={(event) => void openLinkedDocument(event, linkedDoc)}
-            >
-              Open document
-            </button>
-          {/if}
-          {#if hasTrustedBibtex(callout.reference) && !resolving}
-            <button
-              type="button"
-              aria-label={`Copy BibTeX for ${referenceLabel(callout.reference)}`}
-              onclick={(event) => void copyBibtex(event, callout.reference)}
-            >
-              {failedBibtexId === callout.reference.id
-                ? "Copy failed"
-                : copiedBibtexId === callout.reference.id
-                  ? "Copied"
-                  : "Copy BibTeX"}
-            </button>
-          {/if}
+          <ReferenceCard reference={callout.reference} {resolving} {linkedDoc} />
         </div>
       {/if}
     </div>
@@ -185,21 +102,21 @@
     width: 100%;
     height: 100%;
     padding: 0;
-    border: 1px solid rgba(25, 95, 210, 0.45);
+    border: 1px solid var(--accent-outline);
     border-radius: 2px;
-    background: rgba(60, 130, 245, 0.12);
+    background: var(--accent-fill);
     cursor: pointer;
   }
 
   .citation:hover,
   .citation:focus-visible,
-  .citation.active {
-    border-color: #165fc2;
-    background: rgba(60, 130, 245, 0.25);
+  .citation.is-active {
+    border-color: var(--accent-strong);
+    background: var(--accent-fill-strong);
     outline: none;
   }
 
-  .callout.resolving .citation {
+  .callout.is-busy .citation {
     opacity: 0.55;
   }
 
@@ -209,32 +126,17 @@
     left: 0;
     z-index: 10;
     display: flex;
+    flex-direction: column;
     width: min(360px, 70vw);
     max-height: 260px;
     overflow: auto;
-    flex-direction: column;
-    gap: 7px;
     padding: 12px;
-    border: 1px solid #aaa;
-    background: white;
-    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.24);
-    color: #161616;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+    color: var(--text);
     font: 13px/1.35 system-ui, sans-serif;
-    text-align: left;
     cursor: default;
-  }
-
-  .abstract {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 6;
-    line-clamp: 6;
-  }
-
-  .card a {
-    color: #0b57d0;
-    text-decoration: underline;
   }
 
   .sr-only {

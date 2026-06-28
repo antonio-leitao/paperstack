@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
   import NamePrompt from "$lib/NamePrompt.svelte";
+  import { errorMessage } from "$lib/errorMessage";
   import type { Project, ProjectStack } from "$lib/types";
 
   let projects = $state<Project[]>([]);
@@ -17,10 +18,6 @@
   onMount(() => {
     if (desktop) void refreshProjects();
   });
-
-  function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 
   async function refreshProjects() {
     try {
@@ -108,6 +105,7 @@
       {#each projects as project (project.id)}
         <li>
           <a href={`/projects/${project.id}`}>{project.name}</a>
+          <span class="count">{project.documentCount} PDF{project.documentCount === 1 ? "" : "s"}</span>
           <button
             type="button"
             onclick={() => (projectNamePrompt = { mode: "rename", project })}
@@ -148,22 +146,6 @@
 </main>
 
 <style>
-  :global(*) {
-    box-sizing: border-box;
-  }
-
-  :global(html),
-  :global(body) {
-    margin: 0;
-    font-family: system-ui, sans-serif;
-  }
-
-  :global(button),
-  :global(input),
-  :global(select) {
-    font: inherit;
-  }
-
   main {
     display: grid;
     gap: 14px;
@@ -199,7 +181,12 @@
   }
 
   .error {
-    color: #7e1111;
+    color: var(--danger);
+  }
+
+  .count {
+    color: var(--text-muted);
+    font-size: 13px;
   }
 
   .empty {

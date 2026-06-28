@@ -16,6 +16,7 @@ pub(crate) struct Project {
     created_at: i64,
     updated_at: i64,
     last_opened_at: i64,
+    document_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -295,7 +296,8 @@ pub(crate) fn list_projects(app: AppHandle) -> Result<Vec<Project>, String> {
     let mut statement = connection
         .prepare(
             r#"
-            SELECT id, name, created_at, updated_at, last_opened_at
+            SELECT id, name, created_at, updated_at, last_opened_at,
+                   (SELECT COUNT(*) FROM project_documents pd WHERE pd.project_id = projects.id)
             FROM projects
             ORDER BY last_opened_at DESC, name_key, id
             "#,
@@ -954,7 +956,11 @@ fn load_document(
 fn load_project(connection: &Connection, id: &str) -> Result<Project, String> {
     connection
         .query_row(
-            "SELECT id, name, created_at, updated_at, last_opened_at FROM projects WHERE id = ?1",
+            r#"
+            SELECT id, name, created_at, updated_at, last_opened_at,
+                   (SELECT COUNT(*) FROM project_documents pd WHERE pd.project_id = projects.id)
+            FROM projects WHERE id = ?1
+            "#,
             params![id],
             row_to_project,
         )
@@ -1034,6 +1040,7 @@ fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
         created_at: row.get(2)?,
         updated_at: row.get(3)?,
         last_opened_at: row.get(4)?,
+        document_count: row.get(5)?,
     })
 }
 

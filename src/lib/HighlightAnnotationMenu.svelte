@@ -45,18 +45,18 @@
 
   button {
     padding: 5px 9px;
-    border: 1px solid #8f3333;
+    border: 1px solid var(--danger-menu-border);
     border-radius: 4px;
-    background: #fff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
-    color: #7a1f1f;
+    background: var(--surface);
+    box-shadow: var(--shadow-menu);
+    color: var(--danger-menu-text);
     font: 12px system-ui, sans-serif;
     white-space: nowrap;
   }
 
   button:hover,
   button:focus-visible {
-    background: #ffecec;
+    background: var(--danger-menu-hover-bg);
     outline: none;
   }
 </style>

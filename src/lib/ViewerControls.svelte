@@ -24,8 +24,8 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    border-bottom: 1px solid #bbb;
-    background: #f7f7f7;
+    border-bottom: 1px solid var(--border-strong);
+    background: var(--surface-muted);
     font: 13px system-ui, sans-serif;
   }
 
@@ -37,6 +37,6 @@
     width: 1px;
     height: 20px;
     margin: 0 4px;
-    background: #bbb;
+    background: var(--border-strong);
   }
 </style>

@@ -4,11 +4,12 @@
   import { readFile } from "@tauri-apps/plugin-fs";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onMount } from "svelte";
+  import ConfirmDialog from "$lib/ConfirmDialog.svelte";
+  import NamePrompt from "$lib/NamePrompt.svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
-  import { copyToClipboard } from "$lib/copyToClipboard";
-  import { openExternal } from "$lib/openExternal";
-  import { hasTrustedBibtex } from "$lib/referenceBibtex";
-  import { openViewerWindow } from "$lib/viewerWindows";
+  import ReferenceListItem from "$lib/ReferenceListItem.svelte";
+  import { analysisProgressMessage } from "$lib/analysisLabel";
+  import { errorMessage } from "$lib/errorMessage";
   import type {
     AnalysisProgress,
     AnalysisResult,
@@ -29,9 +30,9 @@
   let resolvingReferenceIds = $state<string[]>([]);
   let dismissedSourceId = $state<string | null>(null);
   let rightSidebarOpen = $state(true);
-  let copiedBibtexId = $state<string | null>(null);
-  let failedBibtexId = $state<string | null>(null);
   let libraryDocuments = $state<LibraryDocument[]>([]);
+  let renameOpen = $state(false);
+  let deleteOpen = $state(false);
 
   // Maps a reference's shared id to a library document that holds its PDF, so we
   // can offer to open that PDF in its own window.
@@ -66,10 +67,6 @@
     action: string;
   };
 
-  function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
-
   function resolveDocumentId(): string | null {
     const label = getCurrentWebviewWindow().label;
     if (label.startsWith("viewer:")) return label.slice("viewer:".length);
@@ -102,12 +99,7 @@
       } else {
         analyzing = true;
         analysisError = null;
-        grobidStatus =
-          status.phase === "extracting"
-            ? "Extracting references..."
-            : status.total
-              ? `Resolving ${Math.max(status.total - status.resolved, 0)} reference(s)...`
-              : "Resolving references...";
+        grobidStatus = analysisProgressMessage(status);
       }
     }).then((dispose) => disposers.push(dispose));
     // If this document is deleted (from any window) close ourselves; if it is
@@ -192,12 +184,7 @@
       } else if (status) {
         analysis = null;
         analyzing = true;
-        grobidStatus =
-          status.phase === "extracting"
-            ? "Extracting references..."
-            : status.total
-              ? `Resolving ${Math.max(status.total - status.resolved, 0)} reference(s)...`
-              : "Resolving references...";
+        grobidStatus = analysisProgressMessage(status);
       } else {
         analysis = null;
         analyzing = true;
@@ -234,10 +221,13 @@
     }
   }
 
-  async function renameDocument() {
-    if (!libraryDocument) return;
-    const title = window.prompt("Document title", libraryDocument.title);
-    if (!title?.trim() || title.trim() === libraryDocument.title) return;
+  function submitRename(title: string) {
+    renameOpen = false;
+    void renameDocument(title);
+  }
+
+  async function renameDocument(title: string) {
+    if (!libraryDocument || title === libraryDocument.title) return;
     try {
       libraryDocument = await invoke<LibraryDocument>("rename_document", {
         id: libraryDocument.id,
@@ -261,9 +251,9 @@
     }
   }
 
-  async function deleteDocument() {
+  async function confirmDelete() {
+    deleteOpen = false;
     if (!libraryDocument) return;
-    if (!window.confirm(`Delete "${libraryDocument.title}" and its managed PDF?`)) return;
     try {
       await invoke("delete_document", { id: libraryDocument.id });
       await getCurrentWebviewWindow().close();
@@ -285,20 +275,6 @@
     }
   }
 
-  async function copyBibtex(reference: Reference) {
-    try {
-      await copyToClipboard(reference.bibtex);
-      copiedBibtexId = reference.id;
-      failedBibtexId = null;
-      window.setTimeout(() => {
-        if (copiedBibtexId === reference.id) copiedBibtexId = null;
-      }, 1500);
-    } catch {
-      copiedBibtexId = null;
-      failedBibtexId = reference.id;
-    }
-  }
-
   function isResolving(reference: Reference): boolean {
     return resolvingReferenceIds.includes(reference.id);
   }
@@ -313,11 +289,11 @@
     <strong>{libraryDocument?.referenceTitle ?? libraryDocument?.title ?? pdfName ?? "PDF"}</strong>
 
     {#if libraryDocument}
-      <button type="button" onclick={() => void renameDocument()}>Rename</button>
+      <button type="button" onclick={() => (renameOpen = true)}>Rename</button>
       {#if libraryDocument.referenceId}
         <button type="button" onclick={() => void unlinkDocument()}>Unlink reference</button>
       {/if}
-      <button type="button" onclick={() => void deleteDocument()}>Delete</button>
+      <button type="button" onclick={() => (deleteOpen = true)}>Delete</button>
       <button type="button" onclick={() => void reanalyze()} disabled={analyzing}>
         {analyzing ? "Analyzing..." : analysisError ? "Retry analysis" : "Analyze again"}
       </button>
@@ -384,41 +360,12 @@
         {:else if analysis?.references.length}
           <ol>
             {#each analysis.references as reference (reference.id)}
-              {@const linked = linkedDocument(reference)}
-              <li class:resolving={isResolving(reference)} aria-busy={isResolving(reference)}>
-                {#if reference.link && !isResolving(reference)}
-                  <a
-                    href={reference.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    onclick={(event) => void openExternal(event, reference.link!)}
-                  >
-                    {reference.title ?? reference.rawCitation ?? reference.id}
-                  </a>
-                {:else}
-                  <strong>{reference.title ?? reference.rawCitation ?? reference.id}</strong>
-                {/if}
-                {#if reference.authors.length}
-                  <small>{reference.authors.join(", ")}</small>
-                {/if}
-                {#if isResolving(reference)}
-                  <small>Resolving metadata...</small>
-                {/if}
-                <small>{reference.calloutBoxes.length} callout(s)</small>
-                {#if linked}
-                  <button type="button" onclick={() => void openViewerWindow(linked)}>
-                    Open document
-                  </button>
-                {/if}
-                {#if hasTrustedBibtex(reference) && !isResolving(reference)}
-                  <button type="button" onclick={() => void copyBibtex(reference)}>
-                    {failedBibtexId === reference.id
-                      ? "Copy failed"
-                      : copiedBibtexId === reference.id
-                        ? "Copied"
-                        : "Copy BibTeX"}
-                  </button>
-                {/if}
+              <li class:is-busy={isResolving(reference)} aria-busy={isResolving(reference)}>
+                <ReferenceListItem
+                  {reference}
+                  resolving={isResolving(reference)}
+                  linkedDoc={linkedDocument(reference)}
+                />
               </li>
             {/each}
           </ol>
@@ -428,15 +375,31 @@
       </aside>
     {/if}
   </section>
+
+  <NamePrompt
+    open={renameOpen}
+    title="Rename document"
+    initialValue={libraryDocument?.title ?? ""}
+    confirmLabel="Rename"
+    onconfirm={submitRename}
+    oncancel={() => (renameOpen = false)}
+  />
+  <ConfirmDialog
+    open={deleteOpen}
+    title="Delete document"
+    message={libraryDocument ? `Delete "${libraryDocument.title}" and its managed PDF?` : ""}
+    confirmLabel="Delete"
+    onconfirm={confirmDelete}
+    oncancel={() => (deleteOpen = false)}
+  />
 </main>
 
 <style>
+  /* Full-height, non-scrolling viewer shell, so html/body sizing stays local. */
   :global(html),
   :global(body) {
     height: 100%;
-    margin: 0;
     overflow: hidden;
-    font-family: system-ui, sans-serif;
   }
 
   main {
@@ -450,7 +413,7 @@
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
-    border-bottom: 1px solid #aaa;
+    border-bottom: 1px solid var(--border);
   }
 
   .toolbar strong,
@@ -475,14 +438,14 @@
     align-items: center;
     gap: 8px;
     padding: 7px 10px;
-    border-bottom: 1px solid #aaa;
-    background: #fff9d8;
+    border-bottom: 1px solid var(--border);
+    background: var(--warning-bg);
     font-size: 13px;
   }
 
   .notice.error {
-    background: #ffe9e9;
-    color: #7e1111;
+    background: var(--danger-bg);
+    color: var(--danger);
   }
 
   .match-prompt span {
@@ -510,7 +473,7 @@
     min-height: 0;
     overflow: auto;
     padding: 10px;
-    border-left: 1px solid #aaa;
+    border-left: 1px solid var(--border);
   }
 
   .references ol {
@@ -523,25 +486,14 @@
     font-size: 13px;
   }
 
-  .references li.resolving {
+  .references li.is-busy {
     opacity: 0.55;
-  }
-
-  .references a,
-  .references li > strong,
-  .references small {
-    display: block;
-  }
-
-  .references small {
-    color: #555;
-    font-size: 12px;
   }
 
   .empty {
     display: grid;
     height: 100%;
     place-content: center;
-    background: #ddd;
+    background: var(--surface-empty);
   }
 </style>

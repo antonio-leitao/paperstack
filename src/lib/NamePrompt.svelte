@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Modal from "./Modal.svelte";
+
   let {
     open,
     title,
@@ -15,19 +17,14 @@
     oncancel: () => void;
   } = $props();
 
-  let dialog = $state<HTMLDialogElement>();
   let input = $state<HTMLInputElement>();
   let value = $state("");
 
-  $effect(() => {
-    if (open && dialog && !dialog.open) {
-      value = initialValue;
-      dialog.showModal();
-      window.setTimeout(() => input?.select());
-    } else if (!open && dialog?.open) {
-      dialog.close();
-    }
-  });
+  // Reset to the seed value and select it each time the dialog opens.
+  function handleOpen() {
+    value = initialValue;
+    window.setTimeout(() => input?.select());
+  }
 
   function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -36,12 +33,7 @@
   }
 </script>
 
-<dialog
-  bind:this={dialog}
-  onclose={() => {
-    if (open) oncancel();
-  }}
->
+<Modal {open} onopen={handleOpen} onclose={oncancel}>
   <form onsubmit={submit}>
     <h2>{title}</h2>
     <label>
@@ -53,7 +45,7 @@
       <button type="submit">{confirmLabel}</button>
     </div>
   </form>
-</dialog>
+</Modal>
 
 <style>
   form {

@@ -3,6 +3,7 @@
   import LastOpened from "./LastOpened.svelte";
   import { BOARD_DND_TYPE, libraryCardId } from "./boardDnd";
   import { analysisLabel } from "./analysisLabel";
+  import { searchDocuments } from "./searchDocuments";
   import type { AnalysisStatus, LibraryDocument } from "./types";
 
   type LinkFilter = "all" | "linked" | "unlinked";
@@ -74,91 +75,6 @@
     if (filter === "linked") return Boolean(document.referenceId);
     if (filter === "unlinked") return !document.referenceId;
     return true;
-  }
-
-  function normalize(value: string): string {
-    return value
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim();
-  }
-
-  function searchDocuments(items: LibraryDocument[], rawQuery: string): LibraryDocument[] {
-    const tokens = normalize(rawQuery).split(/\s+/).filter(Boolean);
-    if (!tokens.length) return [...items].sort(byRecentlyViewed);
-
-    return items
-      .map((document) => ({ document, score: scoreDocument(document, tokens) }))
-      .filter((result) => result.score > 0)
-      .sort((left, right) => right.score - left.score || byRecentlyViewed(left.document, right.document))
-      .map((result) => result.document);
-  }
-
-  function scoreDocument(document: LibraryDocument, tokens: string[]): number {
-    const values = [
-      document.referenceTitle ?? "",
-      document.title,
-      document.referenceAuthors.join(" "),
-      document.originalFilename,
-    ];
-    let total = 0;
-    for (const token of tokens) {
-      const tokenScore = scoreToken(token, values);
-      if (!tokenScore) return 0;
-      total += tokenScore;
-    }
-    return total + Math.min(document.lastViewedAt / 1_000_000_000, 10);
-  }
-
-  function scoreToken(token: string, values: string[]): number {
-    let best = 0;
-    for (const value of values) {
-      const normalized = normalize(value);
-      if (!normalized) continue;
-      if (normalized === token) best = Math.max(best, 120);
-      if (normalized.startsWith(token)) best = Math.max(best, 105);
-      const index = normalized.indexOf(token);
-      if (index >= 0) best = Math.max(best, 95 - Math.min(index, 30));
-      if (isSubsequence(token, normalized)) best = Math.max(best, 55);
-      for (const word of normalized.split(/\s+/)) {
-        if (word.startsWith(token)) best = Math.max(best, 100);
-        const distance = typoDistance(token, word);
-        if (distance !== null) best = Math.max(best, 78 - distance * 12);
-      }
-    }
-    return best;
-  }
-
-  function isSubsequence(needle: string, haystack: string): boolean {
-    let index = 0;
-    for (const character of haystack) {
-      if (character === needle[index]) index += 1;
-      if (index === needle.length) return true;
-    }
-    return false;
-  }
-
-  function typoDistance(left: string, right: string): number | null {
-    if (left.length < 4 || right.length < 4 || Math.abs(left.length - right.length) > 2) {
-      return null;
-    }
-    let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-    for (let i = 1; i <= left.length; i += 1) {
-      const current = [i];
-      for (let j = 1; j <= right.length; j += 1) {
-        const cost = left[i - 1] === right[j - 1] ? 0 : 1;
-        current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost);
-      }
-      previous = current;
-    }
-    const distance = previous[right.length];
-    return distance <= 2 ? distance : null;
-  }
-
-  function byRecentlyViewed(left: LibraryDocument, right: LibraryDocument): number {
-    return right.lastViewedAt - left.lastViewedAt;
   }
 
   function documentTitle(document: LibraryDocument): string {
@@ -239,7 +155,7 @@
           <div class="document-list-row">
             <button
               type="button"
-              class:open={openDocumentIds.includes(card.document.id)}
+              class:is-open={openDocumentIds.includes(card.document.id)}
               onclick={() => void onopen(card.document.id)}
             >
               <span class="document-summary">
@@ -248,7 +164,7 @@
                 {#if status}
                   <small
                     class="analysis"
-                    class:failed={analysisStates[card.document.id]?.phase === "error"}
+                    class:is-error={analysisStates[card.document.id]?.phase === "error"}
                   >
                     {status}
                   </small>
@@ -326,9 +242,9 @@
     text-align: left;
   }
 
-  .document-list-row > button.open {
-    background: #f2f7ff;
-    box-shadow: inset 3px 0 0 #3b82f6;
+  .document-list-row > button.is-open {
+    background: var(--accent-soft-bg);
+    box-shadow: inset 3px 0 0 var(--accent);
   }
 
   .document-summary {
@@ -345,16 +261,16 @@
   }
 
   small {
-    color: #555;
+    color: var(--text-muted);
     font-size: 12px;
   }
 
   .analysis {
-    color: #3b82f6;
+    color: var(--accent);
   }
 
-  .analysis.failed {
-    color: #7e1111;
+  .analysis.is-error {
+    color: var(--danger);
   }
 
   p {

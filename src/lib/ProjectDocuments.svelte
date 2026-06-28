@@ -134,8 +134,8 @@
             {#each columns[stack.id] ?? [] as card (card.id)}
               {@const status = analysisLabel(analysisStates[realDocumentId(card.id)])}
               <li
-                class:open={openDocumentIds.includes(realDocumentId(card.id))}
-                class:busy={status !== null}
+                class:is-open={openDocumentIds.includes(realDocumentId(card.id))}
+                class:is-busy={status !== null}
                 animate:flip={{ duration: FLIP_DURATION_MS }}
                 aria-label={cardTitle(card)}
               >
@@ -145,7 +145,7 @@
                   {#if status}
                     <small
                       class="analysis"
-                      class:failed={analysisStates[realDocumentId(card.id)]?.phase === "error"}
+                      class:is-error={analysisStates[realDocumentId(card.id)]?.phase === "error"}
                     >
                       {status}
                     </small>
@@ -216,7 +216,7 @@
     width: 260px;
     flex: 0 0 auto;
     max-height: 100%;
-    border: 1px solid #aaa;
+    border: 1px solid var(--border);
     padding: 8px;
   }
 
@@ -233,7 +233,7 @@
   }
 
   .count {
-    color: #555;
+    color: var(--text-muted);
     font-size: 12px;
   }
 
@@ -251,25 +251,25 @@
   li {
     display: grid;
     gap: 6px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border-subtle);
     padding: 8px;
-    background: #fff;
+    background: var(--surface);
   }
 
-  li.open {
-    box-shadow: inset 3px 0 0 #3b82f6;
+  li.is-open {
+    box-shadow: inset 3px 0 0 var(--accent);
   }
 
-  li.busy {
+  li.is-busy {
     opacity: 0.75;
   }
 
   .analysis {
-    color: #3b82f6;
+    color: var(--accent);
   }
 
-  .analysis.failed {
-    color: #7e1111;
+  .analysis.is-error {
+    color: var(--danger);
   }
 
   .card-body {
@@ -286,12 +286,8 @@
   }
 
   small {
-    color: #555;
+    color: var(--text-muted);
     font-size: 12px;
-  }
-
-  button {
-    cursor: pointer;
   }
 
   .empty {

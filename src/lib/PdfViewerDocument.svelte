@@ -31,6 +31,7 @@
   import HighlightSelectionMenu from "./HighlightSelectionMenu.svelte";
   import PdfLink from "./PdfLink.svelte";
   import ViewerControls from "./ViewerControls.svelte";
+  import { errorMessage } from "./errorMessage";
   import type {
     AnalysisResult,
     DocumentAnnotation,
@@ -73,10 +74,6 @@
 
   const pageSizes = $derived(new Map(analysis?.pages.map((page) => [page.page, page]) ?? []));
   const highlightsAvailable = $derived(Boolean(desktop && libraryDocumentId));
-
-  function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 
   function clearNativeSelection() {
     window.getSelection()?.removeAllRanges();
@@ -355,7 +352,7 @@
 
   :global(.viewport) {
     min-height: 0;
-    background: #d8d8d8;
+    background: var(--surface-sunken);
   }
 
   .annotation-status-slot {
@@ -365,8 +362,8 @@
   .page {
     position: relative;
     overflow: visible;
-    background: white;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+    background: var(--surface);
+    box-shadow: var(--shadow-page);
     user-select: none;
     -webkit-user-select: none;
   }
@@ -380,18 +377,18 @@
 
   .annotation-status {
     padding: 5px 10px;
-    border-bottom: 1px solid #c6b56c;
-    background: #fff6cf;
-    color: #4d4211;
+    border-bottom: 1px solid var(--highlight-status-border);
+    background: var(--highlight-status-bg);
+    color: var(--highlight-status-text);
     font: 12px system-ui, sans-serif;
   }
 
   .error {
-    color: #9c1b1b;
+    color: var(--danger-strong);
   }
 
   .annotation-status.error {
-    border-bottom-color: #d4a8a8;
-    background: #ffeaea;
+    border-bottom-color: var(--danger-border);
+    background: var(--danger-bg);
   }
 </style>

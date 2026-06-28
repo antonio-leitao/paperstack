@@ -11,6 +11,7 @@
   import DocumentLibrary from "./DocumentLibrary.svelte";
   import NamePrompt from "./NamePrompt.svelte";
   import ProjectDocuments from "./ProjectDocuments.svelte";
+  import { errorMessage } from "./errorMessage";
   import { openViewerWindow as openDocumentWindow } from "./viewerWindows";
   import type {
     AnalysisStatus,
@@ -91,10 +92,6 @@
     } catch {
       // Ignore; the highlight is a non-critical convenience.
     }
-  }
-
-  function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
   }
 
   function sortDocuments(items: LibraryDocument[]): LibraryDocument[] {
@@ -402,22 +399,12 @@
 </main>
 
 <style>
-  :global(*) {
-    box-sizing: border-box;
-  }
-
+  /* Full-height, non-scrolling app shell (the home/projects page scrolls; this
+     one doesn't), so html/body sizing stays local to this view. */
   :global(html),
   :global(body) {
     height: 100%;
-    margin: 0;
     overflow: hidden;
-    font-family: system-ui, sans-serif;
-  }
-
-  :global(button),
-  :global(input),
-  :global(select) {
-    font: inherit;
   }
 
   main {
@@ -426,17 +413,13 @@
     grid-template-rows: auto auto minmax(0, 1fr);
   }
 
-  button {
-    cursor: pointer;
-  }
-
   .toolbar {
     display: flex;
     min-height: 46px;
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
-    border-bottom: 1px solid #aaa;
+    border-bottom: 1px solid var(--border);
   }
 
   .toolbar strong,
@@ -453,9 +436,9 @@
 
   .notice.error {
     padding: 7px 10px;
-    border-bottom: 1px solid #aaa;
-    background: #ffe9e9;
-    color: #7e1111;
+    border-bottom: 1px solid var(--border);
+    background: var(--danger-bg);
+    color: var(--danger);
     font-size: 13px;
   }
 
@@ -489,7 +472,7 @@
   }
 
   .library {
-    border-right: 1px solid #aaa;
+    border-right: 1px solid var(--border);
   }
 
   .center {

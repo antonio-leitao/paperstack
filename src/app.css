@@ -1,0 +1,85 @@
+/*
+ * Global reset + design tokens.
+ *
+ * The app intentionally ships with function-only styling for now. Every colour,
+ * shadow and border lives here as a CSS custom property so the upcoming design
+ * pass can retheme the whole app from one place instead of hunting through
+ * component <style> blocks. Components should reference var(--token) rather than
+ * hardcoding literals.
+ */
+
+:root {
+  /* Surfaces */
+  --surface: #ffffff;
+  --surface-sunken: #d8d8d8;
+  --surface-muted: #f7f7f7;
+  --surface-empty: #dddddd;
+
+  /* Text */
+  --text: #161616;
+  --text-muted: #555555;
+
+  /* Borders (light -> strong) */
+  --border: #aaaaaa;
+  --border-strong: #bbbbbb;
+  --border-subtle: #cccccc;
+
+  /* Accent — citation callouts, open/active highlight */
+  --accent: #3b82f6;
+  --accent-strong: #165fc2;
+  --accent-link: #0b57d0;
+  --accent-soft-bg: #f2f7ff;
+  --accent-outline: rgba(25, 95, 210, 0.45);
+  --accent-fill: rgba(60, 130, 245, 0.12);
+  --accent-fill-strong: rgba(60, 130, 245, 0.25);
+
+  /* Danger — errors, destructive affordances */
+  --danger: #7e1111;
+  --danger-strong: #9c1b1b;
+  --danger-bg: #ffe9e9;
+  --danger-border: #d4a8a8;
+  --danger-menu-border: #8f3333;
+  --danger-menu-text: #7a1f1f;
+  --danger-menu-hover-bg: #ffecec;
+
+  /* Warning — non-error notices, match prompt */
+  --warning-bg: #fff9d8;
+
+  /* Highlight — text annotations + their menus */
+  --highlight: #ffcd45;
+  --highlight-strong: #ffd033;
+  --highlight-soft: rgba(255, 205, 69, 0.38);
+  --highlight-menu-bg: #ffdf65;
+  --highlight-menu-border: #8a741f;
+  --highlight-menu-text: #211a05;
+  --highlight-status-bg: #fff6cf;
+  --highlight-status-border: #c6b56c;
+  --highlight-status-text: #4d4211;
+
+  /* Shadows */
+  --shadow-page: 0 1px 4px rgba(0, 0, 0, 0.28);
+  --shadow-menu: 0 2px 8px rgba(0, 0, 0, 0.22);
+  --shadow-card: 0 3px 12px rgba(0, 0, 0, 0.24);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}

@@ -71,6 +71,7 @@ export type Project = {
   createdAt: number;
   updatedAt: number;
   lastOpenedAt: number;
+  documentCount: number;
 };
 
 export type ProjectStack = {
