@@ -54,6 +54,13 @@
       void refreshProject();
       void refreshOpenWindows();
     }).then((dispose) => disposers.push(dispose));
+    // A first-page thumbnail finished rendering in the background worker; refresh
+    // just that document so its card picks up the new image.
+    void listen<{ documentId: string }>("thumbnail-ready", (event) => {
+      void invoke<LibraryDocument>("get_document", { id: event.payload.documentId })
+        .then((document) => upsertDocument(document))
+        .catch(() => {});
+    }).then((dispose) => disposers.push(dispose));
     // Background analysis runs in the Rust worker; it broadcasts a status per
     // document so cards can show a loader regardless of which window triggered it.
     void invoke<AnalysisStatus[]>("analysis_states")

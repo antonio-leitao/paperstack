@@ -49,6 +49,7 @@ pub(crate) struct LibraryDocument {
     title: String,
     byte_size: u64,
     stored_path: String,
+    thumbnail_path: Option<String>,
     reference_id: Option<String>,
     reference_title: Option<String>,
     reference_authors: Vec<String>,
@@ -172,6 +173,9 @@ pub(crate) fn import_document(app: AppHandle, path: String) -> Result<LibraryDoc
         }
         return Err(format!("Could not add the PDF to the library: {error}"));
     }
+    // Render the first-page thumbnail (best-effort, pure Rust) before loading the
+    // document, so the returned card already carries its thumbnailPath.
+    let _ = crate::thumbnail::ensure_thumbnail(&app, &content_hash, &bytes);
     let document = load_document(&app, &connection, &id)?;
     emit_library_changed(&app, "document", Some(&id), "created");
     Ok(document)
@@ -246,6 +250,14 @@ pub(crate) fn delete_document(
 ) -> Result<(), String> {
     let mut connection = database::connection(&app)?;
     let stored_path = document_path(&app, &id)?;
+    let content_hash: Option<String> = connection
+        .query_row(
+            "SELECT content_hash FROM documents WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not look up the document: {error}"))?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| format!("Could not start deleting the document: {error}"))?;
@@ -261,6 +273,12 @@ pub(crate) fn delete_document(
     // Stop (or forget) any background analysis for the document we just removed.
     analysis.cancel(&app, &id);
     emit_library_changed(&app, "document", Some(&id), "deleted");
+    // Best-effort thumbnail cleanup; an orphan is harmless if this fails.
+    if let Some(content_hash) = content_hash {
+        if let Ok(thumbnail) = crate::thumbnail::thumbnail_path(&app, &content_hash) {
+            let _ = std::fs::remove_file(thumbnail);
+        }
+    }
     match std::fs::remove_file(stored_path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -933,6 +951,10 @@ fn load_document(
         .map(serde_json::from_str::<LinkedReferenceData>)
         .transpose()
         .map_err(|error| format!("Could not read linked reference metadata: {error}"))?;
+    let thumbnail_path = crate::thumbnail::thumbnail_path(app, &row.0)
+        .ok()
+        .filter(|path| path.exists())
+        .map(|path| path.to_string_lossy().into_owned());
     Ok(LibraryDocument {
         id: id.to_owned(),
         content_hash: row.0,
@@ -940,6 +962,7 @@ fn load_document(
         title: row.2,
         byte_size: row.3.max(0) as u64,
         stored_path: document_path(app, id)?.to_string_lossy().into_owned(),
+        thumbnail_path,
         reference_id: row.4,
         reference_title: linked_reference
             .as_ref()
@@ -1106,6 +1129,22 @@ pub(crate) fn all_document_ids(app: &AppHandle) -> Result<Vec<String>, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("Could not read document ids: {error}"))?;
     Ok(ids)
+}
+
+// (document_id, content_hash) pairs for the thumbnail backfill sweep.
+pub(crate) fn all_document_hashes(app: &AppHandle) -> Result<Vec<(String, String)>, String> {
+    let connection = database::connection(app)?;
+    let mut statement = connection
+        .prepare("SELECT id, content_hash FROM documents")
+        .map_err(|error| format!("Could not prepare the document hash list: {error}"))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|error| format!("Could not list document hashes: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read document hashes: {error}"))?;
+    Ok(rows)
 }
 
 fn document_id_by_hash(connection: &Connection, hash: &str) -> Result<Option<String>, String> {

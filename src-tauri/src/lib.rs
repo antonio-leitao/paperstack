@@ -1,6 +1,7 @@
 mod database;
 mod document_library;
 mod reference_resolver;
+mod thumbnail;
 
 use reference_resolver::{ReferenceInput, ReferenceResolution, ResolutionStatus};
 use reqwest::multipart::{Form, Part};
@@ -1015,6 +1016,10 @@ pub fn run() {
             // background so startup isn't blocked.
             let handle = app.handle().clone();
             std::thread::spawn(move || recover_pending_analyses(handle));
+            // Backfill first-page thumbnails for any document that doesn't have
+            // one yet (e.g. imported before this feature), in the background.
+            let thumbnail_handle = app.handle().clone();
+            std::thread::spawn(move || thumbnail::recover_missing_thumbnails(thumbnail_handle));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

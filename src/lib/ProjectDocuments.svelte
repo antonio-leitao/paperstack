@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { convertFileSrc } from "@tauri-apps/api/core";
   import { dndzone, SHADOW_ITEM_MARKER_PROPERTY_NAME, type DndEvent } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import LastOpened from "./LastOpened.svelte";
@@ -140,7 +141,17 @@
                 aria-label={cardTitle(card)}
               >
                 <div class="card-body">
-                  <strong class="card-title">{cardTitle(card)}</strong>
+                  <div class="card-heading">
+                    {#if card.document.thumbnailPath}
+                      <img
+                        class="thumb"
+                        src={convertFileSrc(card.document.thumbnailPath)}
+                        alt=""
+                        loading="lazy"
+                      />
+                    {/if}
+                    <strong class="card-title">{cardTitle(card)}</strong>
+                  </div>
                   <small>{cardMeta(card)}</small>
                   {#if status}
                     <small
@@ -276,6 +287,17 @@
     display: grid;
     gap: 2px;
     min-width: 0;
+  }
+
+  .card-heading {
+    display: flex;
+    gap: 6px;
+    align-items: start;
+  }
+
+  .thumb {
+    flex: none;
+    width: 44px;
   }
 
   .card-title {

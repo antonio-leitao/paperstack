@@ -89,6 +89,7 @@ export type LibraryDocument = {
   title: string;
   byteSize: number;
   storedPath: string;
+  thumbnailPath: string | null;
   referenceId: string | null;
   referenceTitle: string | null;
   referenceAuthors: string[];
