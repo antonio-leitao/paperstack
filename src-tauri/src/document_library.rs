@@ -1082,6 +1082,33 @@ pub(crate) fn remove_document_from_project(
 }
 
 #[tauri::command]
+pub(crate) fn remove_pile_from_project(
+    app: AppHandle,
+    project_id: String,
+    pile_id: String,
+) -> Result<Vec<ProjectDocument>, String> {
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start removing the project pile: {error}"))?;
+    let changed = transaction
+        .execute(
+            "DELETE FROM project_documents WHERE project_id = ?1 AND pile_id = ?2",
+            params![project_id, pile_id],
+        )
+        .map_err(|error| format!("Could not remove the pile from the project: {error}"))?;
+    if changed == 0 {
+        return Err("Pile is not in this project".to_owned());
+    }
+    clear_singleton_piles(&transaction, &project_id)?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish removing the project pile: {error}"))?;
+    emit_library_changed(&app, "projectDocument", None, "pile-removed");
+    load_project_documents(&app, &connection, &project_id)
+}
+
+#[tauri::command]
 pub(crate) fn link_document_reference(
     app: AppHandle,
     document_id: String,

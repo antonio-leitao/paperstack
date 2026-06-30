@@ -38,6 +38,11 @@
   let pileNamePrompt = $state<
     { pileId: string; currentName: string | null } | null
   >(null);
+  let pileToRemove = $state<{
+    pileId: string;
+    currentName: string | null;
+    paperCount: number;
+  } | null>(null);
   let projectDocumentToRemove = $state<ProjectDocument | null>(null);
   let documentToRename = $state<LibraryDocument | null>(null);
   let documentToDelete = $state<LibraryDocument | null>(null);
@@ -457,6 +462,33 @@
     }
   }
 
+  function requestRemovePile(pileId: string, currentName: string | null) {
+    const paperCount = projectDocuments.filter(
+      (item) => item.pileId === pileId,
+    ).length;
+    if (!paperCount) return;
+    pileToRemove = { pileId, currentName, paperCount };
+  }
+
+  async function confirmRemovePile() {
+    const pile = pileToRemove;
+    pileToRemove = null;
+    if (!pile) return;
+    try {
+      projectDocuments = await invoke<ProjectDocument[]>(
+        "remove_pile_from_project",
+        {
+          projectId,
+          pileId: pile.pileId,
+        },
+      );
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+      void refreshProject();
+    }
+  }
+
   function requestRemoveProjectDocument(documentId: string) {
     projectDocumentToRemove =
       projectDocuments.find((item) => item.document.id === documentId) ?? null;
@@ -537,6 +569,7 @@
         onpile={pileProjectDocuments}
         onunpile={unpileProjectDocuments}
         onrenamepile={requestRenamePile}
+        onremovepile={requestRemovePile}
         ongroup={groupDocumentsIntoPile}
         externalDraggingEntryId={libraryDraggingEntryId}
         onchoosepdf={choosePdf}
@@ -590,6 +623,16 @@
     confirmLabel="Delete"
     onconfirm={confirmDeleteStack}
     oncancel={() => (stackToDelete = null)}
+  />
+  <ConfirmDialog
+    open={pileToRemove !== null}
+    title="Remove pile from project"
+    message={pileToRemove
+      ? `Remove all ${pileToRemove.paperCount} papers in "${pileToRemove.currentName ?? "Untitled pile"}" from this project? The PDFs will remain in the library.`
+      : ""}
+    confirmLabel="Remove"
+    onconfirm={confirmRemovePile}
+    oncancel={() => (pileToRemove = null)}
   />
   <ConfirmDialog
     open={projectDocumentToRemove !== null}

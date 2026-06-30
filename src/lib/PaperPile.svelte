@@ -1,15 +1,10 @@
 <script lang="ts">
   import { convertFileSrc } from "@tauri-apps/api/core";
-  import {
-    dndzone,
-    SHADOW_ITEM_MARKER_PROPERTY_NAME,
-    TRIGGERS,
-    type DndEvent,
-  } from "svelte-dnd-action";
   import { analysisLabel } from "./analysisLabel";
   import { authorByline } from "./authorByline";
+  import AnalysisProgressBar from "./AnalysisProgressBar.svelte";
   import {
-    BOARD_DND_TYPE,
+    type BoardDragMode,
     type BoardEntry,
     type BoardMember,
   } from "./boardDnd";
@@ -21,37 +16,41 @@
     analysisStates = {},
     draggingEntryId = null,
     disableMerge = false,
-    mergeModifier = false,
+    dragMode = "idle",
+    mergeTargetEntryId = null,
+    suppressClick = false,
     selected = false,
-    onpile,
     onopen,
     ontogglepile,
     onselect,
     oncardcontextmenu,
     oncardkeydown,
+    onpilecontextmenu,
+    onpilekeydown,
   }: {
     entry: BoardEntry;
     openDocumentIds?: string[];
     analysisStates?: Record<string, AnalysisStatus>;
     draggingEntryId?: string | null;
     disableMerge?: boolean;
-    mergeModifier?: boolean;
+    dragMode?: BoardDragMode;
+    mergeTargetEntryId?: string | null;
+    suppressClick?: boolean;
     selected?: boolean;
-    onpile: (source: BoardEntry, target: BoardEntry) => void | Promise<void>;
     onopen: (documentId: string) => void | Promise<void>;
     ontogglepile: (pileId: string) => void;
     onselect: (documentIds: string[]) => void;
     oncardcontextmenu: (event: MouseEvent, member: BoardMember) => void;
     oncardkeydown: (event: KeyboardEvent, member: BoardMember) => void;
+    onpilecontextmenu: (event: MouseEvent, entry: BoardEntry) => void;
+    onpilekeydown: (event: KeyboardEvent, entry: BoardEntry) => void;
   } = $props();
-
-  let targetItems = $state<BoardEntry[]>([]);
 
   // A pile with more than one visible member is collapsed (a deck). A single
   // member that still carries a pileId is one paper of an *open* pile, flattened
   // into the column. Everything else is a loose paper. Only loose papers and
-  // collapsed decks accept a merge drop; flattened members are reshaped by plain
-  // reordering, so they expose no merge zone.
+  // collapsed decks are pointer hit targets in merge mode; flattened members are
+  // reshaped by plain reordering.
   const isCollapsedPile = $derived(entry.members.length > 1);
   const isPileMember = $derived(entry.members.length === 1 && entry.pileId !== null);
   const acceptsMerge = $derived(!isPileMember);
@@ -59,21 +58,17 @@
 
   const memberIds = $derived(entry.members.map((member) => member.document.id));
 
-  const dropEnabled = $derived(
+  const mergeEnabled = $derived(
     draggingEntryId !== null &&
       draggingEntryId !== entry.id &&
-      mergeModifier &&
+      dragMode === "merge" &&
       !disableMerge &&
       acceptsMerge,
   );
 
-  // A paper is hovering this card's centre band, so dropping now would merge it
-  // into a pile. Drives the "pile forming here" preview.
-  const isMergeTarget = $derived(dropEnabled && targetItems.length > 0);
-
-  $effect(() => {
-    if (!dropEnabled && targetItems.length) targetItems = [];
-  });
+  const isMergeTarget = $derived(
+    mergeEnabled && mergeTargetEntryId === entry.id,
+  );
 
   function documentTitle(member: BoardMember): string {
     return member.document.referenceTitle ?? member.document.title;
@@ -88,24 +83,8 @@
     );
   }
 
-  function considerTarget(event: CustomEvent<DndEvent<BoardEntry>>) {
-    if (!dropEnabled) return;
-    targetItems = event.detail.items;
-  }
-
-  function finalizeTarget(event: CustomEvent<DndEvent<BoardEntry>>) {
-    const { items, info } = event.detail;
-    targetItems = items;
-    if (info.trigger !== TRIGGERS.DROPPED_INTO_ZONE) return;
-    const source = items.find(
-      (item) =>
-        !(item as unknown as Record<string, unknown>)[SHADOW_ITEM_MARKER_PROPERTY_NAME],
-    );
-    targetItems = [];
-    if (source && source.id !== entry.id) void onpile(source, entry);
-  }
-
   function handleDeckClick(event: MouseEvent) {
+    if (draggingEntryId !== null || suppressClick) return;
     if (event.shiftKey) {
       onselect(memberIds);
       return;
@@ -114,6 +93,7 @@
   }
 
   function handleCardClick(event: MouseEvent, member: BoardMember) {
+    if (draggingEntryId !== null || suppressClick) return;
     if (event.shiftKey) {
       onselect([member.document.id]);
       return;
@@ -123,7 +103,7 @@
 
   function handleDeckKeydown(event: KeyboardEvent) {
     if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-      oncardkeydown(event, entry.members[0]);
+      onpilekeydown(event, entry);
       return;
     }
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -146,7 +126,13 @@
   }
 </script>
 
-<div class="paper-pile">
+<div
+  class="paper-pile"
+  data-merge-target-entry-id={mergeEnabled ? entry.id : undefined}
+  data-merge-target-document-id={mergeEnabled
+    ? entry.members[0].document.id
+    : undefined}
+>
   {#if isCollapsedPile}
     <div
       class="deck"
@@ -158,7 +144,7 @@
       aria-expanded="false"
       aria-pressed={selected}
       onclick={handleDeckClick}
-      oncontextmenu={(event) => oncardcontextmenu(event, entry.members[0])}
+      oncontextmenu={(event) => onpilecontextmenu(event, entry)}
       onkeydown={handleDeckKeydown}
     >
       <div class="deck-thumbs">
@@ -186,7 +172,8 @@
   {:else}
     {@const member = entry.members[0]}
     {@const documentId = member.document.id}
-    {@const status = analysisLabel(analysisStates[documentId])}
+    {@const analysisState = analysisStates[documentId]}
+    {@const status = analysisLabel(analysisState)}
     {#if isMergeTarget}
       <div class="merge-ghost" aria-hidden="true">
         <span class="merge-ghost-thumb"></span>
@@ -219,12 +206,20 @@
       <div class="card-text">
         <strong class="card-title">{documentTitle(member)}</strong>
         {#if status}
-          <small
-            class="byline analysis"
-            class:is-error={analysisStates[documentId]?.phase === "error"}
+          <div
+            class="analysis-status-row"
+            class:is-error={analysisState?.phase === "error"}
           >
-            {status}
-          </small>
+            {#if analysisState && analysisState.phase !== "error"}
+              <span class="analysis-loader" aria-hidden="true"></span>
+            {/if}
+            <div class="analysis-status-content">
+              <small class="byline analysis">{status}</small>
+              {#if analysisState}
+                <AnalysisProgressBar statuses={[analysisState]} />
+              {/if}
+            </div>
+          </div>
         {:else}
           <small class="byline">{documentByline(member)}</small>
         {/if}
@@ -232,31 +227,6 @@
     </div>
   {/if}
 
-  {#if acceptsMerge}
-    <div
-      class="pile-drop-target"
-      class:is-enabled={dropEnabled}
-      aria-label={`Add dragged papers to ${documentTitle(entry.members[0])}`}
-      use:dndzone={{
-        items: targetItems,
-        type: BOARD_DND_TYPE,
-        dragDisabled: true,
-        dropFromOthersDisabled: !dropEnabled,
-        morphDisabled: true,
-        dropAnimationDisabled: true,
-        flipDurationMs: 0,
-        zoneTabIndex: dropEnabled ? 0 : -1,
-        zoneItemTabIndex: -1,
-        dropTargetStyle: { outline: "2px dashed currentColor" },
-      }}
-      onconsider={considerTarget}
-      onfinalize={finalizeTarget}
-    >
-      {#each targetItems as targetItem (targetItem.id)}
-        <div class="drop-placeholder" aria-hidden="true"></div>
-      {/each}
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -269,6 +239,7 @@
   /* Fixed two-column card: thumbnail (full height) | text. Fixed height keeps
      every card identical. Adjust --card-height in app.css. */
   .paper-card {
+    position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 8px;
@@ -362,13 +333,51 @@
     color: var(--accent);
   }
 
-  .analysis.is-error {
+  .analysis-status-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .analysis-status-content {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .analysis-loader {
+    width: 10px;
+    height: 10px;
+    border: 1px solid var(--accent);
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: analysis-spin 0.8s linear infinite;
+  }
+
+  .analysis-status-row.is-error .analysis {
     color: var(--danger);
+  }
+
+  @keyframes analysis-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .analysis-loader {
+      animation: none;
+      border-right-color: var(--accent);
+      opacity: 0.55;
+    }
   }
 
   /* Collapsed pile: same fixed two-column card, with papers fanned like a deck
      (~70% overlap) down the left column. */
   .deck {
+    position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 8px;
@@ -428,24 +437,4 @@
     line-clamp: 2;
   }
 
-  .pile-drop-target {
-    position: absolute;
-    z-index: 2;
-    /* The whole card is a merge target, but the zone is only enabled while Shift is
-       held during a drag (see dropEnabled); otherwise a drag just reorders. */
-    inset: 0;
-    overflow: hidden;
-    pointer-events: none;
-    visibility: hidden;
-  }
-
-  .pile-drop-target.is-enabled {
-    pointer-events: auto;
-    visibility: visible;
-  }
-
-  .drop-placeholder {
-    width: 100%;
-    height: 100%;
-  }
 </style>

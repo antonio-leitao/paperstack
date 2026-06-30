@@ -4,6 +4,7 @@
   import { readFile } from "@tauri-apps/plugin-fs";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onMount } from "svelte";
+  import AnalysisProgressBar from "$lib/AnalysisProgressBar.svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
   import ReferenceListItem from "$lib/ReferenceListItem.svelte";
   import { analysisProgressMessage } from "$lib/analysisLabel";
@@ -24,6 +25,7 @@
   let analysisError = $state<string | null>(null);
   let loadError = $state<string | null>(null);
   let analyzing = $state(false);
+  let analysisStatus = $state<AnalysisStatus | null>(null);
   let grobidStatus = $state<string | null>(null);
   let resolvingReferenceIds = $state<string[]>([]);
   let dismissedSourceId = $state<string | null>(null);
@@ -79,6 +81,7 @@
     void listen<AnalysisStatus>("analysis-status", (event) => {
       if (event.payload.documentId !== documentId) return;
       const status = event.payload;
+      analysisStatus = status;
       if (status.phase === "done") {
         analyzing = false;
         resolvingReferenceIds = [];
@@ -145,6 +148,7 @@
       pdfName = document.originalFilename;
       analysis = null;
       analysisError = null;
+      analysisStatus = null;
       resolvingReferenceIds = [];
       dismissedSourceId = null;
       loadError = null;
@@ -163,12 +167,14 @@
       if (cached) {
         analysis = cached;
         analyzing = false;
+        analysisStatus = null;
         grobidStatus = null;
         return;
       }
       // Not cached: check the worker's current status so we neither double-enqueue
       // a running job nor auto-retry a failed one (the user retries explicitly).
       const status = await invoke<AnalysisStatus | null>("analysis_state", { documentId });
+      analysisStatus = status;
       if (status?.phase === "error") {
         analysis = null;
         analyzing = false;
@@ -181,11 +187,19 @@
       } else {
         analysis = null;
         analyzing = true;
+        analysisStatus = {
+          documentId,
+          phase: "queued",
+          resolved: 0,
+          total: 0,
+          error: null,
+        };
         grobidStatus = "Analyzing...";
         await invoke("enqueue_analysis", { documentId, force: false });
       }
     } catch (error) {
       analyzing = false;
+      analysisStatus = null;
       analysisError = errorMessage(error);
     }
   }
@@ -204,12 +218,20 @@
     if (!documentId) return;
     analyzing = true;
     analysisError = null;
+    analysisStatus = {
+      documentId,
+      phase: "queued",
+      resolved: 0,
+      total: 0,
+      error: null,
+    };
     resolvingReferenceIds = [];
     grobidStatus = "Re-analyzing...";
     try {
       await invoke("enqueue_analysis", { documentId, force: true });
     } catch (error) {
       analyzing = false;
+      analysisStatus = null;
       analysisError = errorMessage(error);
     }
   }
@@ -257,6 +279,10 @@
 
   <section class="workspace" class:right-closed={!rightSidebarOpen}>
     <div class="viewer-panel">
+      <AnalysisProgressBar
+        statuses={analysisStatus ? [analysisStatus] : []}
+        edge="top"
+      />
       {#if !rightSidebarOpen}
         <button
           type="button"

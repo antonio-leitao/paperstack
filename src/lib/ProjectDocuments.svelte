@@ -8,15 +8,17 @@
   } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import { tick } from "svelte";
-  import DropSkeleton from "./DropSkeleton.svelte";
+  import DropPlaceholder from "./DropPlaceholder.svelte";
   import PaperPile from "./PaperPile.svelte";
   import {
     BOARD_DND_TYPE,
     DOCUMENT_ID_PREFIX,
     FLIP_DURATION_MS,
+    LIBRARY_ID_PREFIX,
+    PILE_ID_PREFIX,
     documentEntryId,
-    entryDocumentIds,
     pileEntryId,
+    type BoardDragMode,
     type BoardEntry,
     type BoardMember,
   } from "./boardDnd";
@@ -26,12 +28,29 @@
     ProjectStack,
   } from "./types";
 
-  type CardContextMenu = {
-    member: BoardMember;
-    documentId: string;
+  type ContextMenuPosition = {
     trigger: HTMLElement;
     x: number;
     y: number;
+  };
+
+  type DocumentContextMenu = ContextMenuPosition & {
+    kind: "document";
+    member: BoardMember;
+    documentId: string;
+  };
+
+  type PileContextMenu = ContextMenuPosition & {
+    kind: "pile";
+    pileId: string;
+    pileName: string | null;
+  };
+
+  type CardContextMenu = DocumentContextMenu | PileContextMenu;
+
+  type ReorderPreview = {
+    stackId: string;
+    index: number;
   };
 
   let {
@@ -49,6 +68,7 @@
     onpile,
     onunpile,
     onrenamepile,
+    onremovepile,
     ongroup,
     externalDraggingEntryId = null,
     onchoosepdf,
@@ -76,6 +96,7 @@
     ) => void | Promise<void>;
     onunpile: (pileId: string) => void | Promise<void>;
     onrenamepile: (pileId: string, currentName: string | null) => void;
+    onremovepile: (pileId: string, currentName: string | null) => void;
     ongroup: (documentIds: string[]) => void | Promise<void>;
     externalDraggingEntryId?: string | null;
     onchoosepdf: () => void | Promise<void>;
@@ -139,14 +160,35 @@
   let expandedPiles = $state<Set<string>>(new Set());
   // Multi-selected papers (Shift+click) waiting to be grouped into a pile.
   let selectedIds = $state<Set<string>>(new Set());
-  // Shift is the "pile" modifier: held during a drag it turns every card into a
-  // full merge target (so dropping creates/extends a pile); a plain drag reorders.
+  // One explicit drag intent is active at a time. Shift can switch an in-flight
+  // drag into merge mode; without it the column lists own ordinary reordering.
   let shiftHeld = $state(false);
+  let dragOriginStackId = $state<string | null>(null);
+  let dragOriginColumns = $state<Record<string, BoardEntry[]> | null>(null);
+  let pendingReorderColumns = $state<Record<string, BoardEntry[]> | null>(null);
+  let reorderPreview = $state<ReorderPreview | null>(null);
+  let pendingReorderPreview = $state<ReorderPreview | null>(null);
+  let mergeTargetEntryId = $state<string | null>(null);
+  let mergeTargetDocumentId = $state<string | null>(null);
+  let dropMode = $state<"reorder" | "merge" | null>(null);
+  let dropMergeTargetDocumentId = $state<string | null>(null);
+  let mergeDropHandled = $state(false);
+  let observedExternalDragId = $state<string | null>(null);
+  let externalDragWasHandled = $state(false);
+  let suppressCardClicks = $state(false);
+  let lastPointerX = 0;
+  let lastPointerY = 0;
+
   const draggingEntryId = $derived(boardDraggingEntryId ?? externalDraggingEntryId);
+  const dragMode: BoardDragMode = $derived(
+    draggingEntryId === null
+      ? "idle"
+      : dropMode ?? (shiftHeld ? "merge" : "reorder"),
+  );
 
   // True while the active drag is a single paper lifted out of an open pile. Such
-  // a drag reshapes the pile through plain reordering, so every card's merge zone
-  // is suppressed and the drop falls through to the column's reorder zone.
+  // a drag reshapes the pile through plain reordering; the backend deliberately
+  // rejects merging only part of a pile.
   const draggingPileMember = $derived.by(() => {
     const id = draggingEntryId;
     if (!id || !id.startsWith(DOCUMENT_ID_PREFIX)) return false;
@@ -157,11 +199,15 @@
 
   $effect(() => {
     columns = buildColumns(projectDocuments, sortedStacks, expandedPiles);
-    if (
-      contextMenu &&
-      !projectDocuments.some((item) => item.document.id === contextMenu?.documentId)
-    ) {
-      contextMenu = null;
+    const menu = contextMenu;
+    if (menu) {
+      const targetStillExists =
+        menu.kind === "document"
+          ? projectDocuments.some(
+              (item) => item.document.id === menu.documentId,
+            )
+          : projectDocuments.some((item) => item.pileId === menu.pileId);
+      if (!targetStillExists) contextMenu = null;
     }
     // Drop any selected ids whose document has left the project.
     if (selectedIds.size) {
@@ -169,6 +215,55 @@
       const next = new Set<string>();
       for (const id of selectedIds) if (present.has(id)) next.add(id);
       if (next.size !== selectedIds.size) selectedIds = next;
+    }
+  });
+
+  function cloneColumns(
+    source: Record<string, BoardEntry[]>,
+  ): Record<string, BoardEntry[]> {
+    return Object.fromEntries(
+      Object.entries(source).map(([stackId, entries]) => [
+        stackId,
+        [...entries],
+      ]),
+    );
+  }
+
+  function clearDragInteraction() {
+    dragOriginStackId = null;
+    dragOriginColumns = null;
+    pendingReorderColumns = null;
+    reorderPreview = null;
+    pendingReorderPreview = null;
+    mergeTargetEntryId = null;
+    mergeTargetDocumentId = null;
+    dropMode = null;
+    dropMergeTargetDocumentId = null;
+    mergeDropHandled = false;
+  }
+
+  // A library drag starts outside this component, so capture the untouched board
+  // when its id arrives. If it ends without any board finalize event, restore that
+  // snapshot; otherwise retain the optimistic board result until the backend reply.
+  $effect(() => {
+    const externalId = externalDraggingEntryId;
+    if (externalId && externalId !== observedExternalDragId) {
+      observedExternalDragId = externalId;
+      externalDragWasHandled = false;
+      dragOriginColumns = cloneColumns(columns);
+      pendingReorderColumns = cloneColumns(columns);
+      dragOriginStackId = null;
+      reorderPreview = null;
+      pendingReorderPreview = null;
+      return;
+    }
+    if (!externalId && observedExternalDragId) {
+      observedExternalDragId = null;
+      if (!externalDragWasHandled) {
+        columns = buildColumns(projectDocuments, sortedStacks, expandedPiles);
+      }
+      externalDragWasHandled = false;
+      if (boardDraggingEntryId === null) clearDragInteraction();
     }
   });
 
@@ -217,11 +312,54 @@
     void ongroup(documentIds);
   }
 
-  function consider(stackId: string, event: CustomEvent<DndEvent<BoardEntry>>) {
-    if (event.detail.info.trigger === TRIGGERS.DRAG_STARTED) {
-      boardDraggingEntryId = event.detail.info.id;
+  function previewFromConsider(
+    stackId: string,
+    event: CustomEvent<DndEvent<BoardEntry>>,
+  ): ReorderPreview | null {
+    const { items, info } = event.detail;
+    if (
+      info.trigger !== TRIGGERS.DRAGGED_ENTERED &&
+      info.trigger !== TRIGGERS.DRAGGED_OVER_INDEX
+    ) {
+      return null;
     }
-    columns[stackId] = event.detail.items;
+    const index = items.findIndex((entry) => isShadowEntry(entry));
+    return index === -1 ? null : { stackId, index };
+  }
+
+  function consider(stackId: string, event: CustomEvent<DndEvent<BoardEntry>>) {
+    const { items, info } = event.detail;
+    if (info.trigger === TRIGGERS.DRAG_STARTED) {
+      clearDragInteraction();
+      boardDraggingEntryId = info.id;
+      dragOriginStackId = stackId;
+      const origin = cloneColumns(columns);
+      origin[stackId] = items;
+      dragOriginColumns = origin;
+      pendingReorderColumns = cloneColumns(origin);
+      // The library needs its initial shadow rendered before it can begin
+      // observing the drag, even when Shift was already held.
+      columns[stackId] = items;
+      return;
+    }
+
+    if (!dragOriginColumns) {
+      dragOriginColumns = cloneColumns(columns);
+      pendingReorderColumns = cloneColumns(columns);
+    }
+    const pending = cloneColumns(pendingReorderColumns ?? columns);
+    pending[stackId] = items;
+    pendingReorderColumns = pending;
+    pendingReorderPreview = previewFromConsider(stackId, event);
+
+    if (shiftHeld) {
+      // Merge mode keeps the board at its drag-start layout. We still retain the
+      // library's latest candidate so releasing Shift can resume immediately.
+      reorderPreview = null;
+      return;
+    }
+    columns[stackId] = items;
+    reorderPreview = pendingReorderPreview;
   }
 
   // Decide the pile a just-dropped paper belongs to from its new neighbours. A
@@ -238,8 +376,75 @@
     return prev !== null && prev === next ? prev : null;
   }
 
+  function sourceDocumentIds(entryId: string | null): string[] {
+    if (!entryId) return [];
+    if (entryId.startsWith(LIBRARY_ID_PREFIX)) {
+      return [
+        entryId
+          .slice(LIBRARY_ID_PREFIX.length)
+          .replace(/#copy-\d+$/, ""),
+      ];
+    }
+    if (entryId.startsWith(DOCUMENT_ID_PREFIX)) {
+      const documentId = entryId.slice(DOCUMENT_ID_PREFIX.length);
+      const item = projectDocuments.find(
+        (entry) => entry.document.id === documentId,
+      );
+      if (item?.pileId && expandedPiles.has(item.pileId)) return [];
+      return [documentId];
+    }
+    if (entryId.startsWith(PILE_ID_PREFIX)) {
+      const pileId = entryId.slice(PILE_ID_PREFIX.length);
+      return projectDocuments
+        .filter((entry) => entry.pileId === pileId)
+        .sort((left, right) => left.position - right.position)
+        .map((entry) => entry.document.id);
+    }
+    return [];
+  }
+
+  function finishDrag(entryId: string | null) {
+    if (entryId?.startsWith(LIBRARY_ID_PREFIX)) {
+      externalDragWasHandled = true;
+    }
+    boardDraggingEntryId = null;
+    clearDragInteraction();
+  }
+
   function finalize(stackId: string, event: CustomEvent<DndEvent<BoardEntry>>) {
     const { items, info } = event.detail;
+    const entryId = draggingEntryId ?? info.id;
+    const mode = dropMode ?? (shiftHeld ? "merge" : "reorder");
+
+    if (mode === "merge") {
+      // Never allow the sortable column's candidate to become a reorder while
+      // Shift was held at release.
+      columns = buildColumns(projectDocuments, sortedStacks, expandedPiles);
+      if (
+        info.trigger === TRIGGERS.DROPPED_INTO_ZONE &&
+        !mergeDropHandled
+      ) {
+        const sourceIds = sourceDocumentIds(entryId);
+        if (sourceIds.length && dropMergeTargetDocumentId) {
+          void onpile(sourceIds, dropMergeTargetDocumentId);
+        }
+        mergeDropHandled = true;
+      }
+
+      if (entryId?.startsWith(LIBRARY_ID_PREFIX)) {
+        externalDragWasHandled = true;
+      }
+
+      // Cross-column board drops dispatch once on the target and then again on
+      // the origin. Keep the latched mode until that second event is consumed.
+      const awaitsOriginFinalize =
+        info.trigger === TRIGGERS.DROPPED_INTO_ZONE &&
+        dragOriginStackId !== null &&
+        dragOriginStackId !== stackId;
+      if (!awaitsOriginFinalize) finishDrag(entryId);
+      return;
+    }
+
     columns[stackId] = items;
     if (info.trigger === TRIGGERS.DROPPED_INTO_ZONE) {
       const real = items.filter((entry) => !isShadowEntry(entry));
@@ -256,6 +461,9 @@
         }
       });
       void onsetorder(stackId, entries);
+      if (entryId?.startsWith(LIBRARY_ID_PREFIX)) {
+        externalDragWasHandled = true;
+      }
     } else if (info.trigger === TRIGGERS.DROPPED_OUTSIDE_OF_ANY) {
       columns = buildColumns(projectDocuments, sortedStacks, expandedPiles);
     }
@@ -263,7 +471,7 @@
       info.source === SOURCES.POINTER ||
       info.trigger === TRIGGERS.DRAG_STOPPED
     ) {
-      boardDraggingEntryId = null;
+      finishDrag(entryId);
     }
   }
 
@@ -310,26 +518,29 @@
     );
   }
 
-  function pileEntries(source: BoardEntry, target: BoardEntry) {
-    void onpile(entryDocumentIds(source), target.members[0].document.id);
+  function contextMenuKey(menu: CardContextMenu): string {
+    return menu.kind === "document"
+      ? `document:${menu.documentId}`
+      : `pile:${menu.pileId}`;
   }
 
-  async function showContextMenu(
-    member: BoardMember,
-    trigger: HTMLElement,
-    x: number,
-    y: number,
-  ) {
-    const documentId = member.document.id;
-    contextMenu = { member, documentId, trigger, x, y };
+  async function showContextMenu(menu: CardContextMenu) {
+    const key = contextMenuKey(menu);
+    contextMenu = menu;
     await tick();
-    if (!contextMenu || contextMenu.documentId !== documentId || !contextMenuElement) return;
+    if (
+      !contextMenu ||
+      contextMenuKey(contextMenu) !== key ||
+      !contextMenuElement
+    ) {
+      return;
+    }
 
     const bounds = contextMenuElement.getBoundingClientRect();
     contextMenu = {
       ...contextMenu,
-      x: Math.max(4, Math.min(x, window.innerWidth - bounds.width - 4)),
-      y: Math.max(4, Math.min(y, window.innerHeight - bounds.height - 4)),
+      x: Math.max(4, Math.min(menu.x, window.innerWidth - bounds.width - 4)),
+      y: Math.max(4, Math.min(menu.y, window.innerHeight - bounds.height - 4)),
     };
     await tick();
     contextMenuElement
@@ -344,7 +555,14 @@
     const bounds = trigger.getBoundingClientRect();
     const x = event.clientX || bounds.left + 12;
     const y = event.clientY || bounds.top + 12;
-    void showContextMenu(member, trigger, x, y);
+    void showContextMenu({
+      kind: "document",
+      member,
+      documentId: member.document.id,
+      trigger,
+      x,
+      y,
+    });
   }
 
   function handleCardKeydown(event: KeyboardEvent, member: BoardMember) {
@@ -357,7 +575,51 @@
     event.preventDefault();
     const trigger = event.currentTarget as HTMLElement;
     const bounds = trigger.getBoundingClientRect();
-    void showContextMenu(member, trigger, bounds.left + 12, bounds.top + 12);
+    void showContextMenu({
+      kind: "document",
+      member,
+      documentId: member.document.id,
+      trigger,
+      x: bounds.left + 12,
+      y: bounds.top + 12,
+    });
+  }
+
+  function handlePileContextMenu(event: MouseEvent, entry: BoardEntry) {
+    if (!entry.pileId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const trigger = event.currentTarget as HTMLElement;
+    const bounds = trigger.getBoundingClientRect();
+    void showContextMenu({
+      kind: "pile",
+      pileId: entry.pileId,
+      pileName: entry.pileName,
+      trigger,
+      x: event.clientX || bounds.left + 12,
+      y: event.clientY || bounds.top + 12,
+    });
+  }
+
+  function handlePileKeydown(event: KeyboardEvent, entry: BoardEntry) {
+    if (
+      !entry.pileId ||
+      (event.key !== "ContextMenu" &&
+        !(event.shiftKey && event.key === "F10"))
+    ) {
+      return;
+    }
+    event.preventDefault();
+    const trigger = event.currentTarget as HTMLElement;
+    const bounds = trigger.getBoundingClientRect();
+    void showContextMenu({
+      kind: "pile",
+      pileId: entry.pileId,
+      pileName: entry.pileName,
+      trigger,
+      x: bounds.left + 12,
+      y: bounds.top + 12,
+    });
   }
 
   function closeContextMenu(restoreFocus = false) {
@@ -373,13 +635,119 @@
     void action(menu);
   }
 
+  function runDocumentContextAction(
+    action: (menu: DocumentContextMenu) => void | Promise<void>,
+  ) {
+    runContextAction((menu) => {
+      if (menu.kind === "document") return action(menu);
+    });
+  }
+
+  function runPileContextAction(
+    action: (menu: PileContextMenu) => void | Promise<void>,
+  ) {
+    runContextAction((menu) => {
+      if (menu.kind === "pile") return action(menu);
+    });
+  }
+
   function handleWindowPointerDown(event: PointerEvent) {
     if (!contextMenu || contextMenuElement?.contains(event.target as Node)) return;
     closeContextMenu();
   }
 
+  function updateMergeTargetAtPoint(x: number, y: number) {
+    const entryId = draggingEntryId;
+    if (!entryId || !shiftHeld || sourceDocumentIds(entryId).length === 0) {
+      mergeTargetEntryId = null;
+      mergeTargetDocumentId = null;
+      return;
+    }
+    const hit = document.elementFromPoint(x, y);
+    const target =
+      hit instanceof Element
+        ? hit.closest<HTMLElement>("[data-merge-target-entry-id]")
+        : null;
+    const targetEntryId = target?.dataset.mergeTargetEntryId ?? null;
+    const targetDocumentId = target?.dataset.mergeTargetDocumentId ?? null;
+    if (
+      !targetEntryId ||
+      !targetDocumentId ||
+      targetEntryId === entryId ||
+      sourceDocumentIds(entryId).includes(targetDocumentId)
+    ) {
+      mergeTargetEntryId = null;
+      mergeTargetDocumentId = null;
+      return;
+    }
+    mergeTargetEntryId = targetEntryId;
+    mergeTargetDocumentId = targetDocumentId;
+  }
+
+  function handleWindowMouseMove(event: MouseEvent) {
+    lastPointerX = event.clientX;
+    lastPointerY = event.clientY;
+    if (dragMode === "merge") {
+      updateMergeTargetAtPoint(lastPointerX, lastPointerY);
+    }
+  }
+
+  function enterMergeMode() {
+    if (shiftHeld) return;
+    shiftHeld = true;
+    if (draggingEntryId && dropMode === null) {
+      reorderPreview = null;
+      if (dragOriginColumns) columns = cloneColumns(dragOriginColumns);
+      void tick().then(() =>
+        updateMergeTargetAtPoint(lastPointerX, lastPointerY),
+      );
+    }
+  }
+
+  function leaveMergeMode() {
+    if (!shiftHeld) return;
+    shiftHeld = false;
+    mergeTargetEntryId = null;
+    mergeTargetDocumentId = null;
+    if (
+      draggingEntryId &&
+      dropMode === null &&
+      pendingReorderColumns
+    ) {
+      columns = cloneColumns(pendingReorderColumns);
+      reorderPreview = pendingReorderPreview;
+    }
+  }
+
+  // svelte-dnd-action can dispatch finalize after its drop animation. Capture the
+  // modifier and merge target on mouseup so a quick Shift release cannot change
+  // the action that was actually requested.
+  function handleWindowMouseUp(event: MouseEvent) {
+    if (!draggingEntryId || dropMode !== null) return;
+    suppressCardClicks = true;
+    window.setTimeout(() => {
+      suppressCardClicks = false;
+    }, 0);
+    lastPointerX = event.clientX;
+    lastPointerY = event.clientY;
+    if (shiftHeld) {
+      updateMergeTargetAtPoint(lastPointerX, lastPointerY);
+      dropMode = "merge";
+      dropMergeTargetDocumentId = mergeTargetDocumentId;
+    } else {
+      dropMode = "reorder";
+      dropMergeTargetDocumentId = null;
+    }
+  }
+
+  function handleWindowClickCapture(event: MouseEvent) {
+    if (!suppressCardClicks) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   function handleWindowKeydown(event: KeyboardEvent) {
-    if (event.key === "Shift") shiftHeld = true;
+    if (event.key === "Shift") enterMergeMode();
     if (event.key === "Escape") {
       if (contextMenu) {
         event.preventDefault();
@@ -392,12 +760,12 @@
   }
 
   function handleWindowKeyup(event: KeyboardEvent) {
-    if (event.key === "Shift") shiftHeld = false;
+    if (event.key === "Shift") leaveMergeMode();
   }
 
   function handleWindowBlur() {
     // A held Shift can't be released once focus is lost, so reset it defensively.
-    shiftHeld = false;
+    leaveMergeMode();
     closeContextMenu();
   }
 
@@ -423,6 +791,9 @@
 
 <svelte:window
   onpointerdown={handleWindowPointerDown}
+  onmousemove={handleWindowMouseMove}
+  onmouseup={handleWindowMouseUp}
+  onclickcapture={handleWindowClickCapture}
   onkeydown={handleWindowKeydown}
   onkeyup={handleWindowKeyup}
   onblur={handleWindowBlur}
@@ -471,6 +842,7 @@
               type: BOARD_DND_TYPE,
               flipDurationMs: FLIP_DURATION_MS,
               useCursorForDetection: true,
+              dropAnimationDisabled: dragMode === "merge",
             }}
             onconsider={(event) => consider(stack.id, event)}
             onfinalize={(event) => finalize(stack.id, event)}
@@ -493,7 +865,11 @@
                 data-is-dnd-shadow-item-hint={shadowEntry}
               >
                 {#if shadowEntry}
-                  <DropSkeleton />
+                  <DropPlaceholder
+                    active={dragMode === "reorder" &&
+                      reorderPreview?.stackId === stack.id &&
+                      reorderPreview.index === index}
+                  />
                 {:else}
                   {#if firstInPile}
                     <div class="pile-header">
@@ -514,14 +890,17 @@
                     {analysisStates}
                     {draggingEntryId}
                     disableMerge={draggingPileMember}
-                    mergeModifier={shiftHeld}
+                    {dragMode}
+                    {mergeTargetEntryId}
+                    suppressClick={suppressCardClicks}
                     selected={isSelected}
-                    onpile={pileEntries}
                     {onopen}
                     ontogglepile={togglePile}
                     onselect={toggleSelect}
                     oncardcontextmenu={handleCardContextMenu}
                     oncardkeydown={handleCardKeydown}
+                    onpilecontextmenu={handlePileContextMenu}
+                    onpilekeydown={handlePileKeydown}
                   />
                 {/if}
               </li>
@@ -539,63 +918,26 @@
 </section>
 
 {#if contextMenu}
-  {@const menuAnalysisState = analysisStates[contextMenu.documentId]}
   <div
     class="context-menu"
     role="menu"
     tabindex="-1"
-    aria-label={`Actions for ${cardTitle(contextMenu.member)}`}
+    aria-label={contextMenu.kind === "document"
+      ? `Actions for ${cardTitle(contextMenu.member)}`
+      : `Actions for ${contextMenu.pileName ?? "Untitled pile"}`}
     bind:this={contextMenuElement}
     style:left={`${contextMenu.x}px`}
     style:top={`${contextMenu.y}px`}
     onkeydown={handleMenuKeydown}
     oncontextmenu={(event) => event.preventDefault()}
   >
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => runContextAction((menu) => onopen(menu.documentId))}
-    >
-      Open
-    </button>
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => runContextAction((menu) => onrename(menu.member.document))}
-    >
-      Rename
-    </button>
-    {#if contextMenu.member.document.referenceId}
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() => runContextAction((menu) => onunlink(menu.member.document))}
-      >
-        Unlink reference
-      </button>
-    {/if}
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => runContextAction((menu) => onanalyze(menu.documentId))}
-      disabled={menuAnalysisState !== undefined && menuAnalysisState.phase !== "error"}
-    >
-      {menuAnalysisState && menuAnalysisState.phase !== "error"
-        ? "Analyzing…"
-        : menuAnalysisState?.phase === "error"
-          ? "Retry analysis"
-          : "Analyze again"}
-    </button>
-    {#if contextMenu.member.projectDocument?.pileId}
+    {#if contextMenu.kind === "pile"}
       <button
         type="button"
         role="menuitem"
         onclick={() =>
-          runContextAction((menu) =>
-            onrenamepile(
-              menu.member.projectDocument?.pileId ?? "",
-              menu.member.projectDocument?.pileName ?? null,
-            ),
+          runPileContextAction((menu) =>
+            onrenamepile(menu.pileId, menu.pileName),
           )}
       >
         Rename pile
@@ -604,34 +946,90 @@
         type="button"
         role="menuitem"
         onclick={() =>
-          runContextAction((menu) =>
-            onunpile(menu.member.projectDocument?.pileId ?? ""),
-          )}
+          runPileContextAction((menu) => onunpile(menu.pileId))}
       >
         Unstack pile
       </button>
+      <hr />
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runPileContextAction((menu) =>
+            onremovepile(menu.pileId, menu.pileName),
+          )}
+      >
+        Remove pile from project
+      </button>
+    {:else}
+      {@const menuAnalysisState = analysisStates[contextMenu.documentId]}
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runDocumentContextAction((menu) => onopen(menu.documentId))}
+      >
+        Open
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runDocumentContextAction((menu) => onrename(menu.member.document))}
+      >
+        Rename
+      </button>
+      {#if contextMenu.member.document.referenceId}
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() =>
+            runDocumentContextAction((menu) =>
+              onunlink(menu.member.document),
+            )}
+        >
+          Unlink reference
+        </button>
+      {/if}
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runDocumentContextAction((menu) => onanalyze(menu.documentId))}
+        disabled={menuAnalysisState !== undefined &&
+          menuAnalysisState.phase !== "error"}
+      >
+        {menuAnalysisState && menuAnalysisState.phase !== "error"
+          ? "Analyzing…"
+          : menuAnalysisState?.phase === "error"
+            ? "Retry analysis"
+            : "Analyze again"}
+      </button>
+      <hr />
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runDocumentContextAction((menu) => onremove(menu.documentId))}
+      >
+        Remove from project
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runDocumentContextAction((menu) => ondelete(menu.member.document))}
+      >
+        Delete
+      </button>
     {/if}
-    <hr />
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => runContextAction((menu) => onremove(menu.documentId))}
-    >
-      Remove from project
-    </button>
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => runContextAction((menu) => ondelete(menu.member.document))}
-    >
-      Delete
-    </button>
   </div>
 {/if}
 
 <style>
   .board {
     display: grid;
+    height: 100%;
     min-height: 0;
     grid-template-rows: auto minmax(0, 1fr);
     gap: 12px;
@@ -664,7 +1062,7 @@
     min-height: 0;
     gap: 12px;
     overflow: auto;
-    align-items: start;
+    align-items: stretch;
   }
 
   .column {
@@ -672,6 +1070,7 @@
     grid-template-rows: auto minmax(0, 1fr);
     gap: 8px;
     width: 260px;
+    height: 100%;
     flex: 0 0 auto;
     max-height: 100%;
     border: 1px solid var(--border);
@@ -703,11 +1102,14 @@
 
   .cards {
     display: grid;
+    height: 100%;
     align-content: start;
     gap: 0;
-    margin: 0;
-    padding: 0;
-    min-height: 60px;
+    /* Reach through the column padding and halfway across the gutter so moving
+       between adjacent lanes does not briefly count as leaving every drop zone. */
+    margin: 0 -15px;
+    padding: 0 15px;
+    min-height: 0;
     /* Only scroll vertically; horizontal overflow from outlines/drag previews
        must not spawn a spurious horizontal scrollbar inside the column. */
     overflow-x: hidden;
@@ -760,6 +1162,12 @@
      button (the pile in the column keeps its border as the drop target). */
   :global(#dnd-action-dragged-el.pile-member) {
     border-color: var(--border-subtle) !important;
+  }
+
+  /* Pointer hit-testing in merge mode must see the real card underneath the
+     floating drag preview. Drag motion itself is handled by window listeners. */
+  :global(#dnd-action-dragged-el) {
+    pointer-events: none !important;
   }
 
   /* Use visibility (not display:none) so the header keeps its box. Removing it

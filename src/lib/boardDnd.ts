@@ -16,11 +16,13 @@ export type BoardEntry = {
   source: "board" | "library";
 };
 
+export type BoardDragMode = "idle" | "reorder" | "merge";
+
 export const BOARD_DND_TYPE = "project-card";
 export const LIBRARY_ID_PREFIX = "library:";
 export const DOCUMENT_ID_PREFIX = "document:";
 export const PILE_ID_PREFIX = "pile:";
-export const FLIP_DURATION_MS = 150;
+export const FLIP_DURATION_MS = 80;
 
 export function libraryEntryId(documentId: string): string {
   return `${LIBRARY_ID_PREFIX}${documentId}`;
@@ -32,8 +34,4 @@ export function documentEntryId(documentId: string): string {
 
 export function pileEntryId(pileId: string): string {
   return `${PILE_ID_PREFIX}${pileId}`;
-}
-
-export function entryDocumentIds(entry: BoardEntry): string[] {
-  return entry.members.map((member) => member.document.id);
 }
