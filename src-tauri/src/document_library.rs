@@ -39,6 +39,7 @@ pub(crate) struct ProjectDocument {
     document: LibraryDocument,
     stack: ProjectStack,
     pile_id: Option<String>,
+    pile_name: Option<String>,
     position: i64,
     added_at: i64,
     updated_at: i64,
@@ -82,6 +83,17 @@ struct LinkedReferenceData {
     title: Option<String>,
     #[serde(default)]
     authors: Vec<String>,
+}
+
+// One column slot as the board sees it after a drag: the document and the pile it
+// should belong to (an expanded pile is flattened, so each member arrives on its
+// own; a null pile_id means the paper is loose).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OrderedEntry {
+    document_id: String,
+    #[serde(default)]
+    pile_id: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -606,20 +618,22 @@ pub(crate) fn add_document_to_project(
     Ok(project_document)
 }
 
-/// Rewrites the stack membership and ordering for one column. The frontend sends
-/// the full, ordered list of document ids that should live in `stack_id` after a
-/// drag. Each id is upserted into that stack at its new position, so this single
-/// command covers reordering within a column, moving a card between columns, and
-/// dropping a brand-new document in from the library. Documents not present in
-/// `document_ids` are left untouched (the column they moved to repositions them
-/// with its own call), so a card never falls out of the project by accident.
-/// Existing pile members are expanded to their complete pile before rewriting.
+/// Rewrites the stack membership, pile membership and ordering for one column.
+/// The frontend sends the column's full, ordered list of documents and, for each,
+/// the pile it should belong to after the drop. An expanded pile is flattened, so
+/// its members arrive individually and can be reordered, dragged out (null pile)
+/// or have a loose paper dragged in (matching pile). This single command therefore
+/// covers reordering within a column, moving a card between columns, dropping a
+/// brand-new document in from the library, and reshaping piles. Documents not
+/// present in `entries` are left untouched (the column they moved to repositions
+/// them with its own call), so a card never falls out of the project by accident.
+/// Piles left with fewer than two members are dissolved afterwards.
 #[tauri::command]
 pub(crate) fn set_project_document_order(
     app: AppHandle,
     project_id: String,
     stack_id: String,
-    document_ids: Vec<String>,
+    entries: Vec<OrderedEntry>,
 ) -> Result<Vec<ProjectDocument>, String> {
     let mut connection = database::connection(&app)?;
     let transaction = connection
@@ -627,53 +641,38 @@ pub(crate) fn set_project_document_order(
         .map_err(|error| format!("Could not start reordering the project documents: {error}"))?;
     require_project_stack(&transaction, &project_id, &stack_id)?;
     let now = database::unix_timestamp();
-    // A pile is always a board unit. If a document was dragged from the library
-    // while it already belongs to a pile, expand it to the complete pile here so
-    // a second representation of that paper cannot split the stored group.
-    let mut normalized_document_ids = Vec::new();
     let mut seen_document_ids = HashSet::new();
-    for document_id in document_ids {
-        let pile_id: Option<String> = transaction
-            .query_row(
-                r#"
-                SELECT pile_id
-                FROM project_documents
-                WHERE project_id = ?1 AND document_id = ?2
-                "#,
-                params![project_id, document_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|error| format!("Could not inspect the project document pile: {error}"))?
-            .flatten();
-        let entry_document_ids = if let Some(pile_id) = pile_id {
-            project_pile_document_ids(&transaction, &project_id, &pile_id)?
-        } else {
-            vec![document_id]
-        };
-        for entry_document_id in entry_document_ids {
-            if seen_document_ids.insert(entry_document_id.clone()) {
-                normalized_document_ids.push(entry_document_id);
-            }
+    let mut position: i64 = 0;
+    for entry in &entries {
+        if !seen_document_ids.insert(entry.document_id.clone()) {
+            continue;
         }
-    }
-    for (position, document_id) in normalized_document_ids.iter().enumerate() {
-        require_document(&transaction, document_id)?;
+        require_document(&transaction, &entry.document_id)?;
         transaction
             .execute(
                 r#"
                 INSERT INTO project_documents (
-                    project_id, document_id, stack_id, position, added_at, updated_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+                    project_id, document_id, stack_id, pile_id, position, added_at, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
                 ON CONFLICT(project_id, document_id) DO UPDATE SET
                     stack_id = excluded.stack_id,
+                    pile_id = excluded.pile_id,
                     position = excluded.position,
                     updated_at = excluded.updated_at
                 "#,
-                params![project_id, document_id, stack_id, position as i64, now],
+                params![
+                    project_id,
+                    entry.document_id,
+                    stack_id,
+                    entry.pile_id,
+                    position,
+                    now
+                ],
             )
             .map_err(|error| format!("Could not reorder the project document: {error}"))?;
+        position += 1;
     }
+    clear_singleton_piles(&transaction, &project_id)?;
     transaction
         .commit()
         .map_err(|error| format!("Could not finish reordering the project documents: {error}"))?;
@@ -887,9 +886,64 @@ pub(crate) fn unpile_project_documents(
         return Err("Paper pile not found".to_owned());
     }
     transaction
+        .execute(
+            "DELETE FROM project_piles WHERE project_id = ?1 AND pile_id = ?2",
+            params![project_id, pile_id],
+        )
+        .map_err(|error| format!("Could not clear the paper pile name: {error}"))?;
+    transaction
         .commit()
         .map_err(|error| format!("Could not finish unstacking the papers: {error}"))?;
     emit_library_changed(&app, "projectDocument", None, "unpiled");
+    load_project_documents(&app, &connection, &project_id)
+}
+
+/// Sets (or replaces) the saved name for a pile. The pile must still have at least
+/// two members; the name row is keyed on (project_id, pile_id) and is cleaned up
+/// automatically when the pile dissolves.
+#[tauri::command]
+pub(crate) fn rename_pile(
+    app: AppHandle,
+    project_id: String,
+    pile_id: String,
+    name: String,
+) -> Result<Vec<ProjectDocument>, String> {
+    let name = clean_name(&name).ok_or_else(|| "Pile name cannot be empty".to_owned())?;
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start renaming the pile: {error}"))?;
+    let member_count: i64 = transaction
+        .query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM project_documents
+            WHERE project_id = ?1 AND pile_id = ?2
+            "#,
+            params![project_id, pile_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not inspect the pile: {error}"))?;
+    if member_count < 2 {
+        return Err("Paper pile not found".to_owned());
+    }
+    let now = database::unix_timestamp();
+    transaction
+        .execute(
+            r#"
+            INSERT INTO project_piles (project_id, pile_id, name, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?4)
+            ON CONFLICT(project_id, pile_id) DO UPDATE SET
+                name = excluded.name,
+                updated_at = excluded.updated_at
+            "#,
+            params![project_id, pile_id, name, now],
+        )
+        .map_err(|error| format!("Could not rename the pile: {error}"))?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish renaming the pile: {error}"))?;
+    emit_library_changed(&app, "projectDocument", None, "pile-renamed");
     load_project_documents(&app, &connection, &project_id)
 }
 
@@ -1290,9 +1344,11 @@ fn load_project_document(
         .query_row(
             r#"
             SELECT ps.id, ps.project_id, ps.name, ps.created_at, ps.updated_at,
-                   pd.pile_id, pd.position, pd.added_at, pd.updated_at
+                   pd.pile_id, pd.position, pd.added_at, pd.updated_at, pp.name
             FROM project_documents pd
             JOIN project_stacks ps ON ps.project_id = pd.project_id AND ps.id = pd.stack_id
+            LEFT JOIN project_piles pp
+                ON pp.project_id = pd.project_id AND pp.pile_id = pd.pile_id
             WHERE pd.project_id = ?1 AND pd.document_id = ?2
             "#,
             params![project_id, document_id],
@@ -1309,6 +1365,7 @@ fn load_project_document(
                     row.get::<_, i64>(6)?,
                     row.get::<_, i64>(7)?,
                     row.get::<_, i64>(8)?,
+                    row.get::<_, Option<String>>(9)?,
                 ))
             },
         )
@@ -1323,6 +1380,7 @@ fn load_project_document(
         position: row.2,
         added_at: row.3,
         updated_at: row.4,
+        pile_name: row.5,
     })
 }
 
@@ -1413,6 +1471,23 @@ fn clear_singleton_piles(connection: &Connection, project_id: &str) -> Result<()
             params![project_id],
         )
         .map_err(|error| format!("Could not clean up empty paper piles: {error}"))?;
+    // Drop saved names for any pile that no longer has two or more members.
+    connection
+        .execute(
+            r#"
+            DELETE FROM project_piles
+            WHERE project_id = ?1
+              AND pile_id NOT IN (
+                  SELECT pile_id
+                  FROM project_documents
+                  WHERE project_id = ?1 AND pile_id IS NOT NULL
+                  GROUP BY pile_id
+                  HAVING COUNT(*) >= 2
+              )
+            "#,
+            params![project_id],
+        )
+        .map_err(|error| format!("Could not clean up paper pile names: {error}"))?;
     Ok(())
 }
 

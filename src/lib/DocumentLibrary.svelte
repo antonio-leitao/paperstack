@@ -50,6 +50,7 @@
     return items.map((document) => ({
       id: libraryEntryId(document.id),
       pileId: null,
+      pileName: null,
       members: [{ document, projectDocument: null }],
       source: "library",
     }));

@@ -8,9 +8,11 @@
   } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import { tick } from "svelte";
+  import DropSkeleton from "./DropSkeleton.svelte";
   import PaperPile from "./PaperPile.svelte";
   import {
     BOARD_DND_TYPE,
+    DOCUMENT_ID_PREFIX,
     FLIP_DURATION_MS,
     documentEntryId,
     entryDocumentIds,
@@ -46,6 +48,7 @@
     onsetorder,
     onpile,
     onunpile,
+    onrenamepile,
     externalDraggingEntryId = null,
     onchoosepdf,
     oncreatestack,
@@ -62,12 +65,16 @@
     onunlink: (document: BoardMember["document"]) => void | Promise<void>;
     ondelete: (document: BoardMember["document"]) => void;
     onanalyze: (documentId: string) => void | Promise<void>;
-    onsetorder: (stackId: string, documentIds: string[]) => void | Promise<void>;
+    onsetorder: (
+      stackId: string,
+      entries: { documentId: string; pileId: string | null }[],
+    ) => void | Promise<void>;
     onpile: (
       sourceDocumentIds: string[],
       targetDocumentId: string,
     ) => void | Promise<void>;
     onunpile: (pileId: string) => void | Promise<void>;
+    onrenamepile: (pileId: string, currentName: string | null) => void;
     externalDraggingEntryId?: string | null;
     onchoosepdf: () => void | Promise<void>;
     oncreatestack: () => void;
@@ -77,19 +84,24 @@
 
   const sortedStacks = $derived([...stacks].sort((left, right) => left.name.localeCompare(right.name)));
 
+  // An expanded pile is flattened: each of its papers becomes its own loose-style
+  // entry so it can be reordered, dragged out, or have a paper dragged into it,
+  // exactly as if the pile weren't there. A collapsed pile is a single deck entry.
   function buildColumns(
     items: ProjectDocument[],
     stackList: ProjectStack[],
+    expanded: Set<string>,
   ): Record<string, BoardEntry[]> {
     const columns: Record<string, BoardEntry[]> = {};
     const entriesByPile = new Map<string, BoardEntry>();
     for (const stack of stackList) columns[stack.id] = [];
     for (const item of [...items].sort((left, right) => left.position - right.position)) {
       const member = { document: item.document, projectDocument: item };
-      if (!item.pileId) {
+      if (!item.pileId || expanded.has(item.pileId)) {
         (columns[item.stack.id] ??= []).push({
           id: documentEntryId(item.document.id),
-          pileId: null,
+          pileId: item.pileId,
+          pileName: item.pileName,
           members: [member],
           source: "board",
         });
@@ -103,6 +115,7 @@
         const entry: BoardEntry = {
           id: pileEntryId(item.pileId),
           pileId: item.pileId,
+          pileName: item.pileName,
           members: [member],
           source: "board",
         };
@@ -120,10 +133,23 @@
   let contextMenu = $state<CardContextMenu | null>(null);
   let contextMenuElement = $state<HTMLDivElement | null>(null);
   let boardDraggingEntryId = $state<string | null>(null);
+  // Which piles are open. While open a pile is flattened into the column.
+  let expandedPiles = $state<Set<string>>(new Set());
   const draggingEntryId = $derived(boardDraggingEntryId ?? externalDraggingEntryId);
 
+  // True while the active drag is a single paper lifted out of an open pile. Such
+  // a drag reshapes the pile through plain reordering, so every card's merge zone
+  // is suppressed and the drop falls through to the column's reorder zone.
+  const draggingPileMember = $derived.by(() => {
+    const id = draggingEntryId;
+    if (!id || !id.startsWith(DOCUMENT_ID_PREFIX)) return false;
+    const documentId = id.slice(DOCUMENT_ID_PREFIX.length);
+    const item = projectDocuments.find((entry) => entry.document.id === documentId);
+    return Boolean(item?.pileId && expandedPiles.has(item.pileId));
+  });
+
   $effect(() => {
-    columns = buildColumns(projectDocuments, sortedStacks);
+    columns = buildColumns(projectDocuments, sortedStacks, expandedPiles);
     if (
       contextMenu &&
       !projectDocuments.some((item) => item.document.id === contextMenu?.documentId)
@@ -132,6 +158,13 @@
     }
   });
 
+  function togglePile(pileId: string) {
+    const next = new Set(expandedPiles);
+    if (next.has(pileId)) next.delete(pileId);
+    else next.add(pileId);
+    expandedPiles = next;
+  }
+
   function consider(stackId: string, event: CustomEvent<DndEvent<BoardEntry>>) {
     if (event.detail.info.trigger === TRIGGERS.DRAG_STARTED) {
       boardDraggingEntryId = event.detail.info.id;
@@ -139,25 +172,40 @@
     columns[stackId] = event.detail.items;
   }
 
+  // Decide the pile a just-dropped paper belongs to from its new neighbours. A
+  // paper already in a pile stays while it still touches a sibling, otherwise it
+  // has been dragged out (loose). A loose paper only joins a pile when dropped
+  // strictly between two papers of the same pile.
+  function recomputePileId(real: BoardEntry[], index: number): string | null {
+    const entry = real[index];
+    if (entry.members.length !== 1) return entry.pileId;
+    const prev = real[index - 1]?.pileId ?? null;
+    const next = real[index + 1]?.pileId ?? null;
+    const current = entry.pileId;
+    if (current !== null) return prev === current || next === current ? current : null;
+    return prev !== null && prev === next ? prev : null;
+  }
+
   function finalize(stackId: string, event: CustomEvent<DndEvent<BoardEntry>>) {
     const { items, info } = event.detail;
     columns[stackId] = items;
     if (info.trigger === TRIGGERS.DROPPED_INTO_ZONE) {
-      const documentIds = [
-        ...new Set(
-          items
-            .filter(
-              (entry) =>
-                !(entry as unknown as Record<string, unknown>)[
-                  SHADOW_ITEM_MARKER_PROPERTY_NAME
-                ],
-            )
-            .flatMap(entryDocumentIds),
-        ),
-      ];
-      void onsetorder(stackId, documentIds);
+      const real = items.filter((entry) => !isShadowEntry(entry));
+      const movedIndex = real.findIndex((entry) => entry.id === info.id);
+      const entries: { documentId: string; pileId: string | null }[] = [];
+      const seen = new Set<string>();
+      real.forEach((entry, index) => {
+        const pileId =
+          index === movedIndex ? recomputePileId(real, index) : entry.pileId;
+        for (const member of entry.members) {
+          if (seen.has(member.document.id)) continue;
+          seen.add(member.document.id);
+          entries.push({ documentId: member.document.id, pileId });
+        }
+      });
+      void onsetorder(stackId, entries);
     } else if (info.trigger === TRIGGERS.DROPPED_OUTSIDE_OF_ANY) {
-      columns = buildColumns(projectDocuments, sortedStacks);
+      columns = buildColumns(projectDocuments, sortedStacks, expandedPiles);
     }
     if (
       info.source === SOURCES.POINTER ||
@@ -193,6 +241,21 @@
 
   function entryKey(entry: BoardEntry): string {
     return `${entry.id}${isShadowEntry(entry) ? ":shadow" : ""}`;
+  }
+
+  // True when `neighbour` is another flattened member of the same open pile.
+  // Computed live against the current column order so the surrounding border and
+  // header track the pile while papers are dragged in and out.
+  function isSamePileMember(
+    neighbour: BoardEntry | undefined,
+    entry: BoardEntry,
+  ): boolean {
+    return Boolean(
+      neighbour &&
+        neighbour.members.length === 1 &&
+        neighbour.pileId !== null &&
+        neighbour.pileId === entry.pileId,
+    );
   }
 
   function pileEntries(source: BoardEntry, target: BoardEntry) {
@@ -332,24 +395,49 @@
             onconsider={(event) => consider(stack.id, event)}
             onfinalize={(event) => finalize(stack.id, event)}
           >
-            {#each columns[stack.id] ?? [] as entry (entryKey(entry))}
+            {#each columns[stack.id] ?? [] as entry, index (entryKey(entry))}
+              {@const column = columns[stack.id] ?? []}
               {@const shadowEntry = isShadowEntry(entry)}
+              {@const inPile = entry.members.length === 1 && entry.pileId !== null}
+              {@const firstInPile = inPile && !isSamePileMember(column[index - 1], entry)}
+              {@const lastInPile = inPile && !isSamePileMember(column[index + 1], entry)}
               <li
                 animate:flip={{ duration: FLIP_DURATION_MS }}
+                class:pile-member={inPile}
+                class:pile-first={firstInPile}
+                class:pile-last={lastInPile}
                 aria-label={entryLabel(entry)}
                 data-is-dnd-shadow-item-hint={shadowEntry}
               >
-                <PaperPile
-                  {entry}
-                  {openDocumentIds}
-                  {analysisStates}
-                  {draggingEntryId}
-                  isShadow={shadowEntry}
-                  onpile={pileEntries}
-                  {onopen}
-                  oncardcontextmenu={handleCardContextMenu}
-                  oncardkeydown={handleCardKeydown}
-                />
+                {#if shadowEntry}
+                  <DropSkeleton />
+                {:else}
+                  {#if firstInPile}
+                    <div class="pile-header">
+                      <strong class="pile-header-name">
+                        {entry.pileName ?? "Untitled pile"}
+                      </strong>
+                      <button
+                        type="button"
+                        onclick={() => entry.pileId && togglePile(entry.pileId)}
+                      >
+                        Collapse
+                      </button>
+                    </div>
+                  {/if}
+                  <PaperPile
+                    {entry}
+                    {openDocumentIds}
+                    {analysisStates}
+                    {draggingEntryId}
+                    disableMerge={draggingPileMember}
+                    onpile={pileEntries}
+                    {onopen}
+                    ontogglepile={togglePile}
+                    oncardcontextmenu={handleCardContextMenu}
+                    oncardkeydown={handleCardKeydown}
+                  />
+                {/if}
               </li>
             {/each}
           </ul>
@@ -413,6 +501,19 @@
           : "Analyze again"}
     </button>
     {#if contextMenu.member.projectDocument?.pileId}
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runContextAction((menu) =>
+            onrenamepile(
+              menu.member.projectDocument?.pileId ?? "",
+              menu.member.projectDocument?.pileName ?? null,
+            ),
+          )}
+      >
+        Rename pile
+      </button>
       <button
         type="button"
         role="menuitem"
@@ -511,7 +612,7 @@
   .cards {
     display: grid;
     align-content: start;
-    gap: 8px;
+    gap: 0;
     margin: 0;
     padding: 0;
     min-height: 60px;
@@ -522,9 +623,63 @@
   li {
     display: grid;
     gap: 6px;
+    margin-bottom: 8px;
     border: 1px solid var(--border-subtle);
     padding: 8px;
     background: var(--surface);
+  }
+
+  /* An open pile: its members share one accent border so it reads as a single
+     container, and the gap between consecutive members is closed so the border is
+     continuous. This is the drag target users aim for to drop into / out of it. */
+  .cards li.pile-member {
+    margin-bottom: 0;
+    border-color: var(--accent);
+    border-top-color: transparent;
+    /* A faint line separates papers inside the pile; the outer edge stays accent. */
+    border-bottom-color: var(--border-subtle);
+  }
+
+  .cards li.pile-first {
+    border-top-color: var(--accent);
+  }
+
+  .cards li.pile-last {
+    margin-bottom: 8px;
+    border-bottom-color: var(--accent);
+  }
+
+  .pile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin: -8px -8px 0;
+    padding: 4px 8px;
+    background: var(--accent-soft-bg);
+  }
+
+  /* svelte-dnd-action floats the grabbed <li> as #dnd-action-dragged-el and
+     inlines its own border/background. Strip the pile chrome from that floating
+     copy so a dragged paper doesn't carry the pile border, name or collapse
+     button (the pile in the column keeps its border as the drop target). */
+  :global(#dnd-action-dragged-el.pile-member) {
+    border-color: var(--border-subtle) !important;
+  }
+
+  /* Use visibility (not display:none) so the header keeps its box. Removing it
+     would let the card slide up into that space, making the grabbed top-of-pile
+     card drift above the cursor. */
+  :global(#dnd-action-dragged-el .pile-header) {
+    visibility: hidden !important;
+  }
+
+  .pile-header-name {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .context-menu {

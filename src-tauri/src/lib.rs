@@ -1047,6 +1047,7 @@ pub fn run() {
             document_library::set_project_document_order,
             document_library::pile_project_documents,
             document_library::unpile_project_documents,
+            document_library::rename_pile,
             document_library::remove_document_from_project,
             document_library::link_document_reference,
             document_library::unlink_document_reference,

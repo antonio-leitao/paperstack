@@ -11,6 +11,7 @@ export type BoardMember = {
 export type BoardEntry = {
   id: string;
   pileId: string | null;
+  pileName: string | null;
   members: BoardMember[];
   source: "board" | "library";
 };

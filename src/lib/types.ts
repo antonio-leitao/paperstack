@@ -103,6 +103,7 @@ export type ProjectDocument = {
   document: LibraryDocument;
   stack: ProjectStack;
   pileId: string | null;
+  pileName: string | null;
   position: number;
   addedAt: number;
   updatedAt: number;

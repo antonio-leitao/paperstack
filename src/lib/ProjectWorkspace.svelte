@@ -35,6 +35,9 @@
     { mode: "create" } | { mode: "rename"; stack: ProjectStack } | null
   >(null);
   let stackToDelete = $state<ProjectStack | null>(null);
+  let pileNamePrompt = $state<
+    { pileId: string; currentName: string | null } | null
+  >(null);
   let projectDocumentToRemove = $state<ProjectDocument | null>(null);
   let documentToRename = $state<LibraryDocument | null>(null);
   let documentToDelete = $state<LibraryDocument | null>(null);
@@ -367,12 +370,15 @@
   // One call persists a column after any drag: reorder within a column, a move
   // between columns, or a fresh drop in from the library. The backend returns the
   // whole project's documents so our board state stays authoritative.
-  async function setProjectDocumentOrder(stackId: string, documentIds: string[]) {
+  async function setProjectDocumentOrder(
+    stackId: string,
+    entries: { documentId: string; pileId: string | null }[],
+  ) {
     try {
       projectDocuments = await invoke<ProjectDocument[]>("set_project_document_order", {
         projectId,
         stackId,
-        documentIds,
+        entries,
       });
       libraryError = null;
     } catch (error) {
@@ -404,6 +410,31 @@
       projectDocuments = await invoke<ProjectDocument[]>("unpile_project_documents", {
         projectId,
         pileId,
+      });
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+      void refreshProject();
+    }
+  }
+
+  function requestRenamePile(pileId: string, currentName: string | null) {
+    if (!pileId) return;
+    pileNamePrompt = { pileId, currentName };
+  }
+
+  function submitPileName(name: string) {
+    const prompt = pileNamePrompt;
+    pileNamePrompt = null;
+    if (prompt) void renamePile(prompt.pileId, name);
+  }
+
+  async function renamePile(pileId: string, name: string) {
+    try {
+      projectDocuments = await invoke<ProjectDocument[]>("rename_pile", {
+        projectId,
+        pileId,
+        name,
       });
       libraryError = null;
     } catch (error) {
@@ -491,6 +522,7 @@
         onsetorder={setProjectDocumentOrder}
         onpile={pileProjectDocuments}
         onunpile={unpileProjectDocuments}
+        onrenamepile={requestRenamePile}
         externalDraggingEntryId={libraryDraggingEntryId}
         onchoosepdf={choosePdf}
         oncreatestack={() => (stackNamePrompt = { mode: "create" })}
@@ -525,6 +557,14 @@
     confirmLabel={stackNamePrompt?.mode === "rename" ? "Rename" : "Create"}
     onconfirm={submitStackName}
     oncancel={() => (stackNamePrompt = null)}
+  />
+  <NamePrompt
+    open={pileNamePrompt !== null}
+    title="Name pile"
+    initialValue={pileNamePrompt?.currentName ?? ""}
+    confirmLabel="Save"
+    onconfirm={submitPileName}
+    oncancel={() => (pileNamePrompt = null)}
   />
   <ConfirmDialog
     open={stackToDelete !== null}

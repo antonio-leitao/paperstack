@@ -265,6 +265,15 @@ fn initialize(connection: &Connection) -> Result<(), String> {
                     REFERENCES project_stacks(project_id, id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS project_piles (
+                project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                pile_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (project_id, pile_id)
+            );
+
             CREATE TABLE IF NOT EXISTS document_annotations (
                 id TEXT PRIMARY KEY,
                 document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
