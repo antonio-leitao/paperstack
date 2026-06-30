@@ -39,6 +39,7 @@
   let documentToRename = $state<LibraryDocument | null>(null);
   let documentToDelete = $state<LibraryDocument | null>(null);
   let openDocumentIds = $state<string[]>([]);
+  let libraryDraggingEntryId = $state<string | null>(null);
   // documentId -> live background-analysis status, for the per-card loaders.
   let analysisStates = $state<Record<string, AnalysisStatus>>({});
 
@@ -380,6 +381,37 @@
     }
   }
 
+  async function pileProjectDocuments(
+    sourceDocumentIds: string[],
+    targetDocumentId: string,
+  ) {
+    try {
+      projectDocuments = await invoke<ProjectDocument[]>("pile_project_documents", {
+        projectId,
+        sourceDocumentIds,
+        targetDocumentId,
+      });
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+      void refreshProject();
+    }
+  }
+
+  async function unpileProjectDocuments(pileId: string) {
+    if (!pileId) return;
+    try {
+      projectDocuments = await invoke<ProjectDocument[]>("unpile_project_documents", {
+        projectId,
+        pileId,
+      });
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+      void refreshProject();
+    }
+  }
+
   function requestRemoveProjectDocument(documentId: string) {
     projectDocumentToRemove =
       projectDocuments.find((item) => item.document.id === documentId) ?? null;
@@ -438,6 +470,8 @@
           onfilterchange={(value) => (libraryLinkFilter = value)}
           onopen={(documentId) => void addAndOpenDocument(documentId)}
           onchoosepdf={choosePdf}
+          ondragstart={(entryId) => (libraryDraggingEntryId = entryId)}
+          ondragend={() => (libraryDraggingEntryId = null)}
         />
       </aside>
     {/if}
@@ -455,6 +489,9 @@
         ondelete={(document) => (documentToDelete = document)}
         onanalyze={analyzeDocument}
         onsetorder={setProjectDocumentOrder}
+        onpile={pileProjectDocuments}
+        onunpile={unpileProjectDocuments}
+        externalDraggingEntryId={libraryDraggingEntryId}
         onchoosepdf={choosePdf}
         oncreatestack={() => (stackNamePrompt = { mode: "create" })}
         onrequestrenamestack={(stack) => (stackNamePrompt = { mode: "rename", stack })}

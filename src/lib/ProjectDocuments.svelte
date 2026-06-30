@@ -1,29 +1,31 @@
 <script lang="ts">
-  import { convertFileSrc } from "@tauri-apps/api/core";
-  import { dndzone, SHADOW_ITEM_MARKER_PROPERTY_NAME, type DndEvent } from "svelte-dnd-action";
+  import {
+    dndzone,
+    SHADOW_ITEM_MARKER_PROPERTY_NAME,
+    SOURCES,
+    TRIGGERS,
+    type DndEvent,
+  } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import { tick } from "svelte";
-  import LastOpened from "./LastOpened.svelte";
-  import { BOARD_DND_TYPE, FLIP_DURATION_MS, realDocumentId } from "./boardDnd";
-  import { analysisLabel } from "./analysisLabel";
+  import PaperPile from "./PaperPile.svelte";
+  import {
+    BOARD_DND_TYPE,
+    FLIP_DURATION_MS,
+    documentEntryId,
+    entryDocumentIds,
+    pileEntryId,
+    type BoardEntry,
+    type BoardMember,
+  } from "./boardDnd";
   import type {
     AnalysisStatus,
-    LibraryDocument,
     ProjectDocument,
     ProjectStack,
   } from "./types";
 
-  // A card is the unit dragged on the board. `projectDocument` is null only for
-  // the brief moment a library card has been dropped but not yet persisted; we
-  // render from `document` so it looks right immediately either way.
-  type BoardCard = {
-    id: string;
-    document: LibraryDocument;
-    projectDocument: ProjectDocument | null;
-  };
-
   type CardContextMenu = {
-    card: BoardCard;
+    member: BoardMember;
     documentId: string;
     trigger: HTMLElement;
     x: number;
@@ -42,6 +44,9 @@
     ondelete,
     onanalyze,
     onsetorder,
+    onpile,
+    onunpile,
+    externalDraggingEntryId = null,
     onchoosepdf,
     oncreatestack,
     onrequestrenamestack,
@@ -53,11 +58,17 @@
     analysisStates?: Record<string, AnalysisStatus>;
     onopen: (documentId: string) => void | Promise<void>;
     onremove: (documentId: string) => void | Promise<void>;
-    onrename: (document: LibraryDocument) => void;
-    onunlink: (document: LibraryDocument) => void | Promise<void>;
-    ondelete: (document: LibraryDocument) => void;
+    onrename: (document: BoardMember["document"]) => void;
+    onunlink: (document: BoardMember["document"]) => void | Promise<void>;
+    ondelete: (document: BoardMember["document"]) => void;
     onanalyze: (documentId: string) => void | Promise<void>;
     onsetorder: (stackId: string, documentIds: string[]) => void | Promise<void>;
+    onpile: (
+      sourceDocumentIds: string[],
+      targetDocumentId: string,
+    ) => void | Promise<void>;
+    onunpile: (pileId: string) => void | Promise<void>;
+    externalDraggingEntryId?: string | null;
     onchoosepdf: () => void | Promise<void>;
     oncreatestack: () => void;
     onrequestrenamestack: (stack: ProjectStack) => void;
@@ -69,15 +80,35 @@
   function buildColumns(
     items: ProjectDocument[],
     stackList: ProjectStack[],
-  ): Record<string, BoardCard[]> {
-    const columns: Record<string, BoardCard[]> = {};
+  ): Record<string, BoardEntry[]> {
+    const columns: Record<string, BoardEntry[]> = {};
+    const entriesByPile = new Map<string, BoardEntry>();
     for (const stack of stackList) columns[stack.id] = [];
     for (const item of [...items].sort((left, right) => left.position - right.position)) {
-      (columns[item.stack.id] ??= []).push({
-        id: item.document.id,
-        document: item.document,
-        projectDocument: item,
-      });
+      const member = { document: item.document, projectDocument: item };
+      if (!item.pileId) {
+        (columns[item.stack.id] ??= []).push({
+          id: documentEntryId(item.document.id),
+          pileId: null,
+          members: [member],
+          source: "board",
+        });
+        continue;
+      }
+      const key = `${item.stack.id}:${item.pileId}`;
+      const existing = entriesByPile.get(key);
+      if (existing) {
+        existing.members.push(member);
+      } else {
+        const entry: BoardEntry = {
+          id: pileEntryId(item.pileId),
+          pileId: item.pileId,
+          members: [member],
+          source: "board",
+        };
+        entriesByPile.set(key, entry);
+        (columns[item.stack.id] ??= []).push(entry);
+      }
     }
     return columns;
   }
@@ -85,9 +116,11 @@
   // Authoritative columns come from the backend; we keep a mutable copy that
   // svelte-dnd-action can reshuffle during a drag, then resync whenever the
   // backend data changes (after each persisted move).
-  let columns = $state<Record<string, BoardCard[]>>({});
+  let columns = $state<Record<string, BoardEntry[]>>({});
   let contextMenu = $state<CardContextMenu | null>(null);
   let contextMenuElement = $state<HTMLDivElement | null>(null);
+  let boardDraggingEntryId = $state<string | null>(null);
+  const draggingEntryId = $derived(boardDraggingEntryId ?? externalDraggingEntryId);
 
   $effect(() => {
     columns = buildColumns(projectDocuments, sortedStacks);
@@ -99,39 +132,81 @@
     }
   });
 
-  function consider(stackId: string, event: CustomEvent<DndEvent<BoardCard>>) {
+  function consider(stackId: string, event: CustomEvent<DndEvent<BoardEntry>>) {
+    if (event.detail.info.trigger === TRIGGERS.DRAG_STARTED) {
+      boardDraggingEntryId = event.detail.info.id;
+    }
     columns[stackId] = event.detail.items;
   }
 
-  function finalize(stackId: string, event: CustomEvent<DndEvent<BoardCard>>) {
-    const items = event.detail.items;
+  function finalize(stackId: string, event: CustomEvent<DndEvent<BoardEntry>>) {
+    const { items, info } = event.detail;
     columns[stackId] = items;
-    const documentIds = [
-      ...new Set(
-        items
-          .filter((card) => !(card as Record<string, unknown>)[SHADOW_ITEM_MARKER_PROPERTY_NAME])
-          .map((card) => realDocumentId(card.id)),
-      ),
-    ];
-    void onsetorder(stackId, documentIds);
+    if (info.trigger === TRIGGERS.DROPPED_INTO_ZONE) {
+      const documentIds = [
+        ...new Set(
+          items
+            .filter(
+              (entry) =>
+                !(entry as unknown as Record<string, unknown>)[
+                  SHADOW_ITEM_MARKER_PROPERTY_NAME
+                ],
+            )
+            .flatMap(entryDocumentIds),
+        ),
+      ];
+      void onsetorder(stackId, documentIds);
+    } else if (info.trigger === TRIGGERS.DROPPED_OUTSIDE_OF_ANY) {
+      columns = buildColumns(projectDocuments, sortedStacks);
+    }
+    if (
+      info.source === SOURCES.POINTER ||
+      info.trigger === TRIGGERS.DRAG_STOPPED
+    ) {
+      boardDraggingEntryId = null;
+    }
   }
 
-  function cardTitle(card: BoardCard): string {
-    return card.document.referenceTitle ?? card.document.title;
+  function cardTitle(member: BoardMember): string {
+    return member.document.referenceTitle ?? member.document.title;
   }
 
-  function cardMeta(card: BoardCard): string {
-    return card.document.referenceAuthors.join(", ") || card.document.originalFilename;
+  function entryLabel(entry: BoardEntry): string {
+    const title = cardTitle(entry.members[0]);
+    return entry.members.length > 1
+      ? `${title}, pile of ${entry.members.length} papers`
+      : title;
+  }
+
+  function columnPaperCount(stackId: string): number {
+    return (columns[stackId] ?? []).reduce(
+      (count, entry) => count + entry.members.length,
+      0,
+    );
+  }
+
+  function isShadowEntry(entry: BoardEntry): boolean {
+    return Boolean(
+      (entry as unknown as Record<string, unknown>)[SHADOW_ITEM_MARKER_PROPERTY_NAME],
+    );
+  }
+
+  function entryKey(entry: BoardEntry): string {
+    return `${entry.id}${isShadowEntry(entry) ? ":shadow" : ""}`;
+  }
+
+  function pileEntries(source: BoardEntry, target: BoardEntry) {
+    void onpile(entryDocumentIds(source), target.members[0].document.id);
   }
 
   async function showContextMenu(
-    card: BoardCard,
+    member: BoardMember,
     trigger: HTMLElement,
     x: number,
     y: number,
   ) {
-    const documentId = realDocumentId(card.id);
-    contextMenu = { card, documentId, trigger, x, y };
+    const documentId = member.document.id;
+    contextMenu = { member, documentId, trigger, x, y };
     await tick();
     if (!contextMenu || contextMenu.documentId !== documentId || !contextMenuElement) return;
 
@@ -147,17 +222,17 @@
       ?.focus();
   }
 
-  function handleCardContextMenu(event: MouseEvent, card: BoardCard) {
+  function handleCardContextMenu(event: MouseEvent, member: BoardMember) {
     event.preventDefault();
     event.stopPropagation();
     const trigger = event.currentTarget as HTMLElement;
     const bounds = trigger.getBoundingClientRect();
     const x = event.clientX || bounds.left + 12;
     const y = event.clientY || bounds.top + 12;
-    void showContextMenu(card, trigger, x, y);
+    void showContextMenu(member, trigger, x, y);
   }
 
-  function handleCardKeydown(event: KeyboardEvent, card: BoardCard) {
+  function handleCardKeydown(event: KeyboardEvent, member: BoardMember) {
     if (
       event.key !== "ContextMenu" &&
       !(event.shiftKey && event.key === "F10")
@@ -167,24 +242,7 @@
     event.preventDefault();
     const trigger = event.currentTarget as HTMLElement;
     const bounds = trigger.getBoundingClientRect();
-    void showContextMenu(card, trigger, bounds.left + 12, bounds.top + 12);
-  }
-
-  function cardContextMenu(node: HTMLElement, initialCard: BoardCard) {
-    let card = initialCard;
-    const openFromPointer = (event: MouseEvent) => handleCardContextMenu(event, card);
-    const openFromKeyboard = (event: KeyboardEvent) => handleCardKeydown(event, card);
-    node.addEventListener("contextmenu", openFromPointer);
-    node.addEventListener("keydown", openFromKeyboard);
-    return {
-      update(nextCard: BoardCard) {
-        card = nextCard;
-      },
-      destroy() {
-        node.removeEventListener("contextmenu", openFromPointer);
-        node.removeEventListener("keydown", openFromKeyboard);
-      },
-    };
+    void showContextMenu(member, trigger, bounds.left + 12, bounds.top + 12);
   }
 
   function closeContextMenu(restoreFocus = false) {
@@ -258,7 +316,7 @@
         <section class="column" aria-label={stack.name}>
           <header class="column-header">
             <strong>{stack.name}</strong>
-            <span class="count">{columns[stack.id]?.length ?? 0}</span>
+            <span class="count">{columnPaperCount(stack.id)}</span>
             <button type="button" onclick={() => onrequestrenamestack(stack)}>Rename</button>
             <button type="button" onclick={() => onrequestdeletestack(stack)}>Delete</button>
           </header>
@@ -269,44 +327,29 @@
               items: columns[stack.id] ?? [],
               type: BOARD_DND_TYPE,
               flipDurationMs: FLIP_DURATION_MS,
+              useCursorForDetection: true,
             }}
             onconsider={(event) => consider(stack.id, event)}
             onfinalize={(event) => finalize(stack.id, event)}
           >
-            {#each columns[stack.id] ?? [] as card (card.id)}
-              {@const cardDocumentId = realDocumentId(card.id)}
-              {@const analysisState = analysisStates[cardDocumentId]}
-              {@const status = analysisLabel(analysisState)}
+            {#each columns[stack.id] ?? [] as entry (entryKey(entry))}
+              {@const shadowEntry = isShadowEntry(entry)}
               <li
-                class:is-open={openDocumentIds.includes(cardDocumentId)}
-                class:is-busy={status !== null}
                 animate:flip={{ duration: FLIP_DURATION_MS }}
-                aria-label={cardTitle(card)}
-                use:cardContextMenu={card}
+                aria-label={entryLabel(entry)}
+                data-is-dnd-shadow-item-hint={shadowEntry}
               >
-                <div class="card-body">
-                  <div class="card-heading">
-                    {#if card.document.thumbnailPath}
-                      <img
-                        class="thumb"
-                        src={convertFileSrc(card.document.thumbnailPath)}
-                        alt=""
-                        loading="lazy"
-                      />
-                    {/if}
-                    <strong class="card-title">{cardTitle(card)}</strong>
-                  </div>
-                  <small>{cardMeta(card)}</small>
-                  {#if status}
-                    <small
-                      class="analysis"
-                      class:is-error={analysisStates[realDocumentId(card.id)]?.phase === "error"}
-                    >
-                      {status}
-                    </small>
-                  {/if}
-                  <LastOpened timestamp={card.document.lastViewedAt} />
-                </div>
+                <PaperPile
+                  {entry}
+                  {openDocumentIds}
+                  {analysisStates}
+                  {draggingEntryId}
+                  isShadow={shadowEntry}
+                  onpile={pileEntries}
+                  {onopen}
+                  oncardcontextmenu={handleCardContextMenu}
+                  oncardkeydown={handleCardKeydown}
+                />
               </li>
             {/each}
           </ul>
@@ -327,7 +370,7 @@
     class="context-menu"
     role="menu"
     tabindex="-1"
-    aria-label={`Actions for ${cardTitle(contextMenu.card)}`}
+    aria-label={`Actions for ${cardTitle(contextMenu.member)}`}
     bind:this={contextMenuElement}
     style:left={`${contextMenu.x}px`}
     style:top={`${contextMenu.y}px`}
@@ -344,15 +387,15 @@
     <button
       type="button"
       role="menuitem"
-      onclick={() => runContextAction((menu) => onrename(menu.card.document))}
+      onclick={() => runContextAction((menu) => onrename(menu.member.document))}
     >
       Rename
     </button>
-    {#if contextMenu.card.document.referenceId}
+    {#if contextMenu.member.document.referenceId}
       <button
         type="button"
         role="menuitem"
-        onclick={() => runContextAction((menu) => onunlink(menu.card.document))}
+        onclick={() => runContextAction((menu) => onunlink(menu.member.document))}
       >
         Unlink reference
       </button>
@@ -369,6 +412,18 @@
           ? "Retry analysis"
           : "Analyze again"}
     </button>
+    {#if contextMenu.member.projectDocument?.pileId}
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runContextAction((menu) =>
+            onunpile(menu.member.projectDocument?.pileId ?? ""),
+          )}
+      >
+        Unstack pile
+      </button>
+    {/if}
     <hr />
     <button
       type="button"
@@ -380,7 +435,7 @@
     <button
       type="button"
       role="menuitem"
-      onclick={() => runContextAction((menu) => ondelete(menu.card.document))}
+      onclick={() => runContextAction((menu) => ondelete(menu.member.document))}
     >
       Delete
     </button>
@@ -470,51 +525,6 @@
     border: 1px solid var(--border-subtle);
     padding: 8px;
     background: var(--surface);
-  }
-
-  li.is-open {
-    box-shadow: inset 3px 0 0 var(--accent);
-  }
-
-  li.is-busy {
-    opacity: 0.75;
-  }
-
-  .analysis {
-    color: var(--accent);
-  }
-
-  .analysis.is-error {
-    color: var(--danger);
-  }
-
-  .card-body {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .card-heading {
-    display: flex;
-    gap: 6px;
-    align-items: start;
-  }
-
-  .thumb {
-    flex: none;
-    width: 44px;
-  }
-
-  .card-title {
-    font-size: 14px;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  small {
-    color: var(--text-muted);
-    font-size: 12px;
   }
 
   .context-menu {

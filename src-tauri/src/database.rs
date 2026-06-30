@@ -256,6 +256,7 @@ fn initialize(connection: &Connection) -> Result<(), String> {
                 project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
                 document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
                 stack_id TEXT NOT NULL,
+                pile_id TEXT,
                 position INTEGER NOT NULL DEFAULT 0,
                 added_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
@@ -301,6 +302,16 @@ fn initialize(connection: &Connection) -> Result<(), String> {
         "position",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
+    ensure_column(connection, "project_documents", "pile_id", "TEXT")?;
+    connection
+        .execute(
+            r#"
+            CREATE INDEX IF NOT EXISTS project_documents_by_pile
+                ON project_documents(project_id, pile_id, position)
+            "#,
+            [],
+        )
+        .map_err(|error| format!("Could not index project document piles: {error}"))?;
     Ok(())
 }
 

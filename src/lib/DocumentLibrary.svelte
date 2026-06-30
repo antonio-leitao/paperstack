@@ -1,14 +1,16 @@
 <script lang="ts">
   import { dndzone, TRIGGERS, type DndEvent } from "svelte-dnd-action";
   import LastOpened from "./LastOpened.svelte";
-  import { BOARD_DND_TYPE, libraryCardId } from "./boardDnd";
+  import {
+    BOARD_DND_TYPE,
+    libraryEntryId,
+    type BoardEntry,
+  } from "./boardDnd";
   import { analysisLabel } from "./analysisLabel";
   import { searchDocuments } from "./searchDocuments";
   import type { AnalysisStatus, LibraryDocument } from "./types";
 
   type LinkFilter = "all" | "linked" | "unlinked";
-
-  type LibraryCard = { id: string; document: LibraryDocument };
 
   let {
     documents,
@@ -20,6 +22,8 @@
     onfilterchange,
     onopen,
     onchoosepdf,
+    ondragstart = () => {},
+    ondragend = () => {},
   }: {
     documents: LibraryDocument[];
     openDocumentIds?: string[];
@@ -30,6 +34,8 @@
     onfilterchange: (filter: LinkFilter) => void;
     onopen: (documentId: string) => void | Promise<void>;
     onchoosepdf: () => void | Promise<void>;
+    ondragstart?: (entryId: string) => void;
+    ondragend?: () => void;
   } = $props();
 
   const filteredDocuments = $derived(
@@ -40,19 +46,25 @@
   // never leave the library. We keep a separate dnd copy and, the moment a drag
   // starts, drop a fresh-id replica back into the list so the original can travel
   // to a column while the library still shows the document.
-  function buildLibraryCards(items: LibraryDocument[]): LibraryCard[] {
-    return items.map((document) => ({ id: libraryCardId(document.id), document }));
+  function buildLibraryCards(items: LibraryDocument[]): BoardEntry[] {
+    return items.map((document) => ({
+      id: libraryEntryId(document.id),
+      pileId: null,
+      members: [{ document, projectDocument: null }],
+      source: "library",
+    }));
   }
 
-  let libraryCards = $state<LibraryCard[]>([]);
+  let libraryCards = $state<BoardEntry[]>([]);
   let replicaCounter = 0;
   $effect(() => {
     libraryCards = buildLibraryCards(filteredDocuments);
   });
 
-  function handleLibraryConsider(event: CustomEvent<DndEvent<LibraryCard>>) {
+  function handleLibraryConsider(event: CustomEvent<DndEvent<BoardEntry>>) {
     const { items, info } = event.detail;
     if (info.trigger === TRIGGERS.DRAG_STARTED) {
+      ondragstart(info.id);
       const index = items.findIndex((card) => card.id === info.id);
       if (index !== -1) {
         replicaCounter += 1;
@@ -69,6 +81,7 @@
     // Restore the canonical palette (drops the in-flight replica, brings back the
     // original card). Any actual import is persisted by the receiving column.
     libraryCards = buildLibraryCards(filteredDocuments);
+    ondragend();
   }
 
   function isInLinkFilter(document: LibraryDocument, filter: LinkFilter): boolean {
@@ -145,32 +158,34 @@
         type: BOARD_DND_TYPE,
         dropFromOthersDisabled: true,
         flipDurationMs: 0,
+        useCursorForDetection: true,
       }}
       onconsider={handleLibraryConsider}
       onfinalize={handleLibraryFinalize}
     >
       {#each libraryCards as card (card.id)}
-        {@const status = analysisLabel(analysisStates[card.document.id])}
-        <li aria-label={documentTitle(card.document)}>
+        {@const document = card.members[0].document}
+        {@const status = analysisLabel(analysisStates[document.id])}
+        <li aria-label={documentTitle(document)}>
           <div class="document-list-row">
             <button
               type="button"
-              class:is-open={openDocumentIds.includes(card.document.id)}
-              onclick={() => void onopen(card.document.id)}
+              class:is-open={openDocumentIds.includes(document.id)}
+              onclick={() => void onopen(document.id)}
             >
               <span class="document-summary">
-                <span>{documentTitle(card.document)}</span>
-                <small>{documentMeta(card.document)}</small>
+                <span>{documentTitle(document)}</span>
+                <small>{documentMeta(document)}</small>
                 {#if status}
                   <small
                     class="analysis"
-                    class:is-error={analysisStates[card.document.id]?.phase === "error"}
+                    class:is-error={analysisStates[document.id]?.phase === "error"}
                   >
                     {status}
                   </small>
                 {/if}
               </span>
-              <LastOpened timestamp={card.document.lastViewedAt} />
+              <LastOpened timestamp={document.lastViewedAt} />
             </button>
           </div>
         </li>

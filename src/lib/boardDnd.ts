@@ -1,21 +1,38 @@
-// Shared constants and helpers for the project kanban board.
-//
-// The library palette and every stack column are svelte-dnd-action zones that
-// share one `type`, so a card can be dragged between columns and in from the
-// library. Library cards carry a prefixed id so they never collide with the
-// real project-card ids while a drag is in flight; on drop we strip the prefix
-// back to the underlying document id before persisting.
+import type { LibraryDocument, ProjectDocument } from "./types";
+
+// Shared data shape for every zone of BOARD_DND_TYPE. A board entry is either a
+// single paper or a whole pile; a library entry is the same shape with a single
+// member whose projectDocument is null.
+export type BoardMember = {
+  document: LibraryDocument;
+  projectDocument: ProjectDocument | null;
+};
+
+export type BoardEntry = {
+  id: string;
+  pileId: string | null;
+  members: BoardMember[];
+  source: "board" | "library";
+};
 
 export const BOARD_DND_TYPE = "project-card";
 export const LIBRARY_ID_PREFIX = "library:";
+export const DOCUMENT_ID_PREFIX = "document:";
+export const PILE_ID_PREFIX = "pile:";
 export const FLIP_DURATION_MS = 150;
 
-export function libraryCardId(documentId: string): string {
+export function libraryEntryId(documentId: string): string {
   return `${LIBRARY_ID_PREFIX}${documentId}`;
 }
 
-export function realDocumentId(cardId: string): string {
-  return cardId.startsWith(LIBRARY_ID_PREFIX)
-    ? cardId.slice(LIBRARY_ID_PREFIX.length)
-    : cardId;
+export function documentEntryId(documentId: string): string {
+  return `${DOCUMENT_ID_PREFIX}${documentId}`;
+}
+
+export function pileEntryId(pileId: string): string {
+  return `${PILE_ID_PREFIX}${pileId}`;
+}
+
+export function entryDocumentIds(entry: BoardEntry): string[] {
+  return entry.members.map((member) => member.document.id);
 }

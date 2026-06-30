@@ -2,7 +2,10 @@ use super::{database, reference_resolver};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
@@ -35,6 +38,7 @@ pub(crate) struct ProjectDocument {
     project_id: String,
     document: LibraryDocument,
     stack: ProjectStack,
+    pile_id: Option<String>,
     position: i64,
     added_at: i64,
     updated_at: i64,
@@ -261,11 +265,25 @@ pub(crate) fn delete_document(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| format!("Could not start deleting the document: {error}"))?;
+    let affected_projects = {
+        let mut statement = transaction
+            .prepare("SELECT project_id FROM project_documents WHERE document_id = ?1")
+            .map_err(|error| format!("Could not inspect the document's projects: {error}"))?;
+        let project_ids = statement
+            .query_map(params![id], |row| row.get::<_, String>(0))
+            .map_err(|error| format!("Could not inspect the document's projects: {error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Could not read the document's projects: {error}"))?;
+        project_ids
+    };
     let changed = transaction
         .execute("DELETE FROM documents WHERE id = ?1", params![id])
         .map_err(|error| format!("Could not delete the document: {error}"))?;
     if changed == 0 {
         return Err("Document not found".to_owned());
+    }
+    for project_id in affected_projects {
+        clear_singleton_piles(&transaction, &project_id)?;
     }
     transaction
         .commit()
@@ -595,6 +613,7 @@ pub(crate) fn add_document_to_project(
 /// dropping a brand-new document in from the library. Documents not present in
 /// `document_ids` are left untouched (the column they moved to repositions them
 /// with its own call), so a card never falls out of the project by accident.
+/// Existing pile members are expanded to their complete pile before rewriting.
 #[tauri::command]
 pub(crate) fn set_project_document_order(
     app: AppHandle,
@@ -608,7 +627,37 @@ pub(crate) fn set_project_document_order(
         .map_err(|error| format!("Could not start reordering the project documents: {error}"))?;
     require_project_stack(&transaction, &project_id, &stack_id)?;
     let now = database::unix_timestamp();
-    for (position, document_id) in document_ids.iter().enumerate() {
+    // A pile is always a board unit. If a document was dragged from the library
+    // while it already belongs to a pile, expand it to the complete pile here so
+    // a second representation of that paper cannot split the stored group.
+    let mut normalized_document_ids = Vec::new();
+    let mut seen_document_ids = HashSet::new();
+    for document_id in document_ids {
+        let pile_id: Option<String> = transaction
+            .query_row(
+                r#"
+                SELECT pile_id
+                FROM project_documents
+                WHERE project_id = ?1 AND document_id = ?2
+                "#,
+                params![project_id, document_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| format!("Could not inspect the project document pile: {error}"))?
+            .flatten();
+        let entry_document_ids = if let Some(pile_id) = pile_id {
+            project_pile_document_ids(&transaction, &project_id, &pile_id)?
+        } else {
+            vec![document_id]
+        };
+        for entry_document_id in entry_document_ids {
+            if seen_document_ids.insert(entry_document_id.clone()) {
+                normalized_document_ids.push(entry_document_id);
+            }
+        }
+    }
+    for (position, document_id) in normalized_document_ids.iter().enumerate() {
         require_document(&transaction, document_id)?;
         transaction
             .execute(
@@ -632,14 +681,229 @@ pub(crate) fn set_project_document_order(
     load_project_documents(&app, &connection, &project_id)
 }
 
+/// Combines one board entry with another. A source entry is either a singleton
+/// document or every member of an existing pile; a library document can also be
+/// supplied before it has project membership. The target stays the first visible
+/// document and the source members are appended in their existing order.
+#[tauri::command]
+pub(crate) fn pile_project_documents(
+    app: AppHandle,
+    project_id: String,
+    source_document_ids: Vec<String>,
+    target_document_id: String,
+) -> Result<Vec<ProjectDocument>, String> {
+    if source_document_ids.is_empty() {
+        return Err("A pile source is required".to_owned());
+    }
+
+    let mut seen = HashSet::new();
+    let source_document_ids = source_document_ids
+        .into_iter()
+        .filter(|document_id| seen.insert(document_id.clone()))
+        .collect::<Vec<_>>();
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start piling the project documents: {error}"))?;
+
+    require_project(&transaction, &project_id)?;
+    let (target_stack_id, target_pile_id): (String, Option<String>) = transaction
+        .query_row(
+            r#"
+            SELECT stack_id, pile_id
+            FROM project_documents
+            WHERE project_id = ?1 AND document_id = ?2
+            "#,
+            params![project_id, target_document_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|error| format!("Could not inspect the target paper: {error}"))?
+        .ok_or_else(|| "The target paper is not in this project".to_owned())?;
+
+    let target_members = if let Some(pile_id) = &target_pile_id {
+        project_pile_document_ids(&transaction, &project_id, pile_id)?
+    } else {
+        vec![target_document_id.clone()]
+    };
+    if source_document_ids
+        .iter()
+        .any(|document_id| target_members.contains(document_id))
+    {
+        return load_project_documents(&app, &transaction, &project_id);
+    }
+
+    for document_id in &source_document_ids {
+        require_document(&transaction, document_id)?;
+    }
+
+    let source_membership: Option<(String, Option<String>)> = transaction
+        .query_row(
+            r#"
+            SELECT stack_id, pile_id
+            FROM project_documents
+            WHERE project_id = ?1 AND document_id = ?2
+            "#,
+            params![project_id, source_document_ids[0]],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|error| format!("Could not inspect the source paper: {error}"))?;
+
+    let (source_members, source_stack_id) = match source_membership {
+        Some((stack_id, Some(pile_id))) => {
+            let members = project_pile_document_ids(&transaction, &project_id, &pile_id)?;
+            let member_set = members.iter().collect::<HashSet<_>>();
+            if source_document_ids.len() != members.len()
+                || source_document_ids
+                    .iter()
+                    .any(|document_id| !member_set.contains(document_id))
+            {
+                return Err("A paper pile must be moved as one unit".to_owned());
+            }
+            (members, Some(stack_id))
+        }
+        Some((stack_id, None)) => {
+            if source_document_ids.len() != 1 {
+                return Err("The selected papers do not form one pile".to_owned());
+            }
+            (source_document_ids, Some(stack_id))
+        }
+        None => {
+            if source_document_ids.len() != 1 {
+                return Err("Only one library paper can be added at a time".to_owned());
+            }
+            (source_document_ids, None)
+        }
+    };
+
+    let target_column_before =
+        project_stack_document_ids(&transaction, &project_id, &target_stack_id)?;
+    let target_member_set = target_members.iter().cloned().collect::<HashSet<_>>();
+    let source_member_set = source_members.iter().cloned().collect::<HashSet<_>>();
+    let mut target_column_after = Vec::with_capacity(
+        target_column_before.len()
+            + source_members
+                .iter()
+                .filter(|document_id| !target_column_before.contains(document_id))
+                .count(),
+    );
+    let mut inserted_pile = false;
+    for document_id in target_column_before {
+        if target_member_set.contains(&document_id) {
+            if !inserted_pile {
+                target_column_after.extend(target_members.iter().cloned());
+                target_column_after.extend(source_members.iter().cloned());
+                inserted_pile = true;
+            }
+        } else if !source_member_set.contains(&document_id) {
+            target_column_after.push(document_id);
+        }
+    }
+    if !inserted_pile {
+        return Err("The target paper could not be placed".to_owned());
+    }
+
+    let pile_id = target_pile_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let now = database::unix_timestamp();
+    for document_id in &target_members {
+        transaction
+            .execute(
+                r#"
+                UPDATE project_documents
+                SET pile_id = ?1, updated_at = ?2
+                WHERE project_id = ?3 AND document_id = ?4
+                "#,
+                params![pile_id, now, project_id, document_id],
+            )
+            .map_err(|error| format!("Could not update the target pile: {error}"))?;
+    }
+    for document_id in &source_members {
+        transaction
+            .execute(
+                r#"
+                INSERT INTO project_documents (
+                    project_id, document_id, stack_id, pile_id, position, added_at, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
+                ON CONFLICT(project_id, document_id) DO UPDATE SET
+                    stack_id = excluded.stack_id,
+                    pile_id = excluded.pile_id,
+                    updated_at = excluded.updated_at
+                "#,
+                params![project_id, document_id, target_stack_id, pile_id, now],
+            )
+            .map_err(|error| format!("Could not add a paper to the pile: {error}"))?;
+    }
+    rewrite_project_stack_positions(
+        &transaction,
+        &project_id,
+        &target_stack_id,
+        &target_column_after,
+        now,
+    )?;
+
+    if let Some(source_stack_id) = source_stack_id {
+        if source_stack_id != target_stack_id {
+            let source_column_after =
+                project_stack_document_ids(&transaction, &project_id, &source_stack_id)?;
+            rewrite_project_stack_positions(
+                &transaction,
+                &project_id,
+                &source_stack_id,
+                &source_column_after,
+                now,
+            )?;
+        }
+    }
+
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish piling the project documents: {error}"))?;
+    emit_library_changed(&app, "projectDocument", None, "piled");
+    load_project_documents(&app, &connection, &project_id)
+}
+
+#[tauri::command]
+pub(crate) fn unpile_project_documents(
+    app: AppHandle,
+    project_id: String,
+    pile_id: String,
+) -> Result<Vec<ProjectDocument>, String> {
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start unstacking the papers: {error}"))?;
+    let changed = transaction
+        .execute(
+            r#"
+            UPDATE project_documents
+            SET pile_id = NULL, updated_at = ?1
+            WHERE project_id = ?2 AND pile_id = ?3
+            "#,
+            params![database::unix_timestamp(), project_id, pile_id],
+        )
+        .map_err(|error| format!("Could not unstack the papers: {error}"))?;
+    if changed == 0 {
+        return Err("Paper pile not found".to_owned());
+    }
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish unstacking the papers: {error}"))?;
+    emit_library_changed(&app, "projectDocument", None, "unpiled");
+    load_project_documents(&app, &connection, &project_id)
+}
+
 #[tauri::command]
 pub(crate) fn remove_document_from_project(
     app: AppHandle,
     project_id: String,
     document_id: String,
 ) -> Result<(), String> {
-    let connection = database::connection(&app)?;
-    let changed = connection
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start removing the project document: {error}"))?;
+    let changed = transaction
         .execute(
             "DELETE FROM project_documents WHERE project_id = ?1 AND document_id = ?2",
             params![project_id, document_id],
@@ -648,6 +912,10 @@ pub(crate) fn remove_document_from_project(
     if changed == 0 {
         return Err("Document is not in this project".to_owned());
     }
+    clear_singleton_piles(&transaction, &project_id)?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish removing the project document: {error}"))?;
     emit_library_changed(&app, "projectDocument", Some(&document_id), "removed");
     Ok(())
 }
@@ -1022,7 +1290,7 @@ fn load_project_document(
         .query_row(
             r#"
             SELECT ps.id, ps.project_id, ps.name, ps.created_at, ps.updated_at,
-                   pd.position, pd.added_at, pd.updated_at
+                   pd.pile_id, pd.position, pd.added_at, pd.updated_at
             FROM project_documents pd
             JOIN project_stacks ps ON ps.project_id = pd.project_id AND ps.id = pd.stack_id
             WHERE pd.project_id = ?1 AND pd.document_id = ?2
@@ -1037,9 +1305,10 @@ fn load_project_document(
                         created_at: row.get(3)?,
                         updated_at: row.get(4)?,
                     },
-                    row.get::<_, i64>(5)?,
+                    row.get::<_, Option<String>>(5)?,
                     row.get::<_, i64>(6)?,
                     row.get::<_, i64>(7)?,
+                    row.get::<_, i64>(8)?,
                 ))
             },
         )
@@ -1050,10 +1319,101 @@ fn load_project_document(
         project_id: project_id.to_owned(),
         document: load_document(app, connection, document_id)?,
         stack: row.0,
-        position: row.1,
-        added_at: row.2,
-        updated_at: row.3,
+        pile_id: row.1,
+        position: row.2,
+        added_at: row.3,
+        updated_at: row.4,
     })
+}
+
+fn project_stack_document_ids(
+    connection: &Connection,
+    project_id: &str,
+    stack_id: &str,
+) -> Result<Vec<String>, String> {
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT document_id
+            FROM project_documents
+            WHERE project_id = ?1 AND stack_id = ?2
+            ORDER BY position, document_id
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare the project stack order: {error}"))?;
+    let document_ids = statement
+        .query_map(params![project_id, stack_id], |row| row.get::<_, String>(0))
+        .map_err(|error| format!("Could not read the project stack order: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not collect the project stack order: {error}"))?;
+    Ok(document_ids)
+}
+
+fn project_pile_document_ids(
+    connection: &Connection,
+    project_id: &str,
+    pile_id: &str,
+) -> Result<Vec<String>, String> {
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT document_id
+            FROM project_documents
+            WHERE project_id = ?1 AND pile_id = ?2
+            ORDER BY position, document_id
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare the paper pile: {error}"))?;
+    let document_ids = statement
+        .query_map(params![project_id, pile_id], |row| row.get::<_, String>(0))
+        .map_err(|error| format!("Could not read the paper pile: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not collect the paper pile: {error}"))?;
+    Ok(document_ids)
+}
+
+fn rewrite_project_stack_positions(
+    connection: &Connection,
+    project_id: &str,
+    stack_id: &str,
+    document_ids: &[String],
+    now: i64,
+) -> Result<(), String> {
+    for (position, document_id) in document_ids.iter().enumerate() {
+        connection
+            .execute(
+                r#"
+                UPDATE project_documents
+                SET position = ?1, updated_at = ?2
+                WHERE project_id = ?3 AND stack_id = ?4 AND document_id = ?5
+                "#,
+                params![position as i64, now, project_id, stack_id, document_id],
+            )
+            .map_err(|error| format!("Could not rewrite the project stack order: {error}"))?;
+    }
+    Ok(())
+}
+
+fn clear_singleton_piles(connection: &Connection, project_id: &str) -> Result<(), String> {
+    connection
+        .execute(
+            r#"
+            UPDATE project_documents
+            SET pile_id = NULL
+            WHERE project_id = ?1
+              AND pile_id IS NOT NULL
+              AND pile_id IN (
+                  SELECT pile_id
+                  FROM project_documents
+                  WHERE project_id = ?1 AND pile_id IS NOT NULL
+                  GROUP BY pile_id
+                  HAVING COUNT(*) < 2
+              )
+            "#,
+            params![project_id],
+        )
+        .map_err(|error| format!("Could not clean up empty paper piles: {error}"))?;
+    Ok(())
 }
 
 fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
