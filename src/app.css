@@ -56,6 +56,9 @@
   --highlight-status-border: #c6b56c;
   --highlight-status-text: #4d4211;
 
+  /* Kanban card sizing — fixed height keeps every card uniform. Adjust here. */
+  --card-height: 76px;
+
   /* Shadows */
   --shadow-page: 0 1px 4px rgba(0, 0, 0, 0.28);
   --shadow-menu: 0 2px 8px rgba(0, 0, 0, 0.22);

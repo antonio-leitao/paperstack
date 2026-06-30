@@ -6,8 +6,8 @@
     TRIGGERS,
     type DndEvent,
   } from "svelte-dnd-action";
-  import LastOpened from "./LastOpened.svelte";
   import { analysisLabel } from "./analysisLabel";
+  import { authorByline } from "./authorByline";
   import {
     BOARD_DND_TYPE,
     type BoardEntry,
@@ -21,9 +21,12 @@
     analysisStates = {},
     draggingEntryId = null,
     disableMerge = false,
+    mergeModifier = false,
+    selected = false,
     onpile,
     onopen,
     ontogglepile,
+    onselect,
     oncardcontextmenu,
     oncardkeydown,
   }: {
@@ -32,9 +35,12 @@
     analysisStates?: Record<string, AnalysisStatus>;
     draggingEntryId?: string | null;
     disableMerge?: boolean;
+    mergeModifier?: boolean;
+    selected?: boolean;
     onpile: (source: BoardEntry, target: BoardEntry) => void | Promise<void>;
     onopen: (documentId: string) => void | Promise<void>;
     ontogglepile: (pileId: string) => void;
+    onselect: (documentIds: string[]) => void;
     oncardcontextmenu: (event: MouseEvent, member: BoardMember) => void;
     oncardkeydown: (event: KeyboardEvent, member: BoardMember) => void;
   } = $props();
@@ -51,9 +57,12 @@
   const acceptsMerge = $derived(!isPileMember);
   const pileTitle = $derived(entry.pileName ?? "Untitled pile");
 
+  const memberIds = $derived(entry.members.map((member) => member.document.id));
+
   const dropEnabled = $derived(
     draggingEntryId !== null &&
       draggingEntryId !== entry.id &&
+      mergeModifier &&
       !disableMerge &&
       acceptsMerge,
   );
@@ -70,10 +79,12 @@
     return member.document.referenceTitle ?? member.document.title;
   }
 
-  function documentMeta(member: BoardMember): string {
+  function documentByline(member: BoardMember): string {
     return (
-      member.document.referenceAuthors.join(", ") ||
-      member.document.originalFilename
+      authorByline(
+        member.document.referenceAuthors,
+        member.document.referenceYear,
+      ) || member.document.originalFilename
     );
   }
 
@@ -94,19 +105,32 @@
     if (source && source.id !== entry.id) void onpile(source, entry);
   }
 
+  function handleDeckClick(event: MouseEvent) {
+    if (event.shiftKey) {
+      onselect(memberIds);
+      return;
+    }
+    if (entry.pileId) ontogglepile(entry.pileId);
+  }
+
+  function handleCardClick(event: MouseEvent, member: BoardMember) {
+    if (event.shiftKey) {
+      onselect([member.document.id]);
+      return;
+    }
+    void onopen(member.document.id);
+  }
+
   function handleDeckKeydown(event: KeyboardEvent) {
     if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-      oncardcontextmenu_key(event);
+      oncardkeydown(event, entry.members[0]);
       return;
     }
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     event.stopPropagation();
-    if (entry.pileId) ontogglepile(entry.pileId);
-  }
-
-  function oncardcontextmenu_key(event: KeyboardEvent) {
-    oncardkeydown(event, entry.members[0]);
+    if (event.shiftKey) onselect(memberIds);
+    else if (entry.pileId) ontogglepile(entry.pileId);
   }
 
   function handleCardKeydown(event: KeyboardEvent, member: BoardMember) {
@@ -117,7 +141,8 @@
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     event.stopPropagation();
-    void onopen(member.document.id);
+    if (event.shiftKey) onselect([member.document.id]);
+    else void onopen(member.document.id);
   }
 </script>
 
@@ -126,11 +151,13 @@
     <div
       class="deck"
       class:is-merge-target={isMergeTarget}
+      class:is-selected={selected}
       role="button"
       tabindex="0"
       aria-label={`Expand pile ${pileTitle}, ${entry.members.length} papers`}
       aria-expanded="false"
-      onclick={() => entry.pileId && ontogglepile(entry.pileId)}
+      aria-pressed={selected}
+      onclick={handleDeckClick}
       oncontextmenu={(event) => oncardcontextmenu(event, entry.members[0])}
       onkeydown={handleDeckKeydown}
     >
@@ -170,34 +197,38 @@
       class:is-open={openDocumentIds.includes(documentId)}
       class:is-busy={status !== null}
       class:is-merge-target={isMergeTarget}
+      class:is-selected={selected}
       role="button"
       tabindex="0"
       aria-label={`Open ${documentTitle(member)}`}
-      onclick={() => onopen(documentId)}
+      aria-pressed={selected}
+      onclick={(event) => handleCardClick(event, member)}
       oncontextmenu={(event) => oncardcontextmenu(event, member)}
       onkeydown={(event) => handleCardKeydown(event, member)}
     >
-      <div class="card-heading">
-        {#if member.document.thumbnailPath}
-          <img
-            class="thumb"
-            src={convertFileSrc(member.document.thumbnailPath)}
-            alt=""
-            loading="lazy"
-          />
-        {/if}
-        <strong class="card-title">{documentTitle(member)}</strong>
-      </div>
-      <small>{documentMeta(member)}</small>
-      {#if status}
-        <small
-          class="analysis"
-          class:is-error={analysisStates[documentId]?.phase === "error"}
-        >
-          {status}
-        </small>
+      {#if member.document.thumbnailPath}
+        <img
+          class="thumb"
+          src={convertFileSrc(member.document.thumbnailPath)}
+          alt=""
+          loading="lazy"
+        />
+      {:else}
+        <span class="thumb thumb-empty" aria-hidden="true"></span>
       {/if}
-      <LastOpened timestamp={member.document.lastViewedAt} />
+      <div class="card-text">
+        <strong class="card-title">{documentTitle(member)}</strong>
+        {#if status}
+          <small
+            class="byline analysis"
+            class:is-error={analysisStates[documentId]?.phase === "error"}
+          >
+            {status}
+          </small>
+        {:else}
+          <small class="byline">{documentByline(member)}</small>
+        {/if}
+      </div>
     </div>
   {/if}
 
@@ -230,22 +261,20 @@
 
 <style>
   .paper-pile {
-    /* === Merge-vs-reorder tradeoff knob ===
-       The centre band of a card is the "drop here to start/join a pile" zone;
-       the top and bottom edges fall through to the column so you can drop a paper
-       *between* two cards. This is the size of each edge: SMALLER % = bigger merge
-       band = easier to start a pile, but less room to reorder between cards.
-       0% = the whole card merges; 50% = no merge band at all. */
-    --pile-merge-edge: 12%;
     position: relative;
     display: grid;
     gap: 6px;
   }
 
+  /* Fixed two-column card: thumbnail (full height) | text. Fixed height keeps
+     every card identical. Adjust --card-height in app.css. */
   .paper-card {
     display: grid;
-    gap: 6px;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    height: var(--card-height);
     min-width: 0;
+    overflow: hidden;
   }
 
   .paper-card.is-open {
@@ -263,6 +292,14 @@
     outline: 2px solid var(--accent);
   }
 
+  /* Multi-selected (Shift+click), waiting to be grouped into a pile. */
+  .paper-card.is-selected,
+  .deck.is-selected {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    background: var(--accent-soft-bg);
+  }
+
   /* A skeleton card peeking out behind the target — previews the new pile formed
      when the dragged paper is dropped onto this one. */
   .merge-ghost {
@@ -276,28 +313,44 @@
 
   .merge-ghost-thumb {
     display: block;
-    width: 44px;
-    height: 56px;
-    margin: 8px;
+    height: 100%;
+    aspect-ratio: 3 / 4;
     background: var(--surface-sunken);
   }
 
-  .card-heading {
-    display: flex;
-    gap: 6px;
-    align-items: start;
+  /* Left column: the paper thumbnail, spanning the full card height. Height is an
+     explicit length (not 100%) because a % height won't resolve against the
+     auto-sized grid row — it would fall back to the image's intrinsic size. */
+  .thumb {
+    height: var(--card-height);
+    aspect-ratio: 3 / 4;
+    object-fit: cover;
+    object-position: top;
+    background: var(--surface-sunken);
   }
 
-  .thumb {
-    flex: none;
-    width: 44px;
+  /* Right column: a two-line title then a single byline line. */
+  .card-text {
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    min-width: 0;
   }
 
   .card-title {
-    min-width: 0;
+    display: -webkit-box;
     overflow: hidden;
     font-size: 14px;
+    line-height: 1.25;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .byline {
+    overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   small {
@@ -313,30 +366,37 @@
     color: var(--danger);
   }
 
-  /* Collapsed pile: thumbnails fanned out like a deck of cards (~70% overlap). */
+  /* Collapsed pile: same fixed two-column card, with papers fanned like a deck
+     (~70% overlap) down the left column. */
   .deck {
     display: grid;
-    gap: 4px;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    height: var(--card-height);
     width: 100%;
+    overflow: hidden;
     text-align: left;
   }
 
   .deck-thumbs {
     display: flex;
-    align-items: start;
+    align-items: stretch;
+    height: var(--card-height);
     overflow: hidden;
   }
 
   .deck-thumb {
     flex: none;
-    width: 44px;
-    min-height: 56px;
+    width: 40px;
+    height: var(--card-height);
     border: 1px solid var(--border-subtle);
+    object-fit: cover;
+    object-position: top;
     background: var(--surface);
   }
 
   .deck-thumb + .deck-thumb {
-    margin-left: -31px;
+    margin-left: -28px;
   }
 
   /* An extra skeleton card joining the fan — previews adding to this pile. */
@@ -352,17 +412,28 @@
   }
 
   .deck-label {
-    display: flex;
-    gap: 6px;
-    align-items: baseline;
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .deck-label strong {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 1.25;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
   .pile-drop-target {
     position: absolute;
     z-index: 2;
-    /* Centre band merges; the top/bottom edges (--pile-merge-edge) fall through to
-       the column's reorder zone. Adjust the knob on .paper-pile above. */
-    inset: var(--pile-merge-edge) 0;
+    /* The whole card is a merge target, but the zone is only enabled while Shift is
+       held during a drag (see dropEnabled); otherwise a drag just reorders. */
+    inset: 0;
     overflow: hidden;
     pointer-events: none;
     visibility: hidden;

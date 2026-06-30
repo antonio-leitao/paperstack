@@ -58,6 +58,7 @@ pub(crate) struct LibraryDocument {
     reference_id: Option<String>,
     reference_title: Option<String>,
     reference_authors: Vec<String>,
+    reference_year: Option<String>,
     created_at: i64,
     updated_at: i64,
     last_viewed_at: i64,
@@ -83,6 +84,8 @@ struct LinkedReferenceData {
     title: Option<String>,
     #[serde(default)]
     authors: Vec<String>,
+    #[serde(default)]
+    year: Option<String>,
 }
 
 // One column slot as the board sees it after a drag: the document and the pile it
@@ -947,6 +950,110 @@ pub(crate) fn rename_pile(
     load_project_documents(&app, &connection, &project_id)
 }
 
+/// Groups an arbitrary set of papers (a multi-selection) into one new pile. The
+/// papers may come from different stacks; they are all moved into the first one's
+/// stack and placed as a contiguous block at that paper's position. Any piles left
+/// below two members are dissolved afterwards.
+#[tauri::command]
+pub(crate) fn group_documents_into_pile(
+    app: AppHandle,
+    project_id: String,
+    document_ids: Vec<String>,
+) -> Result<Vec<ProjectDocument>, String> {
+    let mut seen = HashSet::new();
+    let document_ids: Vec<String> = document_ids
+        .into_iter()
+        .filter(|document_id| seen.insert(document_id.clone()))
+        .collect();
+    if document_ids.len() < 2 {
+        return Err("Select at least two papers to group".to_owned());
+    }
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start grouping the papers: {error}"))?;
+    require_project(&transaction, &project_id)?;
+
+    // Every selected paper must already belong to the project; remember the stack
+    // each one is leaving so its old column can be repacked.
+    let mut source_stacks = Vec::with_capacity(document_ids.len());
+    for document_id in &document_ids {
+        let stack_id: Option<String> = transaction
+            .query_row(
+                "SELECT stack_id FROM project_documents WHERE project_id = ?1 AND document_id = ?2",
+                params![project_id, document_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| format!("Could not inspect a selected paper: {error}"))?;
+        let Some(stack_id) = stack_id else {
+            return Err("A selected paper is not in this project".to_owned());
+        };
+        source_stacks.push(stack_id);
+    }
+
+    let target_stack_id = source_stacks[0].clone();
+    let selected_set: HashSet<&String> = document_ids.iter().collect();
+    let now = database::unix_timestamp();
+    let pile_id = Uuid::new_v4().to_string();
+
+    for document_id in &document_ids {
+        transaction
+            .execute(
+                r#"
+                UPDATE project_documents
+                SET stack_id = ?1, pile_id = ?2, updated_at = ?3
+                WHERE project_id = ?4 AND document_id = ?5
+                "#,
+                params![target_stack_id, pile_id, now, project_id, document_id],
+            )
+            .map_err(|error| format!("Could not group the papers: {error}"))?;
+    }
+
+    // Lay the target column out with the new pile as one contiguous block at the
+    // position of the first selected paper found there (otherwise appended).
+    let target_now = project_stack_document_ids(&transaction, &project_id, &target_stack_id)?;
+    let mut target_after = Vec::with_capacity(target_now.len());
+    let mut inserted = false;
+    for document_id in &target_now {
+        if selected_set.contains(document_id) {
+            if !inserted {
+                target_after.extend(document_ids.iter().cloned());
+                inserted = true;
+            }
+        } else {
+            target_after.push(document_id.clone());
+        }
+    }
+    if !inserted {
+        target_after.extend(document_ids.iter().cloned());
+    }
+    rewrite_project_stack_positions(
+        &transaction,
+        &project_id,
+        &target_stack_id,
+        &target_after,
+        now,
+    )?;
+
+    // Repack every other column the papers were pulled out of.
+    let mut repacked = HashSet::new();
+    repacked.insert(target_stack_id.clone());
+    for stack_id in &source_stacks {
+        if repacked.insert(stack_id.clone()) {
+            let order = project_stack_document_ids(&transaction, &project_id, stack_id)?;
+            rewrite_project_stack_positions(&transaction, &project_id, stack_id, &order, now)?;
+        }
+    }
+
+    clear_singleton_piles(&transaction, &project_id)?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish grouping the papers: {error}"))?;
+    emit_library_changed(&app, "projectDocument", None, "grouped");
+    load_project_documents(&app, &connection, &project_id)
+}
+
 #[tauri::command]
 pub(crate) fn remove_document_from_project(
     app: AppHandle,
@@ -1289,6 +1396,9 @@ fn load_document(
         reference_title: linked_reference
             .as_ref()
             .and_then(|reference| reference.title.clone()),
+        reference_year: linked_reference
+            .as_ref()
+            .and_then(|reference| reference.year.clone()),
         reference_authors: linked_reference
             .map(|reference| reference.authors)
             .unwrap_or_default(),

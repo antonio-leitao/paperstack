@@ -49,6 +49,7 @@
     onpile,
     onunpile,
     onrenamepile,
+    ongroup,
     externalDraggingEntryId = null,
     onchoosepdf,
     oncreatestack,
@@ -75,6 +76,7 @@
     ) => void | Promise<void>;
     onunpile: (pileId: string) => void | Promise<void>;
     onrenamepile: (pileId: string, currentName: string | null) => void;
+    ongroup: (documentIds: string[]) => void | Promise<void>;
     externalDraggingEntryId?: string | null;
     onchoosepdf: () => void | Promise<void>;
     oncreatestack: () => void;
@@ -135,6 +137,11 @@
   let boardDraggingEntryId = $state<string | null>(null);
   // Which piles are open. While open a pile is flattened into the column.
   let expandedPiles = $state<Set<string>>(new Set());
+  // Multi-selected papers (Shift+click) waiting to be grouped into a pile.
+  let selectedIds = $state<Set<string>>(new Set());
+  // Shift is the "pile" modifier: held during a drag it turns every card into a
+  // full merge target (so dropping creates/extends a pile); a plain drag reorders.
+  let shiftHeld = $state(false);
   const draggingEntryId = $derived(boardDraggingEntryId ?? externalDraggingEntryId);
 
   // True while the active drag is a single paper lifted out of an open pile. Such
@@ -156,6 +163,13 @@
     ) {
       contextMenu = null;
     }
+    // Drop any selected ids whose document has left the project.
+    if (selectedIds.size) {
+      const present = new Set(projectDocuments.map((item) => item.document.id));
+      const next = new Set<string>();
+      for (const id of selectedIds) if (present.has(id)) next.add(id);
+      if (next.size !== selectedIds.size) selectedIds = next;
+    }
   });
 
   function togglePile(pileId: string) {
@@ -163,6 +177,44 @@
     if (next.has(pileId)) next.delete(pileId);
     else next.add(pileId);
     expandedPiles = next;
+  }
+
+  // Shift+click toggles selection. A card passes its one document; a collapsed
+  // deck passes all of its members, so a whole pile selects/deselects together.
+  function toggleSelect(documentIds: string[]) {
+    if (!documentIds.length) return;
+    const next = new Set(selectedIds);
+    const allSelected = documentIds.every((id) => next.has(id));
+    for (const id of documentIds) {
+      if (allSelected) next.delete(id);
+      else next.add(id);
+    }
+    selectedIds = next;
+  }
+
+  function clearSelection() {
+    if (selectedIds.size) selectedIds = new Set();
+  }
+
+  // Selected documents in board reading order (stacks left→right, top→bottom).
+  function orderedSelection(): string[] {
+    const order: string[] = [];
+    for (const stack of sortedStacks) {
+      const docs = projectDocuments
+        .filter(
+          (item) => item.stack.id === stack.id && selectedIds.has(item.document.id),
+        )
+        .sort((left, right) => left.position - right.position);
+      for (const item of docs) order.push(item.document.id);
+    }
+    return order;
+  }
+
+  function groupSelection() {
+    const documentIds = orderedSelection();
+    if (documentIds.length < 2) return;
+    clearSelection();
+    void ongroup(documentIds);
   }
 
   function consider(stackId: string, event: CustomEvent<DndEvent<BoardEntry>>) {
@@ -327,10 +379,26 @@
   }
 
   function handleWindowKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape" && contextMenu) {
-      event.preventDefault();
-      closeContextMenu(true);
+    if (event.key === "Shift") shiftHeld = true;
+    if (event.key === "Escape") {
+      if (contextMenu) {
+        event.preventDefault();
+        closeContextMenu(true);
+      } else if (selectedIds.size) {
+        event.preventDefault();
+        clearSelection();
+      }
     }
+  }
+
+  function handleWindowKeyup(event: KeyboardEvent) {
+    if (event.key === "Shift") shiftHeld = false;
+  }
+
+  function handleWindowBlur() {
+    // A held Shift can't be released once focus is lost, so reset it defensively.
+    shiftHeld = false;
+    closeContextMenu();
   }
 
   function handleMenuKeydown(event: KeyboardEvent) {
@@ -356,7 +424,8 @@
 <svelte:window
   onpointerdown={handleWindowPointerDown}
   onkeydown={handleWindowKeydown}
-  onblur={() => closeContextMenu()}
+  onkeyup={handleWindowKeyup}
+  onblur={handleWindowBlur}
   onresize={() => closeContextMenu()}
   onwheel={() => closeContextMenu()}
 />
@@ -368,6 +437,17 @@
       <p>{projectDocuments.length} PDF{projectDocuments.length === 1 ? "" : "s"} in this project.</p>
     </div>
     <div class="actions">
+      {#if selectedIds.size}
+        <span class="selection-count">{selectedIds.size} selected</span>
+        <button
+          type="button"
+          disabled={selectedIds.size < 2}
+          onclick={groupSelection}
+        >
+          Group into pile
+        </button>
+        <button type="button" onclick={clearSelection}>Clear</button>
+      {/if}
       <button type="button" onclick={oncreatestack}>New Stack</button>
       <button type="button" onclick={onchoosepdf}>Add PDF</button>
     </div>
@@ -401,6 +481,9 @@
               {@const inPile = entry.members.length === 1 && entry.pileId !== null}
               {@const firstInPile = inPile && !isSamePileMember(column[index - 1], entry)}
               {@const lastInPile = inPile && !isSamePileMember(column[index + 1], entry)}
+              {@const isSelected =
+                entry.members.length > 0 &&
+                entry.members.every((member) => selectedIds.has(member.document.id))}
               <li
                 animate:flip={{ duration: FLIP_DURATION_MS }}
                 class:pile-member={inPile}
@@ -431,9 +514,12 @@
                     {analysisStates}
                     {draggingEntryId}
                     disableMerge={draggingPileMember}
+                    mergeModifier={shiftHeld}
+                    selected={isSelected}
                     onpile={pileEntries}
                     {onopen}
                     ontogglepile={togglePile}
+                    onselect={toggleSelect}
                     oncardcontextmenu={handleCardContextMenu}
                     oncardkeydown={handleCardKeydown}
                   />
@@ -609,6 +695,12 @@
     font-size: 12px;
   }
 
+  .selection-count {
+    align-self: center;
+    color: var(--accent);
+    font-size: 13px;
+  }
+
   .cards {
     display: grid;
     align-content: start;
@@ -616,7 +708,10 @@
     margin: 0;
     padding: 0;
     min-height: 60px;
-    overflow: auto;
+    /* Only scroll vertically; horizontal overflow from outlines/drag previews
+       must not spawn a spurious horizontal scrollbar inside the column. */
+    overflow-x: hidden;
+    overflow-y: auto;
     list-style: none;
   }
 

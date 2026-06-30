@@ -418,6 +418,20 @@
     }
   }
 
+  async function groupDocumentsIntoPile(documentIds: string[]) {
+    if (documentIds.length < 2) return;
+    try {
+      projectDocuments = await invoke<ProjectDocument[]>("group_documents_into_pile", {
+        projectId,
+        documentIds,
+      });
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+      void refreshProject();
+    }
+  }
+
   function requestRenamePile(pileId: string, currentName: string | null) {
     if (!pileId) return;
     pileNamePrompt = { pileId, currentName };
@@ -523,6 +537,7 @@
         onpile={pileProjectDocuments}
         onunpile={unpileProjectDocuments}
         onrenamepile={requestRenamePile}
+        ongroup={groupDocumentsIntoPile}
         externalDraggingEntryId={libraryDraggingEntryId}
         onchoosepdf={choosePdf}
         oncreatestack={() => (stackNamePrompt = { mode: "create" })}

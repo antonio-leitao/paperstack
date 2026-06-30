@@ -93,6 +93,7 @@ export type LibraryDocument = {
   referenceId: string | null;
   referenceTitle: string | null;
   referenceAuthors: string[];
+  referenceYear: string | null;
   createdAt: number;
   updatedAt: number;
   lastViewedAt: number;

@@ -1048,6 +1048,7 @@ pub fn run() {
             document_library::pile_project_documents,
             document_library::unpile_project_documents,
             document_library::rename_pile,
+            document_library::group_documents_into_pile,
             document_library::remove_document_from_project,
             document_library::link_document_reference,
             document_library::unlink_document_reference,
