@@ -26,11 +26,15 @@
     type RenderPageProps,
   } from "@embedpdf/plugin-scroll/svelte";
   import { Viewport } from "@embedpdf/plugin-viewport/svelte";
+  import {
+    ZoomGestureWrapper,
+    ZoomMode,
+    useZoom,
+  } from "@embedpdf/plugin-zoom/svelte";
   import CitationOverlay from "./CitationOverlay.svelte";
   import HighlightAnnotationMenu from "./HighlightAnnotationMenu.svelte";
   import HighlightSelectionMenu from "./HighlightSelectionMenu.svelte";
   import PdfLink from "./PdfLink.svelte";
-  import ViewerControls from "./ViewerControls.svelte";
   import { errorMessage } from "./errorMessage";
   import type {
     AnalysisResult,
@@ -56,6 +60,7 @@
   const desktop = isTauri();
   const annotationCapability = useAnnotationCapability();
   const selectionCapability = useSelectionCapability();
+  const zoom = useZoom(() => documentId);
   const annotationRenderers = [
     createRenderer<PdfLinkAnnoObject>({
       id: "link",
@@ -77,6 +82,20 @@
 
   function clearNativeSelection() {
     window.getSelection()?.removeAllRanges();
+  }
+
+  function handleViewportKeydown(event: KeyboardEvent) {
+    if (!event.ctrlKey && !event.metaKey) return;
+    if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      zoom.provides?.zoomIn();
+    } else if (event.key === "-") {
+      event.preventDefault();
+      zoom.provides?.zoomOut();
+    } else if (event.key === "0") {
+      event.preventDefault();
+      zoom.provides?.requestZoom(ZoomMode.FitWidth);
+    }
   }
 
   function normalizeDate(value: Date | string | undefined): Date | undefined {
@@ -279,7 +298,6 @@
 {/snippet}
 
 <div class="viewer">
-  <ViewerControls {documentId} />
   <div class="annotation-status-slot">
     {#if annotationError}
       <div class="annotation-status error" role="status">{annotationError}</div>
@@ -332,8 +350,17 @@
           </div>
         {/snippet}
 
-        <Viewport {documentId} class="viewport">
-          <Scroller {documentId} {renderPage} />
+        <Viewport
+          {documentId}
+          class="viewport"
+          role="region"
+          aria-label="PDF pages"
+          tabindex={0}
+          onkeydown={handleViewportKeydown}
+        >
+          <ZoomGestureWrapper {documentId}>
+            <Scroller {documentId} {renderPage} />
+          </ZoomGestureWrapper>
         </Viewport>
       {/if}
     {/snippet}
@@ -345,7 +372,7 @@
     display: grid;
     height: 100%;
     min-height: 0;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto 1fr;
     user-select: none;
     -webkit-user-select: none;
   }

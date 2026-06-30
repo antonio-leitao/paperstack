@@ -16,6 +16,8 @@ export async function openViewerWindow(document: LibraryDocument): Promise<void>
     title: document.referenceTitle ?? document.title ?? "PDF",
     width: 1000,
     height: 800,
+    // PDF zoom is handled by EmbedPDF; webview zoom would scale the whole UI.
+    zoomHotkeysEnabled: false,
   });
   void viewer.once("tauri://error", (event) => {
     console.error("Could not open viewer window:", event.payload);

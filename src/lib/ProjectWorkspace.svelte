@@ -36,6 +36,8 @@
   >(null);
   let stackToDelete = $state<ProjectStack | null>(null);
   let projectDocumentToRemove = $state<ProjectDocument | null>(null);
+  let documentToRename = $state<LibraryDocument | null>(null);
+  let documentToDelete = $state<LibraryDocument | null>(null);
   let openDocumentIds = $state<string[]>([]);
   // documentId -> live background-analysis status, for the per-card loaders.
   let analysisStates = $state<Record<string, AnalysisStatus>>({});
@@ -228,6 +230,88 @@
     }
   }
 
+  function submitDocumentRename(title: string) {
+    const document = documentToRename;
+    documentToRename = null;
+    if (document) void renameDocument(document, title);
+  }
+
+  async function renameDocument(document: LibraryDocument, title: string) {
+    if (title === document.title) return;
+    try {
+      const renamed = await invoke<LibraryDocument>("rename_document", {
+        id: document.id,
+        title,
+      });
+      upsertDocument(renamed);
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+    }
+  }
+
+  async function unlinkDocument(document: LibraryDocument) {
+    if (!document.referenceId) return;
+    try {
+      const unlinked = await invoke<LibraryDocument>("unlink_document_reference", {
+        documentId: document.id,
+      });
+      upsertDocument(unlinked);
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+    }
+  }
+
+  async function analyzeDocument(documentId: string) {
+    const existing = analysisStates[documentId];
+    if (existing && existing.phase !== "error") return;
+    analysisStates = {
+      ...analysisStates,
+      [documentId]: {
+        documentId,
+        phase: "queued",
+        resolved: 0,
+        total: 0,
+        error: null,
+      },
+    };
+    try {
+      await invoke("enqueue_analysis", { documentId, force: true });
+      libraryError = null;
+    } catch (error) {
+      const message = errorMessage(error);
+      analysisStates = {
+        ...analysisStates,
+        [documentId]: {
+          documentId,
+          phase: "error",
+          resolved: 0,
+          total: 0,
+          error: message,
+        },
+      };
+      libraryError = message;
+    }
+  }
+
+  async function confirmDeleteDocument() {
+    const document = documentToDelete;
+    documentToDelete = null;
+    if (!document) return;
+    try {
+      await invoke("delete_document", { id: document.id });
+      documents = documents.filter((item) => item.id !== document.id);
+      projectDocuments = projectDocuments.filter((item) => item.document.id !== document.id);
+      openDocumentIds = openDocumentIds.filter((id) => id !== document.id);
+      const { [document.id]: _removed, ...rest } = analysisStates;
+      analysisStates = rest;
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+    }
+  }
+
   async function createProjectStack(name: string) {
     try {
       const stack = await invoke<ProjectStack>("create_project_stack", { projectId, name });
@@ -366,6 +450,10 @@
         {analysisStates}
         onopen={(documentId) => void openLibraryDocument(documentId)}
         onremove={requestRemoveProjectDocument}
+        onrename={(document) => (documentToRename = document)}
+        onunlink={unlinkDocument}
+        ondelete={(document) => (documentToDelete = document)}
+        onanalyze={analyzeDocument}
         onsetorder={setProjectDocumentOrder}
         onchoosepdf={choosePdf}
         oncreatestack={() => (stackNamePrompt = { mode: "create" })}
@@ -375,6 +463,24 @@
     </section>
   </section>
 
+  <NamePrompt
+    open={documentToRename !== null}
+    title="Rename document"
+    initialValue={documentToRename?.title ?? ""}
+    confirmLabel="Rename"
+    onconfirm={submitDocumentRename}
+    oncancel={() => (documentToRename = null)}
+  />
+  <ConfirmDialog
+    open={documentToDelete !== null}
+    title="Delete document"
+    message={documentToDelete
+      ? `Delete "${documentToDelete.referenceTitle ?? documentToDelete.title}" and its managed PDF? It will be removed from every project.`
+      : ""}
+    confirmLabel="Delete"
+    onconfirm={confirmDeleteDocument}
+    oncancel={() => (documentToDelete = null)}
+  />
   <NamePrompt
     open={stackNamePrompt !== null}
     title={stackNamePrompt?.mode === "rename" ? "Rename stack" : "New stack"}

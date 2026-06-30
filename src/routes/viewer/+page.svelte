@@ -4,8 +4,6 @@
   import { readFile } from "@tauri-apps/plugin-fs";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onMount } from "svelte";
-  import ConfirmDialog from "$lib/ConfirmDialog.svelte";
-  import NamePrompt from "$lib/NamePrompt.svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
   import ReferenceListItem from "$lib/ReferenceListItem.svelte";
   import { analysisProgressMessage } from "$lib/analysisLabel";
@@ -29,10 +27,8 @@
   let grobidStatus = $state<string | null>(null);
   let resolvingReferenceIds = $state<string[]>([]);
   let dismissedSourceId = $state<string | null>(null);
-  let rightSidebarOpen = $state(true);
+  let rightSidebarOpen = $state(false);
   let libraryDocuments = $state<LibraryDocument[]>([]);
-  let renameOpen = $state(false);
-  let deleteOpen = $state(false);
 
   // Maps a reference's shared id to a library document that holds its PDF, so we
   // can offer to open that PDF in its own window.
@@ -48,9 +44,6 @@
     return (reference.sharedId && linkedDocuments[reference.sharedId]) || null;
   }
 
-  const calloutCount = $derived(
-    analysis?.references.reduce((total, reference) => total + reference.calloutBoxes.length, 0) ?? 0,
-  );
   const sourceMatch = $derived(
     analysis?.sourceReference?.resolutionStatus === "resolved" &&
       (analysis.sourceReference.resolutionConfidence ?? 0) >= 0.9 &&
@@ -221,47 +214,6 @@
     }
   }
 
-  function submitRename(title: string) {
-    renameOpen = false;
-    void renameDocument(title);
-  }
-
-  async function renameDocument(title: string) {
-    if (!libraryDocument || title === libraryDocument.title) return;
-    try {
-      libraryDocument = await invoke<LibraryDocument>("rename_document", {
-        id: libraryDocument.id,
-        title,
-      });
-      loadError = null;
-    } catch (error) {
-      loadError = errorMessage(error);
-    }
-  }
-
-  async function unlinkDocument() {
-    if (!libraryDocument?.referenceId) return;
-    try {
-      libraryDocument = await invoke<LibraryDocument>("unlink_document_reference", {
-        documentId: libraryDocument.id,
-      });
-      loadError = null;
-    } catch (error) {
-      loadError = errorMessage(error);
-    }
-  }
-
-  async function confirmDelete() {
-    deleteOpen = false;
-    if (!libraryDocument) return;
-    try {
-      await invoke("delete_document", { id: libraryDocument.id });
-      await getCurrentWebviewWindow().close();
-    } catch (error) {
-      loadError = errorMessage(error);
-    }
-  }
-
   async function linkSourceReference() {
     if (!libraryDocument || !sourceMatch?.sharedId) return;
     try {
@@ -285,37 +237,6 @@
 </svelte:head>
 
 <main>
-  <header class="toolbar">
-    <strong>{libraryDocument?.referenceTitle ?? libraryDocument?.title ?? pdfName ?? "PDF"}</strong>
-
-    {#if libraryDocument}
-      <button type="button" onclick={() => (renameOpen = true)}>Rename</button>
-      {#if libraryDocument.referenceId}
-        <button type="button" onclick={() => void unlinkDocument()}>Unlink reference</button>
-      {/if}
-      <button type="button" onclick={() => (deleteOpen = true)}>Delete</button>
-      <button type="button" onclick={() => void reanalyze()} disabled={analyzing}>
-        {analyzing ? "Analyzing..." : analysisError ? "Retry analysis" : "Analyze again"}
-      </button>
-    {/if}
-
-    <span class="status">
-      {#if analyzing}
-        {grobidStatus ?? `Analyzing ${pdfName}...`}
-      {:else if analysis}
-        {analysis.references.length} references, {calloutCount} callouts
-      {:else if pdfName}
-        {pdfName}
-      {:else}
-        Loading...
-      {/if}
-    </span>
-
-    <button type="button" class="push-right" onclick={() => (rightSidebarOpen = !rightSidebarOpen)}>
-      {rightSidebarOpen ? "Hide references" : "Show references"}
-    </button>
-  </header>
-
   {#if loadError || analysisError || analysis?.enrichmentWarning}
     <div class:error={Boolean(loadError || analysisError)} class="notice" role="status">
       {loadError ?? analysisError ?? analysis?.enrichmentWarning}
@@ -336,6 +257,15 @@
 
   <section class="workspace" class:right-closed={!rightSidebarOpen}>
     <div class="viewer-panel">
+      {#if !rightSidebarOpen}
+        <button
+          type="button"
+          class="show-references"
+          onclick={() => (rightSidebarOpen = true)}
+        >
+          Show references
+        </button>
+      {/if}
       {#if pdfBuffer}
         {#key pdfBuffer}
           <PdfViewer
@@ -354,9 +284,17 @@
 
     {#if rightSidebarOpen}
       <aside class="references" aria-label="Extracted references">
-        <h2>References</h2>
+        <header class="references-header">
+          <h2>References</h2>
+          <div class="references-actions">
+            <button type="button" onclick={() => void reanalyze()} disabled={analyzing || !documentId}>
+              {analyzing ? "Analyzing…" : analysisError ? "Retry analysis" : "Analyze again"}
+            </button>
+            <button type="button" onclick={() => (rightSidebarOpen = false)}>Hide</button>
+          </div>
+        </header>
         {#if analyzing && !analysis}
-          <p>Extracting and resolving references...</p>
+          <p>{grobidStatus ?? "Extracting and resolving references..."}</p>
         {:else if analysis?.references.length}
           <ol>
             {#each analysis.references as reference (reference.id)}
@@ -375,23 +313,6 @@
       </aside>
     {/if}
   </section>
-
-  <NamePrompt
-    open={renameOpen}
-    title="Rename document"
-    initialValue={libraryDocument?.title ?? ""}
-    confirmLabel="Rename"
-    onconfirm={submitRename}
-    oncancel={() => (renameOpen = false)}
-  />
-  <ConfirmDialog
-    open={deleteOpen}
-    title="Delete document"
-    message={libraryDocument ? `Delete "${libraryDocument.title}" and its managed PDF?` : ""}
-    confirmLabel="Delete"
-    onconfirm={confirmDelete}
-    oncancel={() => (deleteOpen = false)}
-  />
 </main>
 
 <style>
@@ -403,33 +324,9 @@
   }
 
   main {
-    display: grid;
-    height: 100vh;
-    grid-template-rows: auto auto minmax(0, 1fr);
-  }
-
-  .toolbar {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .toolbar strong,
-  .status {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .status {
-    font-size: 13px;
-  }
-
-  .push-right {
-    margin-left: auto;
+    flex-direction: column;
+    height: 100vh;
   }
 
   .notice,
@@ -454,8 +351,8 @@
 
   .workspace {
     display: grid;
+    flex: 1;
     min-height: 0;
-    grid-row: 3;
     grid-template-columns: minmax(0, 1fr) 300px;
   }
 
@@ -464,8 +361,16 @@
   }
 
   .viewer-panel {
+    position: relative;
     min-width: 0;
     min-height: 0;
+  }
+
+  .show-references {
+    position: absolute;
+    z-index: 4;
+    top: 8px;
+    right: 8px;
   }
 
   .references {
@@ -474,6 +379,26 @@
     overflow: auto;
     padding: 10px;
     border-left: 1px solid var(--border);
+  }
+
+  .references-header,
+  .references-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .references-header {
+    justify-content: space-between;
+  }
+
+  .references-header h2 {
+    margin: 0;
+  }
+
+  .references-actions {
+    flex-wrap: wrap;
+    justify-content: end;
   }
 
   .references ol {
