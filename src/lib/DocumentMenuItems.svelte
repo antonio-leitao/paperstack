@@ -7,6 +7,7 @@
     projectActionLabel,
     projectActionDisabled = false,
     onopen,
+    onshowinfolder,
     onrename,
     onlinkbibtex,
     onunlink,
@@ -19,6 +20,7 @@
     projectActionLabel: string;
     projectActionDisabled?: boolean;
     onopen: () => void;
+    onshowinfolder: () => void;
     onrename: () => void;
     onlinkbibtex: () => void;
     onunlink: () => void;
@@ -30,6 +32,9 @@
 
 <div class="items">
   <button type="button" role="menuitem" onclick={onopen}>Open</button>
+  <button type="button" role="menuitem" onclick={onshowinfolder}>
+    Show in Folder
+  </button>
   <button type="button" role="menuitem" onclick={onrename}>Rename</button>
   {#if document.referenceId}
     <button type="button" role="menuitem" onclick={onunlink}>

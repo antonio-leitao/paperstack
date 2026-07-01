@@ -5,12 +5,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::HashSet,
+    io,
     path::{Path, PathBuf},
+    time::{Duration, SystemTime},
 };
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 const HIGHLIGHT_ANNOTATION_SUBTYPE: i64 = 9;
+const HANDOFF_RETENTION: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const MAX_HANDOFF_DOCUMENTS: usize = 500;
+const MAX_HANDOFF_STEM_BYTES: usize = 180;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -216,6 +222,254 @@ pub(crate) fn import_document(app: AppHandle, path: String) -> Result<LibraryDoc
     let document = load_document(&app, &connection, &id)?;
     emit_library_changed(&app, "document", Some(&id), "created");
     Ok(document)
+}
+
+#[tauri::command]
+pub(crate) fn prepare_documents_for_folder(
+    app: AppHandle,
+    document_ids: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let mut seen_ids = HashSet::new();
+    let document_ids = document_ids
+        .into_iter()
+        .filter(|id| seen_ids.insert(id.clone()))
+        .collect::<Vec<_>>();
+    if document_ids.is_empty() {
+        return Err("Choose at least one paper".to_owned());
+    }
+    if document_ids.len() > MAX_HANDOFF_DOCUMENTS {
+        return Err(format!(
+            "Show at most {MAX_HANDOFF_DOCUMENTS} papers at once"
+        ));
+    }
+
+    cleanup_handoff_directories(&app);
+    let connection = database::connection(&app)?;
+    let documents = document_ids
+        .iter()
+        .map(|id| load_document(&app, &connection, id))
+        .collect::<Result<Vec<_>, _>>()?;
+    let directory = create_handoff_directory(&app, documents.len())?;
+    let mut used_names = HashSet::new();
+    let mut paths = Vec::with_capacity(documents.len());
+
+    for document in documents {
+        let filename = unique_handoff_filename(&document, &mut used_names);
+        let source = document_path(&app, &document.id)?;
+        let destination = directory.join(filename);
+        if let Err(error) = copy_for_handoff(&source, &destination) {
+            let _ = std::fs::remove_dir_all(&directory);
+            return Err(format!(
+                "Could not prepare {}: {error}",
+                document.original_filename
+            ));
+        }
+        paths.push(destination.to_string_lossy().into_owned());
+    }
+
+    Ok(paths)
+}
+
+pub(crate) fn cleanup_handoff_directories(app: &AppHandle) {
+    let Ok(root) = handoff_root(app) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let now = SystemTime::now();
+    for entry in entries.flatten() {
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if !metadata.is_dir() {
+            continue;
+        }
+        let expired = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|age| age >= HANDOFF_RETENTION);
+        if expired {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+fn handoff_root(app: &AppHandle) -> Result<PathBuf, String> {
+    let root = app
+        .path()
+        .app_cache_dir()
+        .map_err(|error| format!("Could not determine the application cache directory: {error}"))?
+        .join("handoff");
+    std::fs::create_dir_all(&root)
+        .map_err(|error| format!("Could not create the handoff directory: {error}"))?;
+    Ok(root)
+}
+
+fn create_handoff_directory(app: &AppHandle, paper_count: usize) -> Result<PathBuf, String> {
+    let root = handoff_root(app)?;
+    let label = if paper_count == 1 {
+        "Research PDF — 1 paper".to_owned()
+    } else {
+        format!("Research PDF — {paper_count} papers")
+    };
+    for index in 1..=10_000 {
+        let name = if index == 1 {
+            label.clone()
+        } else {
+            format!("{label} ({index})")
+        };
+        let path = root.join(name);
+        match std::fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!("Could not create the handoff folder: {error}"));
+            }
+        }
+    }
+    Err("Could not choose a unique handoff folder".to_owned())
+}
+
+fn unique_handoff_filename(document: &LibraryDocument, used_names: &mut HashSet<String>) -> String {
+    let preferred = document
+        .reference_title
+        .as_deref()
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or(&document.title);
+    let fallback = Path::new(&document.original_filename)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Paper");
+    let base = handoff_file_stem(preferred, fallback);
+
+    for index in 1.. {
+        let suffix = if index == 1 {
+            String::new()
+        } else {
+            format!(" ({index})")
+        };
+        let available = MAX_HANDOFF_STEM_BYTES.saturating_sub(suffix.len());
+        let stem = truncate_utf8(&base, available).trim_end();
+        let filename = format!("{stem}{suffix}.pdf");
+        if used_names.insert(filename.to_lowercase()) {
+            return filename;
+        }
+    }
+    unreachable!("the numeric filename suffix always produces a unique name")
+}
+
+fn handoff_file_stem(preferred: &str, fallback: &str) -> String {
+    let sanitize = |value: &str| {
+        let value = value
+            .nfc()
+            .map(|character| {
+                if character.is_control()
+                    || matches!(
+                        character,
+                        '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+                    )
+                {
+                    ' '
+                } else {
+                    character
+                }
+            })
+            .collect::<String>();
+        value
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim_matches([' ', '.'])
+            .to_owned()
+    };
+
+    let mut stem = sanitize(preferred);
+    if stem.is_empty() {
+        stem = sanitize(fallback);
+    }
+    if stem.is_empty() {
+        stem = "Paper".to_owned();
+    }
+    if stem
+        .get(stem.len().saturating_sub(4)..)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case(".pdf"))
+    {
+        stem.truncate(stem.len() - 4);
+        stem = stem.trim_matches([' ', '.']).to_owned();
+    }
+    if stem.is_empty() {
+        stem = "Paper".to_owned();
+    }
+    stem = truncate_utf8(&stem, MAX_HANDOFF_STEM_BYTES)
+        .trim_matches([' ', '.'])
+        .to_owned();
+    if is_reserved_windows_filename(&stem) {
+        stem.insert_str(0, "Paper ");
+    }
+    stem
+}
+
+fn truncate_utf8(value: &str, max_bytes: usize) -> &str {
+    if value.len() <= max_bytes {
+        return value;
+    }
+    let mut end = max_bytes;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    &value[..end]
+}
+
+fn is_reserved_windows_filename(value: &str) -> bool {
+    let uppercase = value.to_ascii_uppercase();
+    let device_name = uppercase.split('.').next().unwrap_or(&uppercase);
+    matches!(device_name, "CON" | "PRN" | "AUX" | "NUL")
+        || device_name
+            .strip_prefix("COM")
+            .or_else(|| device_name.strip_prefix("LPT"))
+            .is_some_and(|suffix| suffix.len() == 1 && matches!(suffix.as_bytes()[0], b'1'..=b'9'))
+}
+
+fn copy_for_handoff(source: &Path, destination: &Path) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        if clone_for_handoff(source, destination).is_ok() {
+            return Ok(());
+        }
+        // clonefile is atomic, but remove defensively before falling back in
+        // case a future implementation leaves a destination behind on error.
+        let _ = std::fs::remove_file(destination);
+    }
+    std::fs::copy(source, destination).map(|_| ())
+}
+
+#[cfg(target_os = "macos")]
+fn clone_for_handoff(source: &Path, destination: &Path) -> io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let source = CString::new(source.as_os_str().as_bytes()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "source path contains a null byte",
+        )
+    })?;
+    let destination = CString::new(destination.as_os_str().as_bytes()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "destination path contains a null byte",
+        )
+    })?;
+    // SAFETY: both C strings remain alive for the call, point to valid
+    // null-terminated paths, and clonefile does not retain either pointer.
+    let result = unsafe { libc::clonefile(source.as_ptr(), destination.as_ptr(), 0) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
 #[tauri::command]
@@ -2059,6 +2313,44 @@ fn name_key(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitizes_handoff_filenames_for_every_desktop_platform() {
+        assert_eq!(
+            handoff_file_stem("  A Study: draft / review?.pdf  ", "fallback"),
+            "A Study draft review"
+        );
+        assert_eq!(handoff_file_stem("...", "source-file"), "source-file");
+        assert_eq!(handoff_file_stem("CON", "fallback"), "Paper CON");
+        assert_eq!(
+            handoff_file_stem("LPT1.notes", "fallback"),
+            "Paper LPT1.notes"
+        );
+    }
+
+    #[test]
+    fn truncates_handoff_filenames_on_utf8_boundaries() {
+        let title = "é".repeat(MAX_HANDOFF_STEM_BYTES);
+        let stem = handoff_file_stem(&title, "fallback");
+        assert!(stem.len() <= MAX_HANDOFF_STEM_BYTES);
+        assert!(stem.is_char_boundary(stem.len()));
+    }
+
+    #[test]
+    fn handoff_files_are_independent_from_library_files() {
+        let directory =
+            std::env::temp_dir().join(format!("research-pdf-handoff-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("source.pdf");
+        let destination = directory.join("destination.pdf");
+        std::fs::write(&source, b"original").unwrap();
+
+        copy_for_handoff(&source, &destination).unwrap();
+        std::fs::write(&destination, b"changed").unwrap();
+
+        assert_eq!(std::fs::read(&source).unwrap(), b"original");
+        let _ = std::fs::remove_dir_all(directory);
+    }
 
     #[test]
     fn recognizes_pdf_headers_within_the_first_kilobyte() {

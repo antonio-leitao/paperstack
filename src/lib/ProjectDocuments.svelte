@@ -61,6 +61,7 @@
     openDocumentIds = [],
     analysisStates = {},
     onopen,
+    onshowinfolder,
     onremove,
     onrename,
     onlinkbibtex,
@@ -84,6 +85,7 @@
     openDocumentIds?: string[];
     analysisStates?: Record<string, AnalysisStatus>;
     onopen: (documentId: string) => void | Promise<void>;
+    onshowinfolder: (documentIds: string[]) => void | Promise<void>;
     onremove: (documentId: string) => void | Promise<void>;
     onrename: (document: BoardMember["document"]) => void;
     onlinkbibtex: (document: BoardMember["document"]) => void;
@@ -316,6 +318,13 @@
     void ongroup(documentIds);
   }
 
+  function pileDocumentIds(pileId: string): string[] {
+    return projectDocuments
+      .filter((entry) => entry.pileId === pileId)
+      .sort((left, right) => left.position - right.position)
+      .map((entry) => entry.document.id);
+  }
+
   function previewFromConsider(
     stackId: string,
     event: CustomEvent<DndEvent<BoardEntry>>,
@@ -399,10 +408,7 @@
     }
     if (entryId.startsWith(PILE_ID_PREFIX)) {
       const pileId = entryId.slice(PILE_ID_PREFIX.length);
-      return projectDocuments
-        .filter((entry) => entry.pileId === pileId)
-        .sort((left, right) => left.position - right.position)
-        .map((entry) => entry.document.id);
+      return pileDocumentIds(pileId);
     }
     return [];
   }
@@ -824,6 +830,12 @@
         <span class="selection-count">{selectedIds.size} selected</span>
         <button
           type="button"
+          onclick={() => void onshowinfolder(orderedSelection())}
+        >
+          Show in Folder
+        </button>
+        <button
+          type="button"
           disabled={selectedIds.size < 2}
           onclick={groupSelection}
         >
@@ -959,6 +971,16 @@
         role="menuitem"
         onclick={() =>
           runPileContextAction((menu) =>
+            onshowinfolder(pileDocumentIds(menu.pileId)))}
+      >
+        Show in Folder
+      </button>
+      <hr />
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runPileContextAction((menu) =>
             onrenamepile(menu.pileId, menu.pileName),
           )}
       >
@@ -991,6 +1013,9 @@
         projectActionLabel="Remove from project"
         onopen={() =>
           runDocumentContextAction((menu) => onopen(menu.documentId))}
+        onshowinfolder={() =>
+          runDocumentContextAction((menu) =>
+            onshowinfolder([menu.documentId]))}
         onrename={() =>
           runDocumentContextAction((menu) => onrename(menu.member.document))}
         onlinkbibtex={() =>

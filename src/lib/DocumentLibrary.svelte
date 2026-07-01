@@ -25,6 +25,7 @@
     onunlinkedfilterchange,
     onnotinprojectfilterchange,
     onopen,
+    onshowinfolder,
     onadd,
     onrename,
     onlinkbibtex,
@@ -46,6 +47,7 @@
     onunlinkedfilterchange: (unlinkedOnly: boolean) => void;
     onnotinprojectfilterchange: (notInProjectOnly: boolean) => void;
     onopen: (documentId: string) => void | Promise<void>;
+    onshowinfolder: (documentIds: string[]) => void | Promise<void>;
     onadd: (documentId: string) => void | Promise<void>;
     onrename: (document: LibraryDocument) => void;
     onlinkbibtex: (document: LibraryDocument) => void;
@@ -348,6 +350,8 @@
       projectActionLabel="Add to project"
       projectActionDisabled={projectDocumentIdSet.has(contextMenu.document.id)}
       onopen={() => runContextAction((menu) => onopen(menu.document.id))}
+      onshowinfolder={() =>
+        runContextAction((menu) => onshowinfolder([menu.document.id]))}
       onrename={() => runContextAction((menu) => onrename(menu.document))}
       onlinkbibtex={() =>
         runContextAction((menu) => onlinkbibtex(menu.document))}

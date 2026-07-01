@@ -2,6 +2,7 @@
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import {
     getAllWebviewWindows,
@@ -268,6 +269,21 @@
     try {
       const document = known ?? (await invoke<LibraryDocument>("get_document", { id }));
       await openViewerWindow(document);
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+    }
+  }
+
+  async function showDocumentsInFolder(documentIds: string[]) {
+    if (!desktop) return;
+    const ids = [...new Set(documentIds)];
+    if (!ids.length) return;
+    try {
+      const paths = await invoke<string[]>("prepare_documents_for_folder", {
+        documentIds: ids,
+      });
+      await revealItemInDir(paths);
       libraryError = null;
     } catch (error) {
       libraryError = errorMessage(error);
@@ -617,6 +633,7 @@
           onunlinkedfilterchange={(value) => (libraryUnlinkedOnly = value)}
           onnotinprojectfilterchange={(value) => (libraryNotInProjectOnly = value)}
           onopen={(documentId) => void openLibraryDocument(documentId)}
+          onshowinfolder={showDocumentsInFolder}
           onadd={addLibraryDocument}
           onrename={(document) => (documentToRename = document)}
           onlinkbibtex={(document) => (documentToLinkFromBibtex = document)}
@@ -637,6 +654,7 @@
         {openDocumentIds}
         {analysisStates}
         onopen={(documentId) => void openLibraryDocument(documentId)}
+        onshowinfolder={showDocumentsInFolder}
         onremove={requestRemoveProjectDocument}
         onrename={(document) => (documentToRename = document)}
         onlinkbibtex={(document) => (documentToLinkFromBibtex = document)}

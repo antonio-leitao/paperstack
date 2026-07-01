@@ -1020,6 +1020,12 @@ pub fn run() {
             // one yet (e.g. imported before this feature), in the background.
             let thumbnail_handle = app.handle().clone();
             std::thread::spawn(move || thumbnail::recover_missing_thumbnails(thumbnail_handle));
+            // Handoff copies are intentionally retained after Finder opens so
+            // receiving apps can finish reading them. Remove only stale folders.
+            let handoff_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                document_library::cleanup_handoff_directories(&handoff_handle)
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1028,6 +1034,7 @@ pub fn run() {
             analysis_state,
             get_analysis,
             document_library::import_document,
+            document_library::prepare_documents_for_folder,
             document_library::list_documents,
             document_library::get_document,
             document_library::open_document,

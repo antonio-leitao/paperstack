@@ -40,3 +40,6 @@ uuid = { version = "1", features = ["v4"] }
 # encodes the JPEG. (hayro needs a recent toolchain: MSRV 1.92, edition 2024.)
 hayro = "0.7"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
