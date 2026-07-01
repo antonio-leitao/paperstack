@@ -363,7 +363,7 @@
     padding: 7px 10px;
     border-bottom: 1px solid var(--border);
     background: var(--warning-bg);
-    font-size: 13px;
+    font-size: var(--font-size-small);
   }
 
   .notice.error {
@@ -434,7 +434,7 @@
 
   .references li {
     margin-bottom: 13px;
-    font-size: 13px;
+    font-size: var(--font-size-small);
   }
 
   .references li.is-busy {

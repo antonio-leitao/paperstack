@@ -9,10 +9,9 @@
     type BoardEntry,
   } from "./boardDnd";
   import { analysisLabel } from "./analysisLabel";
+  import { authorByline } from "./authorByline";
   import { searchDocuments } from "./searchDocuments";
   import type { AnalysisStatus, LibraryDocument } from "./types";
-
-  type LinkFilter = "all" | "linked" | "unlinked";
 
   let {
     documents,
@@ -20,10 +19,10 @@
     openDocumentIds = [],
     analysisStates = {},
     query,
-    linkFilter,
+    unlinkedOnly = false,
     notInProjectOnly = false,
     onquery,
-    onfilterchange,
+    onunlinkedfilterchange,
     onnotinprojectfilterchange,
     onopen,
     onadd,
@@ -41,10 +40,10 @@
     openDocumentIds?: string[];
     analysisStates?: Record<string, AnalysisStatus>;
     query: string;
-    linkFilter: LinkFilter;
+    unlinkedOnly?: boolean;
     notInProjectOnly?: boolean;
     onquery: (query: string) => void;
-    onfilterchange: (filter: LinkFilter) => void;
+    onunlinkedfilterchange: (unlinkedOnly: boolean) => void;
     onnotinprojectfilterchange: (notInProjectOnly: boolean) => void;
     onopen: (documentId: string) => void | Promise<void>;
     onadd: (documentId: string) => void | Promise<void>;
@@ -63,7 +62,7 @@
     searchDocuments(
       documents.filter(
         (document) =>
-          isInLinkFilter(document, linkFilter) &&
+          (!unlinkedOnly || !document.referenceId) &&
           (!notInProjectOnly || !projectDocumentIdSet.has(document.id)),
       ),
       query,
@@ -122,19 +121,18 @@
     ondragend();
   }
 
-  function isInLinkFilter(document: LibraryDocument, filter: LinkFilter): boolean {
-    if (filter === "linked") return Boolean(document.referenceId);
-    if (filter === "unlinked") return !document.referenceId;
-    return true;
-  }
 
   function documentTitle(document: LibraryDocument): string {
     return document.referenceTitle ?? document.title;
   }
 
+  // Same byline as the project cards: "Author et al. year", falling back to the
+  // filename when there's no linked reference metadata.
   function documentMeta(document: LibraryDocument): string {
-    if (!document.referenceId) return "Unlinked";
-    return document.referenceAuthors.join(", ") || document.originalFilename;
+    return (
+      authorByline(document.referenceAuthors, document.referenceYear) ||
+      document.originalFilename
+    );
   }
 
   async function showContextMenu(menu: LibraryContextMenu) {
@@ -261,34 +259,12 @@
   </label>
 
   <fieldset>
-    <legend>Reference link</legend>
+    <legend>Filter</legend>
     <label>
       <input
-        type="radio"
-        name="library-link-filter"
-        value="all"
-        checked={linkFilter === "all"}
-        onchange={() => onfilterchange("all")}
-      />
-      All
-    </label>
-    <label>
-      <input
-        type="radio"
-        name="library-link-filter"
-        value="linked"
-        checked={linkFilter === "linked"}
-        onchange={() => onfilterchange("linked")}
-      />
-      Linked
-    </label>
-    <label>
-      <input
-        type="radio"
-        name="library-link-filter"
-        value="unlinked"
-        checked={linkFilter === "unlinked"}
-        onchange={() => onfilterchange("unlinked")}
+        type="checkbox"
+        checked={unlinkedOnly}
+        onchange={(event) => onunlinkedfilterchange(event.currentTarget.checked)}
       />
       Unlinked
     </label>
@@ -298,7 +274,7 @@
         checked={notInProjectOnly}
         onchange={(event) => onnotinprojectfilterchange(event.currentTarget.checked)}
       />
-      Not in project only
+      Unfiled
     </label>
   </fieldset>
 
@@ -325,13 +301,12 @@
             <button
               type="button"
               class:is-open={openDocumentIds.includes(document.id)}
-              class:is-in-project={inProject}
               onclick={() => void onopen(document.id)}
               oncontextmenu={(event) => openContextMenu(event, document)}
               onkeydown={(event) => handleDocumentKeydown(event, document)}
             >
               <span class="document-summary">
-                <span>{documentTitle(document)}</span>
+                <strong class="document-title">{documentTitle(document)}</strong>
                 <small>{documentMeta(document)}</small>
                 {#if status}
                   <small
@@ -449,16 +424,12 @@
     box-shadow: inset 3px 0 0 var(--accent);
   }
 
-  .document-list-row > button.is-in-project {
-    opacity: 0.62;
-  }
-
   .document-summary {
     min-width: 0;
   }
 
   .document-list .document-summary,
-  .document-list .document-summary span,
+  .document-list .document-title,
   .document-list small {
     display: block;
     overflow: hidden;
@@ -466,9 +437,9 @@
     white-space: nowrap;
   }
 
-  small {
-    color: var(--text-muted);
-    font-size: 12px;
+  /* Match the project card title: bold, 14px. */
+  .document-title {
+    font-size: var(--font-size-title);
   }
 
   .analysis {
@@ -477,17 +448,6 @@
 
   .analysis.is-error {
     color: var(--danger);
-  }
-
-  .context-menu {
-    position: fixed;
-    z-index: 1000;
-    display: grid;
-    min-width: 160px;
-    padding: 4px;
-    border: 1px solid var(--border-strong);
-    background: var(--surface);
-    box-shadow: var(--shadow-menu);
   }
 
   p {

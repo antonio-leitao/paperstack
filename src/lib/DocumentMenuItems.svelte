@@ -64,21 +64,10 @@
   <button type="button" role="menuitem" onclick={ondelete}>Delete</button>
 </div>
 
+<!-- Rendered only inside .context-menu; the button + hr chrome is defined there
+     (see app.css) so both menu call sites share one style. -->
 <style>
   .items {
     display: grid;
-  }
-
-  button {
-    padding: 4px 8px;
-    text-align: left;
-    white-space: nowrap;
-  }
-
-  hr {
-    width: 100%;
-    margin: 4px 0;
-    border: 0;
-    border-top: 1px solid var(--border-subtle);
   }
 </style>

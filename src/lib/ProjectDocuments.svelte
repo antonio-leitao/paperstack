@@ -8,6 +8,7 @@
   } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import { tick } from "svelte";
+  import AnalysisProgressBar from "./AnalysisProgressBar.svelte";
   import DocumentMenuItems from "./DocumentMenuItems.svelte";
   import DropPlaceholder from "./DropPlaceholder.svelte";
   import PaperPile from "./PaperPile.svelte";
@@ -496,6 +497,14 @@
     );
   }
 
+  // Live analysis statuses for an entry's papers, feeding the card's bottom
+  // progress bar (a collapsed pile shows its members' combined progress).
+  function entryStatuses(entry: BoardEntry): AnalysisStatus[] {
+    return entry.members
+      .map((member) => analysisStates[member.document.id])
+      .filter((status): status is AnalysisStatus => Boolean(status));
+  }
+
   function isShadowEntry(entry: BoardEntry): boolean {
     return Boolean(
       (entry as unknown as Record<string, unknown>)[SHADOW_ITEM_MARKER_PROPERTY_NAME],
@@ -859,11 +868,17 @@
               {@const isSelected =
                 entry.members.length > 0 &&
                 entry.members.every((member) => selectedIds.has(member.document.id))}
+              {@const isOpenEntry =
+                !shadowEntry &&
+                entry.members.some((member) =>
+                  openDocumentIds.includes(member.document.id),
+                )}
               <li
                 animate:flip={{ duration: FLIP_DURATION_MS }}
                 class:pile-member={inPile}
                 class:pile-first={firstInPile}
                 class:pile-last={lastInPile}
+                class:is-open={isOpenEntry}
                 aria-label={entryLabel(entry)}
                 data-is-dnd-shadow-item-hint={shadowEntry}
               >
@@ -904,6 +919,10 @@
                     oncardkeydown={handleCardKeydown}
                     onpilecontextmenu={handlePileContextMenu}
                     onpilekeydown={handlePileKeydown}
+                  />
+                  <AnalysisProgressBar
+                    edge="bottom"
+                    statuses={entryStatuses(entry)}
                   />
                 {/if}
               </li>
@@ -1018,7 +1037,7 @@
   }
 
   h1 {
-    font-size: 20px;
+    font-size: var(--font-size-heading);
   }
 
   .columns {
@@ -1055,13 +1074,13 @@
 
   .count {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--font-size-small);
   }
 
   .selection-count {
     align-self: center;
     color: var(--accent);
-    font-size: 13px;
+    font-size: var(--font-size-small);
   }
 
   .cards {
@@ -1082,12 +1101,18 @@
   }
 
   li {
+    position: relative;
     display: grid;
     gap: 6px;
     margin-bottom: 8px;
     border: 1px solid var(--border-subtle);
     padding: 8px;
     background: var(--surface);
+  }
+
+  /* Open paper: its card border turns accent, matching the library highlight. */
+  .cards li.is-open {
+    border-color: var(--accent);
   }
 
   /* An open pile: its members share one accent border so it reads as a single
@@ -1144,33 +1169,9 @@
   .pile-header-name {
     min-width: 0;
     overflow: hidden;
-    font-size: 13px;
+    font-size: var(--font-size-small);
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .context-menu {
-    position: fixed;
-    z-index: 1000;
-    display: grid;
-    min-width: 160px;
-    padding: 4px;
-    border: 1px solid var(--border-strong);
-    background: var(--surface);
-    box-shadow: var(--shadow-menu);
-  }
-
-  .context-menu button {
-    padding: 4px 8px;
-    text-align: left;
-    white-space: nowrap;
-  }
-
-  .context-menu hr {
-    width: 100%;
-    margin: 4px 0;
-    border: 0;
-    border-top: 1px solid var(--border-subtle);
   }
 
   .empty {

@@ -186,7 +186,7 @@
 
   .count {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: var(--font-size-small);
   }
 
   .empty {

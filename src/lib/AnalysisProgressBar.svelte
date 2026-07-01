@@ -6,7 +6,7 @@
     edge = "inline",
   }: {
     statuses?: AnalysisStatus[];
-    edge?: "top" | "inline";
+    edge?: "top" | "bottom" | "inline";
   } = $props();
 
   const resolving = $derived(
@@ -29,6 +29,7 @@
   <div
     class="analysis-progress"
     class:top={edge === "top"}
+    class:bottom={edge === "bottom"}
     class:inline={edge === "inline"}
     role="progressbar"
     aria-label="Document analysis progress"
@@ -45,17 +46,29 @@
 
 <style>
   .analysis-progress {
-    height: 2px;
+    height: 3px;
     overflow: hidden;
+    /* Light-gray track; the teal indicator fills it left-to-right. */
+    background: var(--progress-track);
     pointer-events: none;
   }
 
-  .top {
+  /* Edge variants sit just inside the card border (padding box), so they add no
+     layout height and never push the border. */
+  .top,
+  .bottom {
     position: absolute;
     z-index: 5;
-    top: 0;
     right: 0;
     left: 0;
+  }
+
+  .top {
+    top: 0;
+  }
+
+  .bottom {
+    bottom: 0;
   }
 
   .inline {

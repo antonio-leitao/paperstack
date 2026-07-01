@@ -2,7 +2,6 @@
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { analysisLabel } from "./analysisLabel";
   import { authorByline } from "./authorByline";
-  import AnalysisProgressBar from "./AnalysisProgressBar.svelte";
   import {
     type BoardDragMode,
     type BoardEntry,
@@ -216,9 +215,6 @@
             {/if}
             <div class="analysis-status-content">
               <small class="byline analysis">{status}</small>
-              {#if analysisState}
-                <AnalysisProgressBar statuses={[analysisState]} />
-              {/if}
             </div>
           </div>
         {:else}
@@ -247,10 +243,6 @@
     height: var(--card-height);
     min-width: 0;
     overflow: hidden;
-  }
-
-  .paper-card.is-open {
-    box-shadow: inset 3px 0 0 var(--accent);
   }
 
   .paper-card.is-busy {
@@ -312,7 +304,7 @@
   .card-title {
     display: -webkit-box;
     overflow: hidden;
-    font-size: 14px;
+    font-size: var(--font-size-title);
     line-height: 1.25;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -323,11 +315,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  small {
-    color: var(--text-muted);
-    font-size: 12px;
   }
 
   .analysis {
@@ -348,23 +335,19 @@
     min-width: 0;
   }
 
+  /* Ring spinner: three accent sides + one transparent, rotated by the global
+     `spin` keyframe (app.css). Sized so the rotation reads clearly. */
   .analysis-loader {
-    width: 10px;
-    height: 10px;
-    border: 1px solid var(--accent);
+    width: 13px;
+    height: 13px;
+    border: 2px solid var(--accent);
     border-right-color: transparent;
     border-radius: 50%;
-    animation: analysis-spin 0.8s linear infinite;
+    animation: spin 0.7s linear infinite;
   }
 
   .analysis-status-row.is-error .analysis {
     color: var(--danger);
-  }
-
-  @keyframes analysis-spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -431,7 +414,7 @@
   .deck-label strong {
     display: -webkit-box;
     overflow: hidden;
-    font-size: 14px;
+    font-size: var(--font-size-title);
     line-height: 1.25;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;

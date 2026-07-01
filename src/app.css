@@ -2,13 +2,39 @@
  * Global reset + design tokens.
  *
  * The app intentionally ships with function-only styling for now. Every colour,
- * shadow and border lives here as a CSS custom property so the upcoming design
- * pass can retheme the whole app from one place instead of hunting through
- * component <style> blocks. Components should reference var(--token) rather than
+ * shadow, border, font size and the font family live here as tokens so the whole
+ * app can be rethemed from one place instead of hunting through component
+ * <style> blocks. Components should reference var(--token) rather than
  * hardcoding literals.
  */
 
+/* Public Sans, served locally from /static/fonts (no network fetch at runtime). */
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/public-sans-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/public-sans-latin-700-normal.woff2") format("woff2");
+}
+
 :root {
+  /* Typography */
+  --font-family: "Public Sans", system-ui, sans-serif;
+  /* One small scale, referenced everywhere. Heading = page/board H1,
+     title = card + list titles, small = every muted secondary line
+     (bylines, counts, statuses, timestamps, meta). */
+  --font-size-heading: 20px;
+  --font-size-title: 14px;
+  --font-size-small: 13px;
+
   /* Surfaces */
   --surface: #ffffff;
   --surface-sunken: #d8d8d8;
@@ -24,14 +50,16 @@
   --border-strong: #bbbbbb;
   --border-subtle: #cccccc;
 
-  /* Accent — citation callouts, open/active highlight */
-  --accent: #3b82f6;
-  --accent-strong: #165fc2;
-  --accent-link: #0b57d0;
-  --accent-soft-bg: #f2f7ff;
-  --accent-outline: rgba(25, 95, 210, 0.45);
-  --accent-fill: rgba(60, 130, 245, 0.12);
-  --accent-fill-strong: rgba(60, 130, 245, 0.25);
+  /* Accent — phthalo green. Citation callouts, open/active highlight, links. */
+  --accent: #146a54;
+  --accent-strong: #0d4f3c;
+  --accent-link: #0f5f47;
+  --accent-soft-bg: #eef5f2;
+  --accent-outline: rgba(13, 79, 60, 0.45);
+  --accent-fill: rgba(20, 106, 84, 0.12);
+  --accent-fill-strong: rgba(20, 106, 84, 0.25);
+  /* Neutral track behind the teal progress fill. */
+  --progress-track: #dadada;
 
   /* Danger — errors, destructive affordances */
   --danger: #7e1111;
@@ -74,7 +102,7 @@
 html,
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-family);
 }
 
 button,
@@ -85,4 +113,46 @@ select {
 
 button {
   cursor: pointer;
+}
+
+/* Muted secondary text. Every <small> in the app shares one colour + size;
+   components add only layout (ellipsis, clamp) on top. */
+small {
+  color: var(--text-muted);
+  font-size: var(--font-size-small);
+}
+
+/* Floating right-click menu, shared by the library and the board. Container +
+   its item buttons + separator live here so both call sites (and the shared
+   DocumentMenuItems) stay style-free. */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-menu);
+}
+
+.context-menu button {
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.context-menu hr {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Shared spinner rotation. Defined globally (not inside a component) so the
+   keyframe name is never scope-mangled away from its animation reference. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

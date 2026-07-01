@@ -32,7 +32,7 @@
   let projectStacks = $state<ProjectStack[]>([]);
   let libraryError = $state<string | null>(null);
   let libraryQuery = $state("");
-  let libraryLinkFilter = $state<"all" | "linked" | "unlinked">("all");
+  let libraryUnlinkedOnly = $state(false);
   let libraryNotInProjectOnly = $state(false);
   let leftSidebarOpen = $state(true);
   let stackNamePrompt = $state<
@@ -611,10 +611,10 @@
           {openDocumentIds}
           {analysisStates}
           query={libraryQuery}
-          linkFilter={libraryLinkFilter}
+          unlinkedOnly={libraryUnlinkedOnly}
           notInProjectOnly={libraryNotInProjectOnly}
           onquery={(value) => (libraryQuery = value)}
-          onfilterchange={(value) => (libraryLinkFilter = value)}
+          onunlinkedfilterchange={(value) => (libraryUnlinkedOnly = value)}
           onnotinprojectfilterchange={(value) => (libraryNotInProjectOnly = value)}
           onopen={(documentId) => void openLibraryDocument(documentId)}
           onadd={addLibraryDocument}
@@ -766,7 +766,7 @@
   }
 
   .status {
-    font-size: 13px;
+    font-size: var(--font-size-small);
   }
 
   .notice.error {
@@ -774,7 +774,7 @@
     border-bottom: 1px solid var(--border);
     background: var(--danger-bg);
     color: var(--danger);
-    font-size: 13px;
+    font-size: var(--font-size-small);
   }
 
   .file-drop-overlay {

@@ -68,11 +68,6 @@
     gap: 2px;
   }
 
-  small {
-    color: var(--text-muted);
-    font-size: 12px;
-  }
-
   a.title {
     color: var(--accent-link);
   }
