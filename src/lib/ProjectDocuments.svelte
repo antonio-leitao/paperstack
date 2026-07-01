@@ -8,6 +8,7 @@
   } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import { tick } from "svelte";
+  import DocumentMenuItems from "./DocumentMenuItems.svelte";
   import DropPlaceholder from "./DropPlaceholder.svelte";
   import PaperPile from "./PaperPile.svelte";
   import {
@@ -61,6 +62,7 @@
     onopen,
     onremove,
     onrename,
+    onlinkbibtex,
     onunlink,
     ondelete,
     onanalyze,
@@ -83,6 +85,7 @@
     onopen: (documentId: string) => void | Promise<void>;
     onremove: (documentId: string) => void | Promise<void>;
     onrename: (document: BoardMember["document"]) => void;
+    onlinkbibtex: (document: BoardMember["document"]) => void;
     onunlink: (document: BoardMember["document"]) => void | Promise<void>;
     ondelete: (document: BoardMember["document"]) => void;
     onanalyze: (documentId: string) => void | Promise<void>;
@@ -963,65 +966,26 @@
       </button>
     {:else}
       {@const menuAnalysisState = analysisStates[contextMenu.documentId]}
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
+      <DocumentMenuItems
+        document={contextMenu.member.document}
+        analysisState={menuAnalysisState}
+        projectActionLabel="Remove from project"
+        onopen={() =>
           runDocumentContextAction((menu) => onopen(menu.documentId))}
-      >
-        Open
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
+        onrename={() =>
           runDocumentContextAction((menu) => onrename(menu.member.document))}
-      >
-        Rename
-      </button>
-      {#if contextMenu.member.document.referenceId}
-        <button
-          type="button"
-          role="menuitem"
-          onclick={() =>
-            runDocumentContextAction((menu) =>
-              onunlink(menu.member.document),
-            )}
-        >
-          Unlink reference
-        </button>
-      {/if}
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
+        onlinkbibtex={() =>
+          runDocumentContextAction((menu) =>
+            onlinkbibtex(menu.member.document))}
+        onunlink={() =>
+          runDocumentContextAction((menu) => onunlink(menu.member.document))}
+        onanalyze={() =>
           runDocumentContextAction((menu) => onanalyze(menu.documentId))}
-        disabled={menuAnalysisState !== undefined &&
-          menuAnalysisState.phase !== "error"}
-      >
-        {menuAnalysisState && menuAnalysisState.phase !== "error"
-          ? "Analyzing…"
-          : menuAnalysisState?.phase === "error"
-            ? "Retry analysis"
-            : "Analyze again"}
-      </button>
-      <hr />
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
+        onprojectaction={() =>
           runDocumentContextAction((menu) => onremove(menu.documentId))}
-      >
-        Remove from project
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
+        ondelete={() =>
           runDocumentContextAction((menu) => ondelete(menu.member.document))}
-      >
-        Delete
-      </button>
+      />
     {/if}
   </div>
 {/if}

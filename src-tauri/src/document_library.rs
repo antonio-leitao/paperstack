@@ -1,4 +1,5 @@
-use super::{database, reference_resolver};
+use super::{database, normalize_arxiv, reference_resolver, Reference};
+use biblatex::{Bibliography, ChunksExt, Entry};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -62,6 +63,23 @@ pub(crate) struct LibraryDocument {
     created_at: i64,
     updated_at: i64,
     last_viewed_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BibtexPreview {
+    citation_key: String,
+    entry_type: String,
+    title: String,
+    authors: Vec<String>,
+    year: Option<String>,
+    venue: Option<String>,
+    doi: Option<String>,
+}
+
+struct ParsedBibtex {
+    preview: BibtexPreview,
+    reference: Reference,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1173,6 +1191,74 @@ pub(crate) fn link_document_reference(
 }
 
 #[tauri::command]
+pub(crate) fn preview_bibtex(bibtex: String) -> Result<BibtexPreview, String> {
+    Ok(parse_single_bibtex(&bibtex)?.preview)
+}
+
+#[tauri::command]
+pub(crate) fn link_document_from_bibtex(
+    app: AppHandle,
+    document_id: String,
+    bibtex: String,
+) -> Result<LibraryDocument, String> {
+    let parsed = parse_single_bibtex(&bibtex)?;
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start linking the document: {error}"))?;
+    require_document(&transaction, &document_id)?;
+    let current_reference: Option<String> = transaction
+        .query_row(
+            "SELECT reference_id FROM document_reference_links WHERE document_id = ?1",
+            params![document_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not inspect the document reference link: {error}"))?;
+    if current_reference.is_some() {
+        return Err("This document is already linked to a reference".to_owned());
+    }
+
+    let reference_id = database::upsert_reference(&transaction, &parsed.reference)?;
+    let linked_document: Option<String> = transaction
+        .query_row(
+            "SELECT document_id FROM document_reference_links WHERE reference_id = ?1",
+            params![reference_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not check the reference link: {error}"))?;
+    if linked_document
+        .as_deref()
+        .is_some_and(|id| id != document_id)
+    {
+        return Err("That reference already has a local PDF".to_owned());
+    }
+
+    let now = database::unix_timestamp();
+    transaction
+        .execute(
+            "INSERT INTO document_reference_links (document_id, reference_id, linked_at)
+             VALUES (?1, ?2, ?3)",
+            params![document_id, reference_id, now],
+        )
+        .map_err(|error| format!("Could not link the document and reference: {error}"))?;
+    transaction
+        .execute(
+            "UPDATE documents SET updated_at = ?1 WHERE id = ?2",
+            params![now, document_id],
+        )
+        .map_err(|error| format!("Could not update the document timestamp: {error}"))?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish linking the document: {error}"))?;
+
+    let document = load_document(&app, &connection, &document_id)?;
+    emit_library_changed(&app, "document", Some(&document_id), "updated");
+    Ok(document)
+}
+
+#[tauri::command]
 pub(crate) fn unlink_document_reference(
     app: AppHandle,
     document_id: String,
@@ -1200,6 +1286,157 @@ pub(crate) fn unlink_document_reference(
     let document = load_document(&app, &connection, &document_id)?;
     emit_library_changed(&app, "document", Some(&document_id), "updated");
     Ok(document)
+}
+
+fn parse_single_bibtex(source: &str) -> Result<ParsedBibtex, String> {
+    const MAX_BIBTEX_BYTES: usize = 128 * 1024;
+
+    let bibtex = source.trim();
+    if bibtex.is_empty() {
+        return Err("Paste one BibTeX entry first".to_owned());
+    }
+    if bibtex.len() > MAX_BIBTEX_BYTES {
+        return Err("The BibTeX entry is too large".to_owned());
+    }
+    let bibliography = Bibliography::parse(bibtex)
+        .map_err(|error| format!("Could not parse that BibTeX entry: {error}"))?;
+    if bibliography.len() != 1 {
+        return Err("Paste exactly one BibTeX entry".to_owned());
+    }
+    let entry = bibliography
+        .iter()
+        .next()
+        .ok_or_else(|| "Paste exactly one BibTeX entry".to_owned())?;
+    let title = bibtex_field(entry, &["title"])
+        .ok_or_else(|| "The BibTeX entry needs a title".to_owned())?;
+    let authors = if entry.get("author").is_some() {
+        entry
+            .author()
+            .map_err(|error| format!("Could not read the BibTeX authors: {error}"))?
+            .into_iter()
+            .map(|author| clean_bibtex_text(&author.to_string()))
+            .filter(|author| !author.is_empty())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let year = bibtex_field(entry, &["year"]).or_else(|| {
+        bibtex_field(entry, &["date"]).and_then(|date| year_from_date(&date))
+    });
+    let venue = bibtex_field(
+        entry,
+        &[
+            "journaltitle",
+            "journal",
+            "booktitle",
+            "venue",
+            "publisher",
+            "institution",
+            "school",
+        ],
+    );
+    let raw_doi = bibtex_field(entry, &["doi"]);
+    let doi = raw_doi
+        .as_deref()
+        .map(reference_resolver::normalize_doi)
+        .filter(|doi| !doi.is_empty());
+    if let Some(doi) = doi.as_deref() {
+        if !reference_resolver::is_valid_doi(doi) {
+            return Err("The BibTeX DOI does not look valid".to_owned());
+        }
+    }
+    let eprint_type = bibtex_field(entry, &["eprinttype", "archiveprefix"]);
+    let arxiv_id = bibtex_field(entry, &["eprint"]).and_then(|eprint| {
+        let is_arxiv = eprint_type
+            .as_deref()
+            .is_some_and(|kind| kind.eq_ignore_ascii_case("arxiv"))
+            || entry.get("primaryclass").is_some();
+        is_arxiv
+            .then(|| normalize_arxiv(eprint))
+            .filter(|identifier| !identifier.is_empty())
+    });
+    let pmid = bibtex_field(entry, &["pmid", "pubmed"]);
+    let explicit_link = bibtex_field(entry, &["url"]);
+    let canonical_id = doi
+        .as_ref()
+        .map(|identifier| format!("doi:{identifier}"))
+        .or_else(|| {
+            arxiv_id
+                .as_ref()
+                .map(|identifier| format!("arxiv:{identifier}"))
+        })
+        .or_else(|| {
+            pmid
+                .as_ref()
+                .map(|identifier| format!("pmid:{identifier}"))
+        });
+    let link = doi
+        .as_ref()
+        .map(|identifier| format!("https://doi.org/{identifier}"))
+        .or_else(|| {
+            arxiv_id
+                .as_ref()
+                .map(|identifier| format!("https://arxiv.org/abs/{identifier}"))
+        })
+        .or(explicit_link);
+    let preview = BibtexPreview {
+        citation_key: entry.key.clone(),
+        entry_type: entry.entry_type.to_string(),
+        title: title.clone(),
+        authors: authors.clone(),
+        year: year.clone(),
+        venue: venue.clone(),
+        doi: doi.clone(),
+    };
+    let reference = Reference {
+        id: Uuid::new_v4().to_string(),
+        source_id: format!("manual-bibtex:{}", entry.key),
+        shared_id: None,
+        canonical_id,
+        raw_citation: None,
+        title: Some(title),
+        authors,
+        year,
+        venue,
+        volume: bibtex_field(entry, &["volume"]),
+        issue: bibtex_field(entry, &["issue", "number"]),
+        pages: bibtex_field(entry, &["pages"]),
+        doi,
+        arxiv_id,
+        pmid,
+        bibtex: bibtex.to_owned(),
+        link,
+        resolution_status: "resolved".to_owned(),
+        resolution_confidence: Some(1.0),
+        resolution_source: Some("manual-bibtex".to_owned()),
+        resolution_error: None,
+        abstract_text: bibtex_field(entry, &["abstract"]),
+        open_access_pdf: None,
+        bibliography_boxes: Vec::new(),
+        callout_boxes: Vec::new(),
+    };
+    Ok(ParsedBibtex { preview, reference })
+}
+
+fn bibtex_field(entry: &Entry, names: &[&str]) -> Option<String> {
+    names.iter().find_map(|name| {
+        entry
+            .get(name)
+            .map(ChunksExt::format_verbatim)
+            .map(|value| clean_bibtex_text(&value))
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn clean_bibtex_text(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn year_from_date(value: &str) -> Option<String> {
+    value
+        .split(|character: char| !character.is_ascii_digit())
+        .find(|part| part.len() == 4)
+        .map(ToOwned::to_owned)
 }
 
 #[tauri::command]
@@ -1837,5 +2074,61 @@ mod tests {
             Some("Machine Learning")
         );
         assert_eq!(name_key("Machine Learning"), "machine learning");
+    }
+
+    #[test]
+    fn parses_one_manual_bibtex_reference() {
+        let parsed = parse_single_bibtex(
+            r#"
+            @article{lovelace2025,
+              title = {A Practical Research Paper},
+              author = {Lovelace, Ada and Alan Turing},
+              year = {2025},
+              journal = {Journal of Useful Tests},
+              doi = {https://doi.org/10.1234/EXAMPLE.5}
+            }
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(parsed.preview.citation_key, "lovelace2025");
+        assert_eq!(parsed.preview.entry_type, "article");
+        assert_eq!(parsed.preview.title, "A Practical Research Paper");
+        assert_eq!(parsed.preview.authors, vec!["Ada Lovelace", "Alan Turing"]);
+        assert_eq!(parsed.preview.year.as_deref(), Some("2025"));
+        assert_eq!(
+            parsed.preview.venue.as_deref(),
+            Some("Journal of Useful Tests")
+        );
+        assert_eq!(parsed.preview.doi.as_deref(), Some("10.1234/example.5"));
+        assert_eq!(
+            parsed.reference.canonical_id.as_deref(),
+            Some("doi:10.1234/example.5")
+        );
+        assert_eq!(
+            parsed.reference.resolution_source.as_deref(),
+            Some("manual-bibtex")
+        );
+        assert!(parsed.reference.bibtex.contains("@article{lovelace2025"));
+    }
+
+    #[test]
+    fn rejects_multiple_bibtex_entries() {
+        let error = parse_single_bibtex(
+            "@article{one, title={One}}\n@article{two, title={Two}}",
+        )
+        .err()
+        .unwrap();
+
+        assert_eq!(error, "Paste exactly one BibTeX entry");
+    }
+
+    #[test]
+    fn requires_a_bibtex_title() {
+        let error = parse_single_bibtex("@article{untitled, author={Ada Lovelace}}")
+            .err()
+            .unwrap();
+
+        assert_eq!(error, "The BibTeX entry needs a title");
     }
 }

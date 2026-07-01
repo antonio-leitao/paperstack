@@ -35,6 +35,7 @@
   import HighlightAnnotationMenu from "./HighlightAnnotationMenu.svelte";
   import HighlightSelectionMenu from "./HighlightSelectionMenu.svelte";
   import PdfLink from "./PdfLink.svelte";
+  import { copyToClipboard } from "./copyToClipboard";
   import { errorMessage } from "./errorMessage";
   import type {
     AnalysisResult,
@@ -95,6 +96,43 @@
     } else if (event.key === "0") {
       event.preventDefault();
       zoom.provides?.requestZoom(ZoomMode.FitWidth);
+    }
+  }
+
+  function handleCopyKeydown(event: KeyboardEvent) {
+    if (
+      (!event.ctrlKey && !event.metaKey) ||
+      event.altKey ||
+      event.key.toLowerCase() !== "c"
+    ) {
+      return;
+    }
+    const target = event.target;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      (target instanceof HTMLElement && target.isContentEditable)
+    ) {
+      return;
+    }
+    const selection = selectionCapability.provides;
+    if (!selection?.getFormattedSelection(documentId).length) return;
+    event.preventDefault();
+    void copyPdfSelection();
+  }
+
+  async function copyPdfSelection() {
+    const selection = selectionCapability.provides;
+    if (!selection) return;
+    try {
+      const text = (await selection.getSelectedText(documentId).toPromise())
+        .join("\n")
+        .trim();
+      if (!text) return;
+      await copyToClipboard(text);
+      annotationError = null;
+    } catch (error) {
+      annotationError = `Could not copy the selected text: ${errorMessage(error)}`;
     }
   }
 
@@ -282,6 +320,8 @@
     }
   }
 </script>
+
+<svelte:window onkeydown={handleCopyKeydown} />
 
 {#snippet highlightSelectionMenu(menuProps: SelectionSelectionMenuProps)}
   {#if highlightsAvailable}

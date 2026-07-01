@@ -5,6 +5,7 @@ const TRUSTED_RESOLUTION_SOURCES = [
   "arxiv-",
   "openalex-",
   "semantic-scholar-",
+  "manual-bibtex",
 ];
 
 export function hasTrustedBibtex(reference: Reference): boolean {

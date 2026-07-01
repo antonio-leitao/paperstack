@@ -2,11 +2,13 @@
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import {
     getAllWebviewWindows,
     getCurrentWebviewWindow,
   } from "@tauri-apps/api/webviewWindow";
   import { onMount } from "svelte";
+  import BibtexLinkPrompt from "./BibtexLinkPrompt.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import DocumentLibrary from "./DocumentLibrary.svelte";
   import NamePrompt from "./NamePrompt.svelte";
@@ -15,6 +17,7 @@
   import { openViewerWindow as openDocumentWindow } from "./viewerWindows";
   import type {
     AnalysisStatus,
+    BibtexPreview,
     LibraryDocument,
     Project,
     ProjectDocument,
@@ -30,6 +33,7 @@
   let libraryError = $state<string | null>(null);
   let libraryQuery = $state("");
   let libraryLinkFilter = $state<"all" | "linked" | "unlinked">("all");
+  let libraryNotInProjectOnly = $state(false);
   let leftSidebarOpen = $state(true);
   let stackNamePrompt = $state<
     { mode: "create" } | { mode: "rename"; stack: ProjectStack } | null
@@ -45,9 +49,12 @@
   } | null>(null);
   let projectDocumentToRemove = $state<ProjectDocument | null>(null);
   let documentToRename = $state<LibraryDocument | null>(null);
+  let documentToLinkFromBibtex = $state<LibraryDocument | null>(null);
   let documentToDelete = $state<LibraryDocument | null>(null);
   let openDocumentIds = $state<string[]>([]);
   let libraryDraggingEntryId = $state<string | null>(null);
+  let fileDropState = $state<"idle" | "ready" | "invalid">("idle");
+  let importingPdfs = $state(false);
   // documentId -> live background-analysis status, for the per-card loaders.
   let analysisStates = $state<Record<string, AnalysisStatus>>({});
 
@@ -93,6 +100,24 @@
     void getCurrentWebviewWindow()
       .onFocusChanged(({ payload: focused }) => {
         if (focused) void refreshOpenWindows();
+      })
+      .then((dispose) => disposers.push(dispose));
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === "enter") {
+          fileDropState = filterPdfPaths(payload.paths).length ? "ready" : "invalid";
+        } else if (payload.type === "leave") {
+          fileDropState = "idle";
+        } else if (payload.type === "drop") {
+          fileDropState = "idle";
+          const paths = filterPdfPaths(payload.paths);
+          if (paths.length) {
+            void importPdfPaths(paths, false);
+          } else {
+            libraryError = "Drop one or more PDF files";
+          }
+        }
       })
       .then((dispose) => disposers.push(dispose));
     return () => {
@@ -164,9 +189,27 @@
     });
     const paths = Array.isArray(selected) ? selected : typeof selected === "string" ? [selected] : [];
     if (!paths.length) return;
+    await importPdfPaths(paths, true);
+  }
+
+  function filterPdfPaths(paths: string[]): string[] {
+    return paths.filter((path) => path.toLocaleLowerCase().endsWith(".pdf"));
+  }
+
+  async function importPdfPaths(paths: string[], openSingle: boolean) {
+    const pdfPaths = filterPdfPaths(paths);
+    if (!pdfPaths.length) {
+      libraryError = "Choose one or more PDF files";
+      return;
+    }
+    if (importingPdfs) {
+      libraryError = "A PDF import is already in progress";
+      return;
+    }
+    importingPdfs = true;
     try {
       const imported: LibraryDocument[] = [];
-      for (const path of paths) {
+      for (const path of pdfPaths) {
         const document = await invoke<LibraryDocument>("import_document", { path });
         upsertDocument(document);
         // Kick off background analysis, then drop it into the project's default
@@ -176,10 +219,12 @@
         imported.push(document);
       }
       // Only auto-open when a single PDF was picked; a batch just streams in.
-      if (imported.length === 1) await openViewerWindow(imported[0]);
+      if (openSingle && imported.length === 1) await openViewerWindow(imported[0]);
       libraryError = null;
     } catch (error) {
       libraryError = errorMessage(error);
+    } finally {
+      importingPdfs = false;
     }
   }
 
@@ -206,10 +251,9 @@
     return item;
   }
 
-  async function addAndOpenDocument(documentId: string) {
+  async function addLibraryDocument(documentId: string) {
     try {
-      const item = await addDocumentToProject(documentId);
-      await openViewerWindow(item.document);
+      await addDocumentToProject(documentId);
       libraryError = null;
     } catch (error) {
       libraryError = errorMessage(error);
@@ -270,6 +314,22 @@
     } catch (error) {
       libraryError = errorMessage(error);
     }
+  }
+
+  function reviewBibtex(bibtex: string) {
+    return invoke<BibtexPreview>("preview_bibtex", { bibtex });
+  }
+
+  async function linkDocumentFromBibtex(bibtex: string) {
+    const document = documentToLinkFromBibtex;
+    if (!document) return;
+    const linked = await invoke<LibraryDocument>("link_document_from_bibtex", {
+      documentId: document.id,
+      bibtex,
+    });
+    upsertDocument(linked);
+    documentToLinkFromBibtex = null;
+    libraryError = null;
   }
 
   async function analyzeDocument(documentId: string) {
@@ -528,6 +588,14 @@
     <div class="notice error" role="status">{libraryError}</div>
   {/if}
 
+  {#if fileDropState !== "idle"}
+    <div class="file-drop-overlay" role="status">
+      {fileDropState === "ready"
+        ? "Drop PDF to add to this project"
+        : "Only PDF files can be added"}
+    </div>
+  {/if}
+
   <section class="workspace" class:left-closed={!leftSidebarOpen}>
     {#if leftSidebarOpen}
       <aside class="library" aria-label="Document library">
@@ -539,13 +607,22 @@
 
         <DocumentLibrary
           {documents}
+          projectDocumentIds={projectDocuments.map((item) => item.document.id)}
           {openDocumentIds}
           {analysisStates}
           query={libraryQuery}
           linkFilter={libraryLinkFilter}
+          notInProjectOnly={libraryNotInProjectOnly}
           onquery={(value) => (libraryQuery = value)}
           onfilterchange={(value) => (libraryLinkFilter = value)}
-          onopen={(documentId) => void addAndOpenDocument(documentId)}
+          onnotinprojectfilterchange={(value) => (libraryNotInProjectOnly = value)}
+          onopen={(documentId) => void openLibraryDocument(documentId)}
+          onadd={addLibraryDocument}
+          onrename={(document) => (documentToRename = document)}
+          onlinkbibtex={(document) => (documentToLinkFromBibtex = document)}
+          onunlink={unlinkDocument}
+          ondelete={(document) => (documentToDelete = document)}
+          onanalyze={analyzeDocument}
           onchoosepdf={choosePdf}
           ondragstart={(entryId) => (libraryDraggingEntryId = entryId)}
           ondragend={() => (libraryDraggingEntryId = null)}
@@ -562,6 +639,7 @@
         onopen={(documentId) => void openLibraryDocument(documentId)}
         onremove={requestRemoveProjectDocument}
         onrename={(document) => (documentToRename = document)}
+        onlinkbibtex={(document) => (documentToLinkFromBibtex = document)}
         onunlink={unlinkDocument}
         ondelete={(document) => (documentToDelete = document)}
         onanalyze={analyzeDocument}
@@ -587,6 +665,15 @@
     confirmLabel="Rename"
     onconfirm={submitDocumentRename}
     oncancel={() => (documentToRename = null)}
+  />
+  <BibtexLinkPrompt
+    open={documentToLinkFromBibtex !== null}
+    documentTitle={documentToLinkFromBibtex?.referenceTitle ??
+      documentToLinkFromBibtex?.title ??
+      ""}
+    onreview={reviewBibtex}
+    onconfirm={linkDocumentFromBibtex}
+    oncancel={() => (documentToLinkFromBibtex = null)}
   />
   <ConfirmDialog
     open={documentToDelete !== null}
@@ -688,6 +775,17 @@
     background: var(--danger-bg);
     color: var(--danger);
     font-size: 13px;
+  }
+
+  .file-drop-overlay {
+    position: fixed;
+    inset: 12px;
+    z-index: 2000;
+    display: grid;
+    place-items: center;
+    border: 2px dashed var(--border-strong);
+    background: var(--surface);
+    pointer-events: none;
   }
 
   .workspace {

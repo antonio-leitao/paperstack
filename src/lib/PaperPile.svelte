@@ -124,6 +124,7 @@
     if (event.shiftKey) onselect([member.document.id]);
     else void onopen(member.document.id);
   }
+
 </script>
 
 <div

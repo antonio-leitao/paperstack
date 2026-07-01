@@ -441,7 +441,10 @@ fn store_pdf_with_connection(
     Ok(reference_ids)
 }
 
-fn upsert_reference(connection: &Connection, reference: &Reference) -> Result<String, String> {
+pub(crate) fn upsert_reference(
+    connection: &Connection,
+    reference: &Reference,
+) -> Result<String, String> {
     let incoming = ReferenceData::from_reference(reference);
     let incoming_confidence = reference_quality(reference);
     let incoming_keys = ReferenceKeys::from_data(&incoming);
@@ -940,7 +943,13 @@ impl ReferenceData {
 fn trusted_bibtex_source(status: &str, source: Option<&str>) -> bool {
     status == "resolved"
         && source.is_some_and(|source| {
-            ["crossref-", "arxiv-", "openalex-", "semantic-scholar-"]
+            [
+                "crossref-",
+                "arxiv-",
+                "openalex-",
+                "semantic-scholar-",
+                "manual-bibtex",
+            ]
                 .iter()
                 .any(|prefix| source.starts_with(prefix))
         })
@@ -1217,6 +1226,25 @@ mod tests {
             panic!("expected a fresh cache hit");
         };
         assert!(cached.references[0].bibtex.is_empty());
+    }
+
+    #[test]
+    fn manual_bibtex_is_persisted_as_trusted_metadata() {
+        let connection = Connection::open_in_memory().unwrap();
+        initialize(&connection).unwrap();
+        let mut manual = reference("manual", "A Manually Linked Paper", 1.0);
+        manual.bibtex = "@article{manual, title={A Manually Linked Paper}}".to_owned();
+        manual.resolution_status = "resolved".to_owned();
+        manual.resolution_source = Some("manual-bibtex".to_owned());
+
+        let id = upsert_reference(&connection, &manual).unwrap();
+        let stored = load_stored_reference(&connection, &id).unwrap().unwrap();
+
+        assert_eq!(stored.data.bibtex, manual.bibtex);
+        assert_eq!(
+            stored.data.resolution_source.as_deref(),
+            Some("manual-bibtex")
+        );
     }
 
     #[test]

@@ -1624,7 +1624,7 @@ pub fn normalize_doi(value: &str) -> String {
     doi
 }
 
-fn is_valid_doi(doi: &str) -> bool {
+pub(crate) fn is_valid_doi(doi: &str) -> bool {
     static DOI: OnceLock<Regex> = OnceLock::new();
     DOI.get_or_init(|| {
         Regex::new(r"(?i)^10\.\d{4,9}/[-._;()/:a-z0-9]+$")

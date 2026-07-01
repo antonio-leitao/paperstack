@@ -99,6 +99,16 @@ export type LibraryDocument = {
   lastViewedAt: number;
 };
 
+export type BibtexPreview = {
+  citationKey: string;
+  entryType: string;
+  title: string;
+  authors: string[];
+  year: string | null;
+  venue: string | null;
+  doi: string | null;
+};
+
 export type ProjectDocument = {
   projectId: string;
   document: LibraryDocument;
