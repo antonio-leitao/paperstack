@@ -407,6 +407,10 @@
     list-style: none;
   }
 
+  li:hover {
+      background-color:var(--card);
+  }
+
   .document-list-row {
     display: flex;
     align-items: start;

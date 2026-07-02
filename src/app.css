@@ -265,6 +265,7 @@ small {
 
 .eink-btn--accent:hover:not(:disabled) {
   box-shadow: var(--shadow-btn);
+  background: var(--accent-strong);
 }
 
 .eink-chip {
