@@ -96,14 +96,14 @@
     {/if}
 
     <div class="actions">
-      <button type="button" onclick={oncancel} disabled={busy}>Cancel</button>
+      <button class="eink-btn" type="button" onclick={oncancel} disabled={busy}>Cancel</button>
       {#if preview}
-        <button type="button" onclick={editEntry} disabled={busy}>Edit</button>
-        <button type="submit" disabled={busy}>
+        <button class="eink-btn" type="button" onclick={editEntry} disabled={busy}>Edit</button>
+        <button class="eink-btn" type="submit" disabled={busy}>
           {busy ? "Linking…" : "Link document"}
         </button>
       {:else}
-        <button type="submit" disabled={busy || !value.trim()}>
+        <button class="eink-btn" type="submit" disabled={busy || !value.trim()}>
           {busy ? "Reviewing…" : "Review"}
         </button>
       {/if}

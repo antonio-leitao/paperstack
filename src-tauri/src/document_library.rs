@@ -63,6 +63,7 @@ pub(crate) struct LibraryDocument {
     stored_path: String,
     thumbnail_path: Option<String>,
     reference_id: Option<String>,
+    reference_bibtex: Option<String>,
     reference_title: Option<String>,
     reference_authors: Vec<String>,
     reference_year: Option<String>,
@@ -110,6 +111,8 @@ struct LinkedReferenceData {
     authors: Vec<String>,
     #[serde(default)]
     year: Option<String>,
+    #[serde(default)]
+    bibtex: String,
 }
 
 // One column slot as the board sees it after a drag: the document and the pile it
@@ -1902,6 +1905,9 @@ fn load_document(
         .ok()
         .filter(|path| path.exists())
         .map(|path| path.to_string_lossy().into_owned());
+    let reference_bibtex = linked_reference.as_ref().and_then(|reference| {
+        (!reference.bibtex.trim().is_empty()).then(|| reference.bibtex.clone())
+    });
     Ok(LibraryDocument {
         id: id.to_owned(),
         content_hash: row.0,
@@ -1911,6 +1917,7 @@ fn load_document(
         stored_path: document_path(app, id)?.to_string_lossy().into_owned(),
         thumbnail_path,
         reference_id: row.4,
+        reference_bibtex,
         reference_title: linked_reference
             .as_ref()
             .and_then(|reference| reference.title.clone()),

@@ -10,7 +10,7 @@
 <style>
   .drop-placeholder {
     visibility: visible;
-    height: var(--card-height);
+    height: var(--card-h);
   }
 
   .drop-placeholder.is-active {

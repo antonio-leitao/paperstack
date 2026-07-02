@@ -247,8 +247,10 @@
 
 <section class="document-library" aria-label="Library">
   <header>
-    <strong>Library</strong>
-    <button type="button" onclick={onchoosepdf}>Add PDF</button>
+    <strong class="eink-label">Library</strong>
+    <button class="eink-btn eink-btn--accent" type="button" onclick={onchoosepdf}>
+      + Add PDF
+    </button>
   </header>
 
   <label>

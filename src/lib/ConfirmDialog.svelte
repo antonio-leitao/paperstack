@@ -22,8 +22,8 @@
   <h2>{title}</h2>
   <p>{message}</p>
   <div>
-    <button type="button" onclick={oncancel}>Cancel</button>
-    <button type="button" onclick={onconfirm}>{confirmLabel}</button>
+    <button class="eink-btn" type="button" onclick={oncancel}>Cancel</button>
+    <button class="eink-btn" type="button" onclick={onconfirm}>{confirmLabel}</button>
   </div>
 </Modal>
 

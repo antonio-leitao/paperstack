@@ -26,54 +26,105 @@
 }
 
 :root {
-  /* Typography */
-  --font-family: "Public Sans", system-ui, sans-serif;
-  /* One small scale, referenced everywhere. Heading = page/board H1,
-     title = card + list titles, small = every muted secondary line
-     (bylines, counts, statuses, timestamps, meta). */
-  --font-size-heading: 20px;
-  --font-size-title: 14px;
-  --font-size-small: 13px;
+  /* Paper */
+  --paper: #f8f8f6;
+  --paper-2: #f1f1ee;
+  --paper-3: #e8e8e4;
+  --desk: #efeee9;
 
-  /* Surfaces */
-  --surface: #ffffff;
-  --surface-sunken: #d8d8d8;
-  --surface-muted: #f7f7f7;
-  --surface-empty: #dddddd;
+  /* Cards */
+  --card: #ffffff;
+  --card-2: #f7f7f5;
 
-  /* Text */
-  --text: #161616;
-  --text-muted: #555555;
+  /* Ink */
+  --ink: #20201e;
+  --ink-2: #4b4a47;
+  --ink-3: #797873;
 
-  /* Borders (light -> strong) */
-  --border: #aaaaaa;
-  --border-strong: #bbbbbb;
-  --border-subtle: #cccccc;
+  /* Lines */
+  --line: #ebeae6;
+  --line-2: #d5d3cd;
+  --line-3: #b3b1a9;
 
-  /* Accent — phthalo green. Citation callouts, open/active highlight, links. */
-  --accent: #146a54;
+  /* Accents */
+  --accent: #1f6b52;
+  --amber: #9a7526;
+  --brick: #94402f;
+  --accent-pine: #1f6b52;
+  --accent-slate: #33556f;
+  --accent-plum: #6a3f5c;
+  --accent-clay: #8a5a2b;
+
+  /* Typography. The bundled Public Sans weights are 400 and 700, so recipe
+     weights snap to the nearest available face. */
+  --font-sans: "Public Sans", system-ui, sans-serif;
+  --font-mono: var(--font-sans);
+  --fs-title: 20px;
+  --fs-card: 13px;
+  --fs-body: 12.5px;
+  --fs-meta: 11px;
+  --fs-label: 10.5px;
+  --tracking-label: 0.14em;
+
+  /* Borders */
+  --bw: 1px;
+  --bw-2: 1.5px;
+  --bw-accent: 4px;
+  --radius: 0;
+  --radius-chip: 2px;
+  --radius-pill: 50%;
+
+  /* Hard e-ink shadows */
+  --shadow-sm: 2px 2px 0 var(--line-3);
+  --shadow-card: 3px 3px 0 var(--paper-3);
+  --shadow-btn: 3px 3px 0 var(--accent);
+  --shadow-drag: 5px 5px 0 color-mix(in oklab, var(--ink) 78%, transparent);
+
+  /* Motion */
+  --lift: translate(-1px, -1px);
+  --ease: 0.12s;
+
+  /* Layout */
+  --card-h: 80px;
+  --card-h-compact: 66px;
+  --col-w: 270px;
+  --sidebar-w: 302px;
+
+  /* Compatibility aliases used by the existing components. */
+  --font-family: var(--font-sans);
+  --font-size-heading: var(--fs-title);
+  --font-size-title: var(--fs-card);
+  --font-size-small: var(--fs-body);
+  --surface: var(--card);
+  --surface-sunken: var(--paper-3);
+  --surface-muted: var(--paper-2);
+  --surface-empty: var(--paper-3);
+  --text: var(--ink);
+  --text-muted: var(--ink-2);
+  --border: var(--line-2);
+  --border-strong: var(--line-3);
+  --border-subtle: var(--line);
+
+  /* Semantic variants retained for the PDF viewer and interaction states. */
   --accent-strong: #0d4f3c;
   --accent-link: #0f5f47;
-  --accent-soft-bg: #eef5f2;
-  --accent-outline: rgba(13, 79, 60, 0.45);
-  --accent-fill: rgba(20, 106, 84, 0.12);
-  --accent-fill-strong: rgba(20, 106, 84, 0.25);
-  /* Neutral track behind the teal progress fill. */
-  --progress-track: #dadada;
+  --accent-soft-bg: color-mix(in oklab, var(--accent) 8%, var(--paper));
+  --accent-outline: color-mix(in oklab, var(--accent) 45%, transparent);
+  --accent-fill: color-mix(in oklab, var(--accent) 12%, transparent);
+  --accent-fill-strong: color-mix(in oklab, var(--accent) 25%, transparent);
+  --progress-track: var(--paper-3);
 
-  /* Danger — errors, destructive affordances */
-  --danger: #7e1111;
-  --danger-strong: #9c1b1b;
-  --danger-bg: #ffe9e9;
-  --danger-border: #d4a8a8;
-  --danger-menu-border: #8f3333;
-  --danger-menu-text: #7a1f1f;
-  --danger-menu-hover-bg: #ffecec;
+  /* Danger and warning surfaces now derive from the brick and amber palette. */
+  --danger: var(--brick);
+  --danger-strong: color-mix(in oklab, var(--brick) 82%, var(--ink));
+  --danger-bg: color-mix(in oklab, var(--brick) 10%, var(--paper));
+  --danger-border: color-mix(in oklab, var(--brick) 42%, var(--paper));
+  --danger-menu-border: color-mix(in oklab, var(--brick) 72%, var(--ink));
+  --danger-menu-text: color-mix(in oklab, var(--brick) 80%, var(--ink));
+  --danger-menu-hover-bg: color-mix(in oklab, var(--brick) 12%, var(--paper));
+  --warning-bg: color-mix(in oklab, var(--amber) 12%, var(--paper));
 
-  /* Warning — non-error notices, match prompt */
-  --warning-bg: #fff9d8;
-
-  /* Highlight — text annotations + their menus */
+  /* PDF text highlights remain a distinct annotation palette. */
   --highlight: #ffcd45;
   --highlight-strong: #ffd033;
   --highlight-soft: rgba(255, 205, 69, 0.38);
@@ -84,13 +135,10 @@
   --highlight-status-border: #c6b56c;
   --highlight-status-text: #4d4211;
 
-  /* Kanban card sizing — fixed height keeps every card uniform. Adjust here. */
-  --card-height: 76px;
-
-  /* Shadows */
+  /* Specialized non-card shadows retained for pages, menus and popovers. */
   --shadow-page: 0 1px 4px rgba(0, 0, 0, 0.28);
   --shadow-menu: 0 2px 8px rgba(0, 0, 0, 0.22);
-  --shadow-card: 0 3px 12px rgba(0, 0, 0, 0.24);
+  --shadow-popover: 0 3px 12px rgba(0, 0, 0, 0.24);
 }
 
 *,
@@ -105,9 +153,21 @@ body {
   font-family: var(--font-family);
 }
 
+html {
+  background: var(--desk);
+}
+
+body {
+  min-height: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-body);
+}
+
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -115,11 +175,119 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+a {
+  color: var(--accent);
+}
+
+input:not([type="checkbox"]):not([type="range"]),
+select,
+textarea {
+  border: var(--bw) solid var(--line-3);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+}
+
+fieldset {
+  border: var(--bw) solid var(--line-2);
+}
+
+dialog {
+  border: var(--bw) solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+}
+
 /* Muted secondary text. Every <small> in the app shares one colour + size;
    components add only layout (ellipsis, clamp) on top. */
 small {
   color: var(--text-muted);
   font-size: var(--font-size-small);
+}
+
+/* Reusable e-ink recipes. */
+.eink-card {
+  border: var(--bw) solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--card);
+  transition:
+    box-shadow var(--ease),
+    transform var(--ease);
+}
+
+.eink-card:hover {
+  box-shadow: var(--shadow-card);
+}
+
+.eink-btn {
+  padding: 5px 10px;
+  border: var(--bw) solid var(--line-3);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  color: var(--ink);
+  font: 400 var(--fs-body) / 1.2 var(--font-sans);
+  cursor: pointer;
+  transition:
+    background var(--ease),
+    box-shadow var(--ease),
+    transform var(--ease);
+}
+
+.eink-btn:hover:not(:disabled) {
+  background: var(--paper-3);
+  box-shadow: var(--shadow-sm);
+  transform: var(--lift);
+}
+
+.eink-btn--soft-accent {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 4%, var(--paper));
+  color: var(--accent);
+}
+
+.eink-btn--soft-accent:hover:not(:disabled) {
+  background: var(--accent-soft-bg);
+  box-shadow: 2px 2px 0 color-mix(in oklab, var(--accent) 45%, transparent);
+}
+
+.eink-btn--accent {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--paper);
+}
+
+.eink-btn--accent:hover:not(:disabled) {
+  box-shadow: var(--shadow-btn);
+}
+
+.eink-chip {
+  padding: 1px 6px;
+  border: var(--bw) solid var(--line-2);
+  border-radius: var(--radius-chip);
+  background: var(--card);
+  color: var(--ink-3);
+  font: 400 var(--fs-meta) var(--font-mono);
+}
+
+.eink-label {
+  color: var(--ink-3);
+  font: 700 var(--fs-label) var(--font-mono);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eink-card,
+  .eink-btn {
+    transition: none;
+  }
 }
 
 /* Floating right-click menu, shared by the library and the board. Container +

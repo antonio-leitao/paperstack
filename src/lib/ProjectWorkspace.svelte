@@ -590,16 +590,6 @@
 </script>
 
 <main>
-  <header class="toolbar">
-    {#if !leftSidebarOpen}
-      <button type="button" onclick={() => (leftSidebarOpen = true)}>Show library</button>
-      <button type="button" onclick={choosePdf}>Add PDF</button>
-    {/if}
-    <a href="/">Projects</a>
-    <strong>{project?.name ?? "Project"}</strong>
-    <span class="status">{projectDocuments.length} PDFs in project</span>
-  </header>
-
   {#if libraryError}
     <div class="notice error" role="status">{libraryError}</div>
   {/if}
@@ -616,7 +606,12 @@
     {#if leftSidebarOpen}
       <aside class="library" aria-label="Document library">
         <header class="library-header">
-          <button type="button" aria-label="Hide library" onclick={() => (leftSidebarOpen = false)}>
+          <button
+            class="eink-btn"
+            type="button"
+            aria-label="Hide library"
+            onclick={() => (leftSidebarOpen = false)}
+          >
             Hide
           </button>
         </header>
@@ -649,10 +644,13 @@
 
     <section class="center">
       <ProjectDocuments
+        projectName={project?.name ?? "Project"}
         {projectDocuments}
         stacks={projectStacks}
+        libraryOpen={leftSidebarOpen}
         {openDocumentIds}
         {analysisStates}
+        onshowlibrary={() => (leftSidebarOpen = true)}
         onopen={(documentId) => void openLibraryDocument(documentId)}
         onshowinfolder={showDocumentsInFolder}
         onremove={requestRemoveProjectDocument}
@@ -763,28 +761,8 @@
   main {
     display: grid;
     height: 100vh;
-    grid-template-rows: auto auto minmax(0, 1fr);
-  }
-
-  .toolbar {
-    display: flex;
-    min-height: 46px;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .toolbar strong,
-  .status {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .status {
-    font-size: var(--font-size-small);
+    grid-template-rows: auto minmax(0, 1fr);
+    background: var(--paper);
   }
 
   .notice.error {
@@ -809,8 +787,8 @@
   .workspace {
     display: grid;
     min-height: 0;
-    grid-row: 3;
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-row: 2;
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   }
 
   .workspace.left-closed {
@@ -837,11 +815,13 @@
 
   .library {
     border-right: 1px solid var(--border);
+    background: var(--paper-2);
   }
 
   .center {
     min-width: 0;
     min-height: 0;
     overflow: auto;
+    background: var(--paper);
   }
 </style>

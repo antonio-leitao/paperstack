@@ -41,8 +41,8 @@
       <input bind:this={input} bind:value required />
     </label>
     <div>
-      <button type="button" onclick={oncancel}>Cancel</button>
-      <button type="submit">{confirmLabel}</button>
+      <button class="eink-btn" type="button" onclick={oncancel}>Cancel</button>
+      <button class="eink-btn" type="submit">{confirmLabel}</button>
     </div>
   </form>
 </Modal>

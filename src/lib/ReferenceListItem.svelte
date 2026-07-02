@@ -52,7 +52,7 @@
   <small>{reference.calloutBoxes.length} callout(s)</small>
 
   {#if linkedDoc}
-    <button type="button" onclick={openLinkedDocument}>Open document</button>
+    <button class="eink-btn" type="button" onclick={openLinkedDocument}>Open document</button>
   {/if}
 
   {#if hasTrustedBibtex(reference) && !resolving}

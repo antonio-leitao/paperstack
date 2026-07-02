@@ -272,8 +272,16 @@
         {#if sourceMatch.authors.length} by {sourceMatch.authors.join(", ")}{/if}
         {#if sourceMatch.doi} (DOI {sourceMatch.doi}){/if}.
       </span>
-      <button type="button" onclick={() => void linkSourceReference()}>Link PDF</button>
-      <button type="button" onclick={() => (dismissedSourceId = sourceMatch.sharedId)}>Not now</button>
+      <button class="eink-btn" type="button" onclick={() => void linkSourceReference()}>
+        Link PDF
+      </button>
+      <button
+        class="eink-btn"
+        type="button"
+        onclick={() => (dismissedSourceId = sourceMatch.sharedId)}
+      >
+        Not now
+      </button>
     </div>
   {/if}
 
@@ -285,8 +293,8 @@
       />
       {#if !rightSidebarOpen}
         <button
+          class="show-references eink-btn"
           type="button"
-          class="show-references"
           onclick={() => (rightSidebarOpen = true)}
         >
           Show references
@@ -313,10 +321,17 @@
         <header class="references-header">
           <h2>References</h2>
           <div class="references-actions">
-            <button type="button" onclick={() => void reanalyze()} disabled={analyzing || !documentId}>
+            <button
+              class="eink-btn"
+              type="button"
+              onclick={() => void reanalyze()}
+              disabled={analyzing || !documentId}
+            >
               {analyzing ? "Analyzing…" : analysisError ? "Retry analysis" : "Analyze again"}
             </button>
-            <button type="button" onclick={() => (rightSidebarOpen = false)}>Hide</button>
+            <button class="eink-btn" type="button" onclick={() => (rightSidebarOpen = false)}>
+              Hide
+            </button>
           </div>
         </header>
         {#if analyzing && !analysis}
@@ -405,6 +420,7 @@
     overflow: auto;
     padding: 10px;
     border-left: 1px solid var(--border);
+    background: var(--paper-2);
   }
 
   .references-header,

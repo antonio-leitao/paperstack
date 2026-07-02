@@ -46,7 +46,7 @@
 
 <style>
   .analysis-progress {
-    height: 3px;
+    height: var(--bw-accent);
     overflow: hidden;
     /* Light-gray track; the teal indicator fills it left-to-right. */
     background: var(--progress-track);

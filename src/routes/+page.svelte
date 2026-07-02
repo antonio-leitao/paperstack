@@ -89,7 +89,8 @@
 <main>
   <header>
     <h1>Projects</h1>
-    <button type="button" onclick={() => (projectNamePrompt = { mode: "create" })}>
+    <a class="lab-link" href="/design/documents">Document Lab</a>
+    <button class="eink-btn" type="button" onclick={() => (projectNamePrompt = { mode: "create" })}>
       New Project
     </button>
   </header>
@@ -105,21 +106,24 @@
       {#each projects as project (project.id)}
         <li>
           <a href={`/projects/${project.id}`}>{project.name}</a>
-          <span class="count">{project.documentCount} PDF{project.documentCount === 1 ? "" : "s"}</span>
+          <span class="count eink-chip">{project.documentCount} PDF{project.documentCount === 1 ? "" : "s"}</span>
           <button
+            class="eink-btn"
             type="button"
             onclick={() => (projectNamePrompt = { mode: "rename", project })}
           >
             Rename
           </button>
-          <button type="button" onclick={() => (projectToDelete = project)}>Delete</button>
+          <button class="eink-btn" type="button" onclick={() => (projectToDelete = project)}>
+            Delete
+          </button>
         </li>
       {/each}
     </ul>
   {:else}
     <div class="empty">
       <p>No projects yet.</p>
-      <button type="button" onclick={() => (projectNamePrompt = { mode: "create" })}>
+      <button class="eink-btn" type="button" onclick={() => (projectNamePrompt = { mode: "create" })}>
         New Project
       </button>
     </div>
@@ -162,6 +166,15 @@
   h1,
   p {
     margin: 0;
+  }
+
+  h1 {
+    margin-right: auto;
+  }
+
+  .lab-link {
+    color: var(--text-muted);
+    font-size: var(--font-size-small);
   }
 
   ul {

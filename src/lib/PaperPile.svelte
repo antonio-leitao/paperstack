@@ -82,6 +82,14 @@
     );
   }
 
+  function thumbnailSource(path: string): string {
+    // The design lab uses self-contained data URLs so its fixtures never need
+    // files in the user's library. Real document thumbnails remain native paths.
+    return path.startsWith("data:") || path.startsWith("blob:")
+      ? path
+      : convertFileSrc(path);
+  }
+
   function handleDeckClick(event: MouseEvent) {
     if (draggingEntryId !== null || suppressClick) return;
     if (event.shiftKey) {
@@ -137,7 +145,6 @@
     <div
       class="deck"
       class:is-merge-target={isMergeTarget}
-      class:is-selected={selected}
       role="button"
       tabindex="0"
       aria-label={`Expand pile ${pileTitle}, ${entry.members.length} papers`}
@@ -152,7 +159,7 @@
           {#if member.document.thumbnailPath}
             <img
               class="deck-thumb"
-              src={convertFileSrc(member.document.thumbnailPath)}
+              src={thumbnailSource(member.document.thumbnailPath)}
               alt=""
               loading="lazy"
             />
@@ -184,7 +191,6 @@
       class:is-open={openDocumentIds.includes(documentId)}
       class:is-busy={status !== null}
       class:is-merge-target={isMergeTarget}
-      class:is-selected={selected}
       role="button"
       tabindex="0"
       aria-label={`Open ${documentTitle(member)}`}
@@ -196,7 +202,7 @@
       {#if member.document.thumbnailPath}
         <img
           class="thumb"
-          src={convertFileSrc(member.document.thumbnailPath)}
+          src={thumbnailSource(member.document.thumbnailPath)}
           alt=""
           loading="lazy"
         />
@@ -234,13 +240,13 @@
   }
 
   /* Fixed two-column card: thumbnail (full height) | text. Fixed height keeps
-     every card identical. Adjust --card-height in app.css. */
+     every card identical. Adjust --card-h in app.css. */
   .paper-card {
     position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 8px;
-    height: var(--card-height);
+    height: var(--card-h);
     min-width: 0;
     overflow: hidden;
   }
@@ -252,16 +258,8 @@
   .paper-card.is-merge-target {
     position: relative;
     z-index: 1;
-    background: var(--surface);
+    background: var(--card);
     outline: 2px solid var(--accent);
-  }
-
-  /* Multi-selected (Shift+click), waiting to be grouped into a pile. */
-  .paper-card.is-selected,
-  .deck.is-selected {
-    outline: 2px solid var(--accent);
-    outline-offset: -2px;
-    background: var(--accent-soft-bg);
   }
 
   /* A skeleton card peeking out behind the target — previews the new pile formed
@@ -271,32 +269,32 @@
     z-index: 0;
     inset: 0;
     transform: translate(7px, 7px);
-    border: 1px dashed var(--border);
-    background: var(--surface-muted);
+    border: var(--bw) dashed var(--line-2);
+    background: var(--card-2);
   }
 
   .merge-ghost-thumb {
     display: block;
     height: 100%;
     aspect-ratio: 3 / 4;
-    background: var(--surface-sunken);
+    background: var(--card-2);
   }
 
   /* Left column: the paper thumbnail, spanning the full card height. Height is an
      explicit length (not 100%) because a % height won't resolve against the
      auto-sized grid row — it would fall back to the image's intrinsic size. */
   .thumb {
-    height: var(--card-height);
+    height: var(--card-h);
     aspect-ratio: 3 / 4;
     object-fit: cover;
     object-position: top;
-    background: var(--surface-sunken);
+    background: var(--card-2);
   }
 
   /* Right column: a two-line title then a single byline line. */
   .card-text {
     display: grid;
-    align-content: start;
+    align-content: center;
     gap: 4px;
     min-width: 0;
   }
@@ -304,7 +302,7 @@
   .card-title {
     display: -webkit-box;
     overflow: hidden;
-    font-size: var(--font-size-title);
+    font-size: var(--fs-card);
     line-height: 1.25;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -313,6 +311,8 @@
 
   .byline {
     overflow: hidden;
+    color: var(--ink-3);
+    font-size: var(--fs-meta);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -342,7 +342,7 @@
     height: 13px;
     border: 2px solid var(--accent);
     border-right-color: transparent;
-    border-radius: 50%;
+    border-radius: var(--radius-pill);
     animation: spin 0.7s linear infinite;
   }
 
@@ -365,7 +365,7 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 8px;
-    height: var(--card-height);
+    height: var(--card-h);
     width: 100%;
     overflow: hidden;
     text-align: left;
@@ -374,15 +374,15 @@
   .deck-thumbs {
     display: flex;
     align-items: stretch;
-    height: var(--card-height);
+    height: var(--card-h);
     overflow: hidden;
   }
 
   .deck-thumb {
     flex: none;
     width: 40px;
-    height: var(--card-height);
-    border: 1px solid var(--border-subtle);
+    height: var(--card-h);
+    border: var(--bw) solid var(--line);
     object-fit: cover;
     object-position: top;
     background: var(--surface);
@@ -395,8 +395,8 @@
   /* An extra skeleton card joining the fan — previews adding to this pile. */
   .deck-thumb-ghost {
     border-style: dashed;
-    border-color: var(--border);
-    background: var(--surface-sunken);
+    border-color: var(--line-2);
+    background: var(--card-2);
   }
 
   .deck.is-merge-target {
@@ -406,7 +406,7 @@
 
   .deck-label {
     display: grid;
-    align-content: start;
+    align-content: center;
     gap: 4px;
     min-width: 0;
   }
@@ -414,11 +414,16 @@
   .deck-label strong {
     display: -webkit-box;
     overflow: hidden;
-    font-size: var(--font-size-title);
+    font-size: var(--fs-card);
     line-height: 1.25;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
+  }
+
+  .deck-label small {
+    color: var(--ink-3);
+    font-size: var(--fs-meta);
   }
 
 </style>

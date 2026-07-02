@@ -133,7 +133,7 @@
     padding: 12px;
     border: 1px solid var(--border);
     background: var(--surface);
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-popover);
     color: var(--text);
     font: 13px/1.35 system-ui, sans-serif;
     cursor: default;

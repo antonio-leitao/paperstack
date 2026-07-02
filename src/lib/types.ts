@@ -91,6 +91,7 @@ export type LibraryDocument = {
   storedPath: string;
   thumbnailPath: string | null;
   referenceId: string | null;
+  referenceBibtex?: string | null;
   referenceTitle: string | null;
   referenceAuthors: string[];
   referenceYear: string | null;

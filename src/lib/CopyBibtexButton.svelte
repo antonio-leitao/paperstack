@@ -8,10 +8,12 @@
     bibtex,
     label = "Copy BibTeX",
     ariaLabel = undefined,
+    menuItem = false,
   }: {
     bibtex: string;
     label?: string;
     ariaLabel?: string;
+    menuItem?: boolean;
   } = $props();
 
   let status = $state<"idle" | "copied" | "failed">("idle");
@@ -30,6 +32,12 @@
   }
 </script>
 
-<button type="button" aria-label={ariaLabel} onclick={copy}>
+<button
+  class:eink-btn={!menuItem}
+  type="button"
+  role={menuItem ? "menuitem" : undefined}
+  aria-label={ariaLabel}
+  onclick={copy}
+>
   {status === "failed" ? "Copy failed" : status === "copied" ? "Copied" : label}
 </button>

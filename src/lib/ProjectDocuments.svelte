@@ -56,10 +56,13 @@
   };
 
   let {
+    projectName,
     projectDocuments,
     stacks,
+    libraryOpen,
     openDocumentIds = [],
     analysisStates = {},
+    onshowlibrary,
     onopen,
     onshowinfolder,
     onremove,
@@ -80,10 +83,13 @@
     onrequestrenamestack,
     onrequestdeletestack,
   }: {
+    projectName: string;
     projectDocuments: ProjectDocument[];
     stacks: ProjectStack[];
+    libraryOpen: boolean;
     openDocumentIds?: string[];
     analysisStates?: Record<string, AnalysisStatus>;
+    onshowlibrary: () => void;
     onopen: (documentId: string) => void | Promise<void>;
     onshowinfolder: (documentIds: string[]) => void | Promise<void>;
     onremove: (documentId: string) => void | Promise<void>;
@@ -821,30 +827,41 @@
 
 <section class="board" aria-label="Project board">
   <header class="board-header">
-    <div>
-      <h1>Board</h1>
-      <p>{projectDocuments.length} PDF{projectDocuments.length === 1 ? "" : "s"} in this project.</p>
+    <div class="board-heading">
+      <a class="back-button" href="/" aria-label="Back to projects" title="Back to projects">←</a>
+      <div class="board-title">
+        <h1>{projectName}</h1>
+        <p>{projectDocuments.length} PDF{projectDocuments.length === 1 ? "" : "s"} in this project.</p>
+      </div>
     </div>
     <div class="actions">
       {#if selectedIds.size}
         <span class="selection-count">{selectedIds.size} selected</span>
         <button
+          class="eink-btn"
           type="button"
           onclick={() => void onshowinfolder(orderedSelection())}
         >
           Show in Folder
         </button>
         <button
+          class="eink-btn eink-btn--soft-accent"
           type="button"
           disabled={selectedIds.size < 2}
           onclick={groupSelection}
         >
           Group into pile
         </button>
-        <button type="button" onclick={clearSelection}>Clear</button>
+        <button class="eink-btn" type="button" onclick={clearSelection}>Clear</button>
+        <span class="action-separator" aria-hidden="true"></span>
       {/if}
-      <button type="button" onclick={oncreatestack}>New Stack</button>
-      <button type="button" onclick={onchoosepdf}>Add PDF</button>
+      {#if !libraryOpen}
+        <button class="eink-btn" type="button" onclick={onshowlibrary}>Show Library</button>
+      {/if}
+      <button class="eink-btn" type="button" onclick={oncreatestack}>New Stack</button>
+      <button class="eink-btn eink-btn--accent" type="button" onclick={onchoosepdf}>
+        + Add PDF
+      </button>
     </div>
   </header>
 
@@ -854,9 +871,13 @@
         <section class="column" aria-label={stack.name}>
           <header class="column-header">
             <strong>{stack.name}</strong>
-            <span class="count">{columnPaperCount(stack.id)}</span>
-            <button type="button" onclick={() => onrequestrenamestack(stack)}>Rename</button>
-            <button type="button" onclick={() => onrequestdeletestack(stack)}>Delete</button>
+            <span class="count eink-chip">{columnPaperCount(stack.id)}</span>
+            <button class="eink-btn" type="button" onclick={() => onrequestrenamestack(stack)}>
+              Rename
+            </button>
+            <button class="eink-btn" type="button" onclick={() => onrequestdeletestack(stack)}>
+              Delete
+            </button>
           </header>
           <ul
             class="cards"
@@ -886,11 +907,13 @@
                   openDocumentIds.includes(member.document.id),
                 )}
               <li
+                class="eink-card"
                 animate:flip={{ duration: FLIP_DURATION_MS }}
                 class:pile-member={inPile}
                 class:pile-first={firstInPile}
                 class:pile-last={lastInPile}
                 class:is-open={isOpenEntry}
+                class:is-selected={isSelected && !shadowEntry}
                 aria-label={entryLabel(entry)}
                 data-is-dnd-shadow-item-hint={shadowEntry}
               >
@@ -907,6 +930,7 @@
                         {entry.pileName ?? "Untitled pile"}
                       </strong>
                       <button
+                        class="eink-btn"
                         type="button"
                         onclick={() => entry.pileId && togglePile(entry.pileId)}
                       >
@@ -946,7 +970,7 @@
   {:else}
     <div class="empty">
       <p>Create a stack before adding PDFs to this project.</p>
-      <button type="button" onclick={oncreatestack}>New Stack</button>
+      <button class="eink-btn" type="button" onclick={oncreatestack}>New Stack</button>
     </div>
   {/if}
 </section>
@@ -1042,6 +1066,7 @@
     grid-template-rows: auto minmax(0, 1fr);
     gap: 12px;
     padding: 14px;
+    background: var(--paper);
   }
 
   .board-header,
@@ -1056,13 +1081,35 @@
     align-items: start;
   }
 
+  .board-heading {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .board-title {
+    min-width: 0;
+  }
+
+  .back-button {
+    flex: 0 0 auto;
+    color: inherit;
+    font-size: var(--font-size-heading);
+    line-height: 1;
+    text-decoration: none;
+  }
+
   h1,
   p {
     margin: 0;
   }
 
   h1 {
+    overflow: hidden;
     font-size: var(--font-size-heading);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .columns {
@@ -1077,12 +1124,13 @@
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     gap: 8px;
-    width: 260px;
+    width: var(--col-w);
     height: 100%;
     flex: 0 0 auto;
     max-height: 100%;
-    border: 1px solid var(--border);
+    border: var(--bw) solid var(--line-2);
     padding: 8px;
+    background: var(--paper-2);
   }
 
   .column-header {
@@ -1098,14 +1146,19 @@
   }
 
   .count {
-    color: var(--text-muted);
-    font-size: var(--font-size-small);
+    flex: 0 0 auto;
   }
 
   .selection-count {
     align-self: center;
     color: var(--accent);
     font-size: var(--font-size-small);
+  }
+
+  .action-separator {
+    align-self: stretch;
+    width: var(--bw);
+    background: var(--line-2);
   }
 
   .cards {
@@ -1130,14 +1183,7 @@
     display: grid;
     gap: 6px;
     margin-bottom: 8px;
-    border: 1px solid var(--border-subtle);
     padding: 8px;
-    background: var(--surface);
-  }
-
-  /* Open paper: its card border turns accent, matching the library highlight. */
-  .cards li.is-open {
-    border-color: var(--accent);
   }
 
   /* An open pile: its members share one accent border so it reads as a single
@@ -1145,6 +1191,7 @@
      continuous. This is the drag target users aim for to drop into / out of it. */
   .cards li.pile-member {
     margin-bottom: 0;
+    border-width: var(--bw-2);
     border-color: var(--accent);
     border-top-color: transparent;
     /* A faint line separates papers inside the pile; the outer edge stays accent. */
@@ -1158,6 +1205,22 @@
   .cards li.pile-last {
     margin-bottom: 8px;
     border-bottom-color: var(--accent);
+  }
+
+  /* Open paper: a full-thickness accent rule on the left keeps the state
+     visible without outlining the whole card. */
+  .cards li.is-open {
+    border-left-width: var(--bw-accent);
+    border-left-color: var(--accent);
+  }
+
+  /* Multi-selected (Shift+click), waiting to be grouped into a pile. The
+     selection belongs to the full Kanban card, including its padding and
+     progress edge, rather than the PaperPile content nested inside it. */
+  .cards li.is-selected {
+    border-color: var(--accent);
+    outline: var(--bw) solid var(--accent);
+    background: var(--accent-soft-bg);
   }
 
   .pile-header {
@@ -1181,6 +1244,8 @@
   /* Pointer hit-testing in merge mode must see the real card underneath the
      floating drag preview. Drag motion itself is handled by window listeners. */
   :global(#dnd-action-dragged-el) {
+    box-shadow: var(--shadow-drag) !important;
+    transition: none !important;
     pointer-events: none !important;
   }
 
@@ -1202,6 +1267,7 @@
   .empty {
     display: grid;
     justify-items: start;
+    align-content: start;
     gap: 8px;
   }
 </style>

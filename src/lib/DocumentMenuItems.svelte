@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CopyBibtexButton from "./CopyBibtexButton.svelte";
   import type { AnalysisStatus, LibraryDocument } from "./types";
 
   let {
@@ -35,6 +36,9 @@
   <button type="button" role="menuitem" onclick={onshowinfolder}>
     Show in Folder
   </button>
+  {#if document.referenceBibtex}
+    <CopyBibtexButton bibtex={document.referenceBibtex} menuItem />
+  {/if}
   <button type="button" role="menuitem" onclick={onrename}>Rename</button>
   {#if document.referenceId}
     <button type="button" role="menuitem" onclick={onunlink}>
