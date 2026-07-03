@@ -20,6 +20,22 @@
 @font-face {
   font-family: "Public Sans";
   font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/public-sans-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/public-sans-latin-600-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
   font-weight: 700;
   font-display: swap;
   src: url("/fonts/public-sans-latin-700-normal.woff2") format("woff2");
@@ -55,10 +71,12 @@
   --accent-plum: #6a3f5c;
   --accent-clay: #8a5a2b;
 
-  /* Typography. The bundled Public Sans weights are 400 and 700, so recipe
-     weights snap to the nearest available face. */
+  /* Typography. Public Sans ships weights 400, 500, 600 and 700, so the medium
+     (500) and semibold (600) recipe tiers render at their intended weight. */
   --font-sans: "Public Sans", system-ui, sans-serif;
   --font-mono: var(--font-sans);
+  --sans: var(--font-sans);
+  --mono: var(--font-mono);
   --fs-title: 20px;
   --fs-card: 13px;
   --fs-body: 12.5px;
@@ -89,6 +107,9 @@
   --card-h-compact: 66px;
   --col-w: 270px;
   --sidebar-w: 302px;
+
+  /* Paper-grain overlay opacity (fixed fractal-noise layer, multiply blend). */
+  --grain-op: 0.35;
 
   /* Compatibility aliases used by the existing components. */
   --font-family: var(--font-sans);
@@ -279,7 +300,7 @@ small {
 
 .eink-label {
   color: var(--ink-3);
-  font: 700 var(--fs-label) var(--font-mono);
+  font: 600 var(--fs-label) var(--font-mono);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }

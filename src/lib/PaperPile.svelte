@@ -245,7 +245,7 @@
     position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
+    gap: 10px;
     height: var(--card-h);
     min-width: 0;
     overflow: hidden;
@@ -275,8 +275,8 @@
 
   .merge-ghost-thumb {
     display: block;
+    width: 46px;
     height: 100%;
-    aspect-ratio: 3 / 4;
     background: var(--card-2);
   }
 
@@ -284,11 +284,33 @@
      explicit length (not 100%) because a % height won't resolve against the
      auto-sized grid row — it would fall back to the image's intrinsic size. */
   .thumb {
+    width: 46px;
     height: var(--card-h);
-    aspect-ratio: 3 / 4;
     object-fit: cover;
     object-position: top;
     background: var(--card-2);
+  }
+
+  /* Placeholder for a paper whose first-page thumbnail hasn't rendered yet:
+     a dithered stand-in (dark title bar + repeating text lines + dot halftone)
+     so an empty card still reads as a document rather than a blank tile. */
+  .thumb-empty {
+    border: var(--bw) solid var(--line-2);
+    background-color: var(--card-2);
+    background-image:
+      linear-gradient(var(--ink), var(--ink)),
+      repeating-linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--ink) 42%, transparent) 0 1.5px,
+        transparent 1.5px 5.5px
+      ),
+      radial-gradient(
+        color-mix(in oklab, var(--ink) 20%, transparent) 0.5px,
+        transparent 0.6px
+      );
+    background-repeat: no-repeat, no-repeat, repeat;
+    background-position: 6px 12%, 6px 42%, 0 0;
+    background-size: 66% 9%, 80% 62%, 3px 3px;
   }
 
   /* Right column: a two-line title then a single byline line. */
@@ -303,6 +325,7 @@
     display: -webkit-box;
     overflow: hidden;
     font-size: var(--fs-card);
+    font-weight: 600;
     line-height: 1.25;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -364,7 +387,7 @@
     position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
+    gap: 10px;
     height: var(--card-h);
     width: 100%;
     overflow: hidden;
@@ -392,6 +415,22 @@
     margin-left: -28px;
   }
 
+  /* Dithered stand-in for a deck member without a rendered thumbnail. Narrow
+     fan cards use the two-layer recipe (title bar + text lines). */
+  .deck-thumb-empty {
+    background-color: var(--card-2);
+    background-image:
+      linear-gradient(var(--ink), var(--ink)),
+      repeating-linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--ink) 38%, transparent) 0 1.5px,
+        transparent 1.5px 5px
+      );
+    background-repeat: no-repeat;
+    background-position: 5px 12%, 5px 42%;
+    background-size: 60% 9%, 78% 60%;
+  }
+
   /* An extra skeleton card joining the fan — previews adding to this pile. */
   .deck-thumb-ghost {
     border-style: dashed;
@@ -415,6 +454,7 @@
     display: -webkit-box;
     overflow: hidden;
     font-size: var(--fs-card);
+    font-weight: 600;
     line-height: 1.25;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;

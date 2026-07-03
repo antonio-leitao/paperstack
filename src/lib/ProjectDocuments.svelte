@@ -48,7 +48,15 @@
     pileName: string | null;
   };
 
-  type CardContextMenu = DocumentContextMenu | PileContextMenu;
+  type StackContextMenu = ContextMenuPosition & {
+    kind: "stack";
+    stack: ProjectStack;
+  };
+
+  type BoardContextMenu =
+    | DocumentContextMenu
+    | PileContextMenu
+    | StackContextMenu;
 
   type ReorderPreview = {
     stackId: string;
@@ -165,7 +173,7 @@
   // svelte-dnd-action can reshuffle during a drag, then resync whenever the
   // backend data changes (after each persisted move).
   let columns = $state<Record<string, BoardEntry[]>>({});
-  let contextMenu = $state<CardContextMenu | null>(null);
+  let contextMenu = $state<BoardContextMenu | null>(null);
   let contextMenuElement = $state<HTMLDivElement | null>(null);
   let boardDraggingEntryId = $state<string | null>(null);
   // Which piles are open. While open a pile is flattened into the column.
@@ -218,7 +226,9 @@
           ? projectDocuments.some(
               (item) => item.document.id === menu.documentId,
             )
-          : projectDocuments.some((item) => item.pileId === menu.pileId);
+          : menu.kind === "pile"
+            ? projectDocuments.some((item) => item.pileId === menu.pileId)
+            : stacks.some((stack) => stack.id === menu.stack.id);
       if (!targetStillExists) contextMenu = null;
     }
     // Drop any selected ids whose document has left the project.
@@ -542,13 +552,13 @@
     );
   }
 
-  function contextMenuKey(menu: CardContextMenu): string {
-    return menu.kind === "document"
-      ? `document:${menu.documentId}`
-      : `pile:${menu.pileId}`;
+  function contextMenuKey(menu: BoardContextMenu): string {
+    if (menu.kind === "document") return `document:${menu.documentId}`;
+    if (menu.kind === "pile") return `pile:${menu.pileId}`;
+    return `stack:${menu.stack.id}`;
   }
 
-  async function showContextMenu(menu: CardContextMenu) {
+  async function showContextMenu(menu: BoardContextMenu) {
     const key = contextMenuKey(menu);
     contextMenu = menu;
     await tick();
@@ -646,13 +656,30 @@
     });
   }
 
+  function handleStackMenu(event: MouseEvent, stack: ProjectStack) {
+    event.stopPropagation();
+    if (contextMenu?.kind === "stack" && contextMenu.stack.id === stack.id) {
+      closeContextMenu();
+      return;
+    }
+    const trigger = event.currentTarget as HTMLElement;
+    const bounds = trigger.getBoundingClientRect();
+    void showContextMenu({
+      kind: "stack",
+      stack,
+      trigger,
+      x: bounds.left,
+      y: bounds.bottom + 4,
+    });
+  }
+
   function closeContextMenu(restoreFocus = false) {
     const trigger = contextMenu?.trigger;
     contextMenu = null;
     if (restoreFocus) trigger?.focus();
   }
 
-  function runContextAction(action: (menu: CardContextMenu) => void | Promise<void>) {
+  function runContextAction(action: (menu: BoardContextMenu) => void | Promise<void>) {
     const menu = contextMenu;
     if (!menu) return;
     contextMenu = null;
@@ -675,8 +702,23 @@
     });
   }
 
+  function runStackContextAction(
+    action: (menu: StackContextMenu) => void | Promise<void>,
+  ) {
+    runContextAction((menu) => {
+      if (menu.kind === "stack") return action(menu);
+    });
+  }
+
   function handleWindowPointerDown(event: PointerEvent) {
-    if (!contextMenu || contextMenuElement?.contains(event.target as Node)) return;
+    const target = event.target as Node;
+    if (
+      !contextMenu ||
+      contextMenuElement?.contains(target) ||
+      contextMenu.trigger.contains(target)
+    ) {
+      return;
+    }
     closeContextMenu();
   }
 
@@ -838,19 +880,19 @@
       {#if selectedIds.size}
         <span class="selection-count">{selectedIds.size} selected</span>
         <button
-          class="eink-btn"
-          type="button"
-          onclick={() => void onshowinfolder(orderedSelection())}
-        >
-          Show in Folder
-        </button>
-        <button
           class="eink-btn eink-btn--soft-accent"
           type="button"
           disabled={selectedIds.size < 2}
           onclick={groupSelection}
         >
           Group into pile
+        </button>
+        <button
+          class="eink-btn"
+          type="button"
+          onclick={() => void onshowinfolder(orderedSelection())}
+        >
+          Show in Folder
         </button>
         <button class="eink-btn" type="button" onclick={clearSelection}>Clear</button>
         <span class="action-separator" aria-hidden="true"></span>
@@ -868,19 +910,24 @@
   {#if sortedStacks.length}
     <div class="columns">
       {#each sortedStacks as stack (stack.id)}
-        <section class="column" aria-label={stack.name}>
-          <header class="column-header">
+        <section class="stack" aria-label={stack.name}>
+          <header class="stack__header">
             <strong>{stack.name}</strong>
             <span class="count eink-chip">{columnPaperCount(stack.id)}</span>
-            <button class="eink-btn" type="button" onclick={() => onrequestrenamestack(stack)}>
-              Rename
-            </button>
-            <button class="eink-btn" type="button" onclick={() => onrequestdeletestack(stack)}>
-              Delete
+            <button
+              class="stack__menu"
+              type="button"
+              aria-label={`Actions for ${stack.name}`}
+              aria-haspopup="menu"
+              aria-expanded={contextMenu?.kind === "stack" &&
+                contextMenu.stack.id === stack.id}
+              onclick={(event) => handleStackMenu(event, stack)}
+            >
+              ⋮
             </button>
           </header>
           <ul
-            class="cards"
+            class="stack__list cards"
             aria-label={`${stack.name} documents`}
             use:dndzone={{
               items: columns[stack.id] ?? [],
@@ -914,6 +961,7 @@
                 class:pile-last={lastInPile}
                 class:is-open={isOpenEntry}
                 class:is-selected={isSelected && !shadowEntry}
+                class:is-collapsed-pile={!shadowEntry && entry.members.length > 1}
                 aria-label={entryLabel(entry)}
                 data-is-dnd-shadow-item-hint={shadowEntry}
               >
@@ -982,14 +1030,35 @@
     tabindex="-1"
     aria-label={contextMenu.kind === "document"
       ? `Actions for ${cardTitle(contextMenu.member)}`
-      : `Actions for ${contextMenu.pileName ?? "Untitled pile"}`}
+      : contextMenu.kind === "pile"
+        ? `Actions for ${contextMenu.pileName ?? "Untitled pile"}`
+        : `Actions for ${contextMenu.stack.name}`}
     bind:this={contextMenuElement}
     style:left={`${contextMenu.x}px`}
     style:top={`${contextMenu.y}px`}
     onkeydown={handleMenuKeydown}
     oncontextmenu={(event) => event.preventDefault()}
   >
-    {#if contextMenu.kind === "pile"}
+    {#if contextMenu.kind === "stack"}
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runStackContextAction((menu) =>
+            onrequestrenamestack(menu.stack))}
+      >
+        Rename stack
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runStackContextAction((menu) =>
+            onrequestdeletestack(menu.stack))}
+      >
+        Delete stack
+      </button>
+    {:else if contextMenu.kind === "pile"}
       <button
         type="button"
         role="menuitem"
@@ -1064,14 +1133,17 @@
     height: 100%;
     min-height: 0;
     grid-template-rows: auto minmax(0, 1fr);
-    gap: 12px;
-    padding: 14px;
+    gap: 14px;
+    padding: 16px 18px 6px;
     background: var(--paper);
+    /* Own stacking context so a collapsed pile's negative-z "stacked paper"
+       layers paint on top of this paper background (but still behind each
+       card), instead of being hidden by it. */
+    isolation: isolate;
   }
 
   .board-header,
-  .actions,
-  .column-header {
+  .actions {
     display: flex;
     gap: 8px;
   }
@@ -1115,34 +1187,62 @@
   .columns {
     display: flex;
     min-height: 0;
-    gap: 12px;
+    gap: 14px;
     overflow: auto;
     align-items: stretch;
   }
 
-  .column {
+  .stack {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    gap: 8px;
+    gap: 9px;
     width: var(--col-w);
     height: 100%;
     flex: 0 0 auto;
     max-height: 100%;
-    border: var(--bw) solid var(--line-2);
-    padding: 8px;
-    background: var(--paper-2);
+    min-height: 0;
   }
 
-  .column-header {
+  .stack__header {
+    display: flex;
     align-items: center;
+    gap: 8px;
+    padding: 9px 11px;
+    border: var(--bw) solid var(--line-2);
+    background-color: var(--card-2);
+    background-image: radial-gradient(
+      color-mix(in oklab, var(--ink) 24%, transparent) 0.5px,
+      transparent 0.6px
+    );
+    background-size: 3px 3px;
   }
 
-  .column-header strong {
-    margin-right: auto;
+  .stack__header strong {
     min-width: 0;
     overflow: hidden;
+    font: 600 var(--fs-card) var(--font-sans);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .stack__menu {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    margin-left: auto;
+    flex: 0 0 auto;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink-3);
+    font: 700 18px/1 var(--font-sans);
+  }
+
+  .stack__menu:hover,
+  .stack__menu:focus-visible {
+    background: var(--card);
+    color: var(--ink);
   }
 
   .count {
@@ -1161,15 +1261,15 @@
     background: var(--line-2);
   }
 
-  .cards {
-    display: grid;
+  .stack__list {
+    display: flex;
     height: 100%;
-    align-content: start;
+    flex-direction: column;
     gap: 0;
-    /* Reach through the column padding and halfway across the gutter so moving
-       between adjacent lanes does not briefly count as leaving every drop zone. */
-    margin: 0 -15px;
-    padding: 0 15px;
+    /* The visible 8px inset matches the guide. The extra 6px on either side
+       extends the drop zone halfway across the 12px lane gutter. */
+    margin: 0 -6px;
+    padding: 2px 14px 8px;
     min-height: 0;
     /* Only scroll vertically; horizontal overflow from outlines/drag previews
        must not spawn a spurious horizontal scrollbar inside the column. */
@@ -1178,11 +1278,15 @@
     list-style: none;
   }
 
+  .stack__list > :first-child {
+    margin-top: 4px;
+  }
+
   li {
     position: relative;
     display: grid;
     gap: 6px;
-    margin-bottom: 8px;
+    margin-bottom: 9px;
     padding: 8px;
   }
 
@@ -1203,7 +1307,7 @@
   }
 
   .cards li.pile-last {
-    margin-bottom: 8px;
+    margin-bottom: 9px;
     border-bottom-color: var(--accent);
   }
 
@@ -1221,6 +1325,35 @@
     border-color: var(--accent);
     outline: var(--bw) solid var(--accent);
     background: var(--accent-soft-bg);
+  }
+
+  /* A collapsed pile reads as a physical stack: two offset paper layers peek out
+     behind the top card at the bottom-right. The <li> stays z-index:auto (no
+     stacking context), so these negative-z pseudo layers hoist up to .board's
+     context and paint above its paper background but below the card's own
+     opaque background — the top card hides all but the peeking edges. */
+  .cards li.is-collapsed-pile {
+    border-color: var(--line-3);
+  }
+
+  .cards li.is-collapsed-pile::before,
+  .cards li.is-collapsed-pile::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border: var(--bw) solid var(--line-2);
+    background: var(--card-2);
+    pointer-events: none;
+  }
+
+  .cards li.is-collapsed-pile::before {
+    z-index: -1;
+    transform: translate(3px, 3px);
+  }
+
+  .cards li.is-collapsed-pile::after {
+    z-index: -2;
+    transform: translate(6px, 6px);
   }
 
   .pile-header {
@@ -1260,6 +1393,7 @@
     min-width: 0;
     overflow: hidden;
     font-size: var(--font-size-small);
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

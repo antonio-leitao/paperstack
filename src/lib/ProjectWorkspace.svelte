@@ -590,6 +590,8 @@
 </script>
 
 <main>
+  <div class="paper-grain" aria-hidden="true"></div>
+
   {#if libraryError}
     <div class="notice error" role="status">{libraryError}</div>
   {/if}
@@ -763,6 +765,25 @@
     height: 100vh;
     grid-template-rows: auto minmax(0, 1fr);
     background: var(--paper);
+  }
+
+  /* Fixed paper-grain: a single fractal-noise tile multiplied over the whole
+     board so flat surfaces read as paper. Sits above content (z-index 70) but
+     below menus/modals/overlays (z-index 1000+), and never intercepts input. */
+  .paper-grain {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    pointer-events: none;
+    opacity: var(--grain-op);
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='150' height='150' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .paper-grain {
+      opacity: calc(var(--grain-op) * 0.6);
+    }
   }
 
   .notice.error {

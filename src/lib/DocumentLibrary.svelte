@@ -447,9 +447,10 @@
     white-space: nowrap;
   }
 
-  /* Match the project card title: bold, 14px. */
+  /* Match the project card title: semibold, 13px. */
   .document-title {
     font-size: var(--font-size-title);
+    font-weight: 600;
   }
 
   .analysis {

@@ -516,6 +516,12 @@
     if (playgroundKind === "opened-pile") return playgroundOpenedSlots;
     return [playgroundSlot];
   });
+  const playgroundPaperCount = $derived(
+    playgroundSlots.reduce(
+      (total, slot) => total + slot.entry.members.length,
+      0,
+    ),
+  );
 
   // ----------------------------------------------------------------- handlers
 
@@ -625,8 +631,20 @@
 
     <div class="playground">
       <div class="preview-stage">
-        <div class="board-column playground-column" style={`width: ${playgroundWidth}px`}>
-          <ul class="cards">
+        <div class="board-column playground-column stack" style={`width: ${playgroundWidth}px`}>
+          <header class="stack__header">
+            <strong>Preview stack</strong>
+            <span class="count eink-chip">{playgroundPaperCount}</span>
+            <button
+              class="stack__menu"
+              type="button"
+              aria-label="Preview stack actions"
+              onclick={() => setActivity("Stack menu requested.")}
+            >
+              ⋮
+            </button>
+          </header>
+          <ul class="stack__list cards">
             {#each playgroundSlots as slot (slot.entry.id)}
               {@render cardSlot(slot)}
             {/each}
@@ -634,7 +652,7 @@
         </div>
         <div class="width-readout">
           <span>{playgroundWidth}px column</span>
-          <span>Board default: 270px column (≈252px card)</span>
+          <span>Board default: 270px column (≈254px card)</span>
         </div>
       </div>
 
@@ -751,7 +769,7 @@
             <small>{example.note}</small>
           </div>
           <div class="board-column">
-            <ul class="cards">
+            <ul class="stack__list cards">
               {#each example.slots as slot (slot.entry.id)}
                 {@render cardSlot(slot)}
               {/each}
@@ -953,35 +971,86 @@
      behaviours and intentionally omitted from this static lab.
      ====================================================================== */
 
-  /* Simplified copy of .column: fixed board width, border + padding so the card
-     content settles at the real ~252px. */
+  /* Simplified copy of the production stack. Drag-only negative margins are
+     omitted here, but the visible 8px card inset is identical. */
   .board-column {
     box-sizing: border-box;
     width: var(--col-w);
     max-width: 100%;
-    border: var(--bw) solid var(--line-2);
-    padding: 8px;
-    background: var(--paper-2);
   }
 
   .playground-column {
     width: var(--col-w);
   }
 
-  .cards {
+  .stack {
     display: grid;
-    align-content: start;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 9px;
+    min-height: 0;
+  }
+
+  .stack__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 11px;
+    border: var(--bw) solid var(--line-2);
+    background-color: var(--card-2);
+    background-image: radial-gradient(
+      color-mix(in oklab, var(--ink) 24%, transparent) 0.5px,
+      transparent 0.6px
+    );
+    background-size: 3px 3px;
+  }
+
+  .stack__header strong {
+    min-width: 0;
+    overflow: hidden;
+    font: 700 var(--fs-card) var(--font-sans);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stack__menu {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    margin-left: auto;
+    flex: 0 0 auto;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink-3);
+    font: 700 18px/1 var(--font-sans);
+  }
+
+  .stack__menu:hover,
+  .stack__menu:focus-visible {
+    background: var(--card);
+    color: var(--ink);
+  }
+
+  .stack__list {
+    display: flex;
+    flex-direction: column;
     gap: 0;
     margin: 0;
-    padding: 0;
+    padding: 2px 8px 8px;
+    min-height: 0;
     list-style: none;
+  }
+
+  .stack__list > :first-child {
+    margin-top: 4px;
   }
 
   .cards li {
     position: relative;
     display: grid;
     gap: 6px;
-    margin-bottom: 8px;
+    margin-bottom: 9px;
     padding: 8px;
   }
 
@@ -1001,7 +1070,7 @@
   }
 
   .cards li.pile-last {
-    margin-bottom: 8px;
+    margin-bottom: 9px;
     border-bottom-color: var(--accent);
   }
 
