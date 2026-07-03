@@ -1051,7 +1051,7 @@
     display: grid;
     gap: 6px;
     margin-bottom: 9px;
-    padding: 8px;
+    padding: var(--card-pad);
   }
 
   /* An open pile: its members share one accent border so it reads as a single
@@ -1060,6 +1060,7 @@
   .cards li.pile-member {
     margin-bottom: 0;
     border-width: var(--bw-2);
+    padding-block: calc(var(--card-pad) - var(--bw-2) + var(--bw));
     border-color: var(--accent);
     border-top-color: transparent;
     border-bottom-color: var(--border-subtle);
@@ -1090,7 +1091,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 6px;
-    margin: -8px -8px 0;
+    margin: calc(-1 * var(--card-pad)) calc(-1 * var(--card-pad)) 0;
     padding: 4px 8px;
     background: var(--accent-soft-bg);
   }

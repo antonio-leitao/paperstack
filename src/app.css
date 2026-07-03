@@ -105,6 +105,12 @@
   /* Layout */
   --card-h: 80px;
   --card-h-compact: 66px;
+  --card-pad: 8px;
+  /* The content sits inside the card shell's padding and 1px border. Keeping
+     that subtraction here makes --card-h describe the complete card. */
+  --card-content-h: calc(
+    var(--card-h) - var(--card-pad) - var(--card-pad) - var(--bw) - var(--bw)
+  );
   --col-w: 270px;
   --sidebar-w: 302px;
 

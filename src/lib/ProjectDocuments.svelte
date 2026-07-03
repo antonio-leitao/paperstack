@@ -206,6 +206,34 @@
       : dropMode ?? (shiftHeld ? "merge" : "reorder"),
   );
 
+  // Discoverability hint for the hidden Shift-to-merge modifier. Shown only while
+  // a drag is in progress; reflects whether Shift is currently held over a target.
+  const dragHint = $derived.by(() => {
+    if (draggingEntryId === null) return null;
+    if (shiftHeld) {
+      return mergeTargetEntryId ? "Release to make a pile" : "Hold over a paper to pile";
+    }
+    return "Hold ⇧ to make a pile";
+  });
+
+  // Reflect the live merge state onto <body> so the floating dragged clone
+  // (#dnd-action-dragged-el, appended outside this component) carries the merge
+  // annotation itself while staying opaque. Class is chosen by the target kind:
+  // a collapsed pile entry (pile: prefix) adds to a pile, anything else forms a
+  // new one. Cleared whenever the drag or hover ends.
+  $effect(() => {
+    const active =
+      draggingEntryId !== null && shiftHeld && mergeTargetEntryId !== null;
+    const addToPile =
+      active && (mergeTargetEntryId?.startsWith(PILE_ID_PREFIX) ?? false);
+    const { classList } = document.body;
+    classList.toggle("dnd-merge-new-pile", active && !addToPile);
+    classList.toggle("dnd-merge-add-pile", active && addToPile);
+    return () => {
+      classList.remove("dnd-merge-new-pile", "dnd-merge-add-pile");
+    };
+  });
+
   // True while the active drag is a single paper lifted out of an open pile. Such
   // a drag reshapes the pile through plain reordering; the backend deliberately
   // rejects merging only part of a pile.
@@ -935,6 +963,8 @@
               flipDurationMs: FLIP_DURATION_MS,
               useCursorForDetection: true,
               dropAnimationDisabled: dragMode === "merge",
+              dropTargetStyle: {},
+              morphDisabled: true,
             }}
             onconsider={(event) => consider(stack.id, event)}
             onfinalize={(event) => finalize(stack.id, event)}
@@ -962,6 +992,7 @@
                 class:is-open={isOpenEntry}
                 class:is-selected={isSelected && !shadowEntry}
                 class:is-collapsed-pile={!shadowEntry && entry.members.length > 1}
+                class:is-placeholder={shadowEntry}
                 aria-label={entryLabel(entry)}
                 data-is-dnd-shadow-item-hint={shadowEntry}
               >
@@ -1020,6 +1051,10 @@
       <p>Create a stack before adding PDFs to this project.</p>
       <button class="eink-btn" type="button" onclick={oncreatestack}>New Stack</button>
     </div>
+  {/if}
+
+  {#if dragHint}
+    <div class="drag-hint" aria-hidden="true">{dragHint}</div>
   {/if}
 </section>
 
@@ -1287,7 +1322,7 @@
     display: grid;
     gap: 6px;
     margin-bottom: 9px;
-    padding: 8px;
+    padding: var(--card-pad);
   }
 
   /* An open pile: its members share one accent border so it reads as a single
@@ -1296,6 +1331,7 @@
   .cards li.pile-member {
     margin-bottom: 0;
     border-width: var(--bw-2);
+    padding-block: calc(var(--card-pad) - var(--bw-2) + var(--bw));
     border-color: var(--accent);
     border-top-color: transparent;
     /* A faint line separates papers inside the pile; the outer edge stays accent. */
@@ -1356,12 +1392,21 @@
     transform: translate(6px, 6px);
   }
 
+  /* The reorder shadow slot IS the placeholder: the Kanban shell itself becomes
+     a dashed accent slot with a faint accent wash, so it matches a real card's
+     full size (not the inset content box). morphDisabled on the zone stops the
+     floating dragged clone from copying these styles, keeping it opaque. */
+  .cards li.is-placeholder {
+    border: var(--bw-2) dashed var(--accent);
+    background: color-mix(in oklab, var(--accent) 8%, var(--card));
+  }
+
   .pile-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 6px;
-    margin: -8px -8px 0;
+    margin: calc(-1 * var(--card-pad)) calc(-1 * var(--card-pad)) 0;
     padding: 4px 8px;
     background: var(--accent-soft-bg);
   }
@@ -1389,6 +1434,45 @@
     visibility: hidden !important;
   }
 
+  /* While Shift-merging over a valid target, the floating dragged card carries
+     the annotation itself (staying fully opaque): an accent ring at the Kanban
+     shell level, a stacked-paper shadow suggesting the pile that will form, and
+     a corner tab naming the action. The target card gets nothing. */
+  :global(body.dnd-merge-new-pile #dnd-action-dragged-el),
+  :global(body.dnd-merge-add-pile #dnd-action-dragged-el) {
+    outline: var(--bw-2) solid var(--accent) !important;
+    outline-offset: 0 !important;
+    box-shadow:
+      4px 4px 0 0 var(--card-2),
+      4px 4px 0 var(--bw) var(--accent),
+      8px 8px 0 0 var(--card-2),
+      8px 8px 0 var(--bw) var(--accent) !important;
+  }
+
+  :global(body.dnd-merge-new-pile #dnd-action-dragged-el)::after,
+  :global(body.dnd-merge-add-pile #dnd-action-dragged-el)::after {
+    position: absolute;
+    top: -7px;
+    left: 6px;
+    z-index: 3;
+    padding: 2px 7px;
+    background: var(--accent);
+    color: var(--paper);
+    font: 600 9px var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  :global(body.dnd-merge-new-pile #dnd-action-dragged-el)::after {
+    content: "New pile";
+  }
+
+  :global(body.dnd-merge-add-pile #dnd-action-dragged-el)::after {
+    content: "Add to pile";
+  }
+
   .pile-header-name {
     min-width: 0;
     overflow: hidden;
@@ -1403,5 +1487,23 @@
     justify-items: start;
     align-content: start;
     gap: 8px;
+  }
+
+  /* Floating drag hint: names the Shift-to-merge shortcut while dragging. Above
+     the grain (z 70) but below menus/modals; never intercepts the pointer. */
+  .drag-hint {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    z-index: 80;
+    transform: translateX(-50%);
+    padding: 6px 12px;
+    border: var(--bw) solid var(--ink);
+    background: var(--ink);
+    color: var(--paper);
+    font: 500 11px var(--font-mono);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    pointer-events: none;
   }
 </style>

@@ -65,10 +65,6 @@
       acceptsMerge,
   );
 
-  const isMergeTarget = $derived(
-    mergeEnabled && mergeTargetEntryId === entry.id,
-  );
-
   function documentTitle(member: BoardMember): string {
     return member.document.referenceTitle ?? member.document.title;
   }
@@ -144,7 +140,6 @@
   {#if isCollapsedPile}
     <div
       class="deck"
-      class:is-merge-target={isMergeTarget}
       role="button"
       tabindex="0"
       aria-label={`Expand pile ${pileTitle}, ${entry.members.length} papers`}
@@ -167,9 +162,6 @@
             <span class="deck-thumb deck-thumb-empty"></span>
           {/if}
         {/each}
-        {#if isMergeTarget}
-          <span class="deck-thumb deck-thumb-ghost" aria-hidden="true"></span>
-        {/if}
       </div>
       <div class="deck-label">
         <strong>{pileTitle}</strong>
@@ -181,16 +173,10 @@
     {@const documentId = member.document.id}
     {@const analysisState = analysisStates[documentId]}
     {@const status = analysisLabel(analysisState)}
-    {#if isMergeTarget}
-      <div class="merge-ghost" aria-hidden="true">
-        <span class="merge-ghost-thumb"></span>
-      </div>
-    {/if}
     <div
       class="paper-card"
       class:is-open={openDocumentIds.includes(documentId)}
       class:is-busy={status !== null}
-      class:is-merge-target={isMergeTarget}
       role="button"
       tabindex="0"
       aria-label={`Open ${documentTitle(member)}`}
@@ -239,14 +225,14 @@
     gap: 6px;
   }
 
-  /* Fixed two-column card: thumbnail (full height) | text. Fixed height keeps
-     every card identical. Adjust --card-h in app.css. */
+  /* The outer Kanban shell owns --card-h. This inner content height subtracts
+     that shell's padding and border so the complete card is exactly 80px. */
   .paper-card {
     position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 10px;
-    height: var(--card-h);
+    height: var(--card-content-h);
     min-width: 0;
     overflow: hidden;
   }
@@ -255,37 +241,12 @@
     opacity: 0.75;
   }
 
-  .paper-card.is-merge-target {
-    position: relative;
-    z-index: 1;
-    background: var(--card);
-    outline: 2px solid var(--accent);
-  }
-
-  /* A skeleton card peeking out behind the target — previews the new pile formed
-     when the dragged paper is dropped onto this one. */
-  .merge-ghost {
-    position: absolute;
-    z-index: 0;
-    inset: 0;
-    transform: translate(7px, 7px);
-    border: var(--bw) dashed var(--line-2);
-    background: var(--card-2);
-  }
-
-  .merge-ghost-thumb {
-    display: block;
-    width: 46px;
-    height: 100%;
-    background: var(--card-2);
-  }
-
   /* Left column: the paper thumbnail, spanning the full card height. Height is an
      explicit length (not 100%) because a % height won't resolve against the
      auto-sized grid row — it would fall back to the image's intrinsic size. */
   .thumb {
     width: 46px;
-    height: var(--card-h);
+    height: var(--card-content-h);
     object-fit: cover;
     object-position: top;
     background: var(--card-2);
@@ -388,7 +349,7 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 10px;
-    height: var(--card-h);
+    height: var(--card-content-h);
     width: 100%;
     overflow: hidden;
     text-align: left;
@@ -397,14 +358,14 @@
   .deck-thumbs {
     display: flex;
     align-items: stretch;
-    height: var(--card-h);
+    height: var(--card-content-h);
     overflow: hidden;
   }
 
   .deck-thumb {
     flex: none;
     width: 40px;
-    height: var(--card-h);
+    height: var(--card-content-h);
     border: var(--bw) solid var(--line);
     object-fit: cover;
     object-position: top;
@@ -429,18 +390,6 @@
     background-repeat: no-repeat;
     background-position: 5px 12%, 5px 42%;
     background-size: 60% 9%, 78% 60%;
-  }
-
-  /* An extra skeleton card joining the fan — previews adding to this pile. */
-  .deck-thumb-ghost {
-    border-style: dashed;
-    border-color: var(--line-2);
-    background: var(--card-2);
-  }
-
-  .deck.is-merge-target {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
   }
 
   .deck-label {

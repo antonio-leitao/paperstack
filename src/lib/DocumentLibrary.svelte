@@ -292,6 +292,8 @@
         dropFromOthersDisabled: true,
         flipDurationMs: 0,
         useCursorForDetection: true,
+        dropTargetStyle: {},
+        morphDisabled: true,
       }}
       onconsider={handleLibraryConsider}
       onfinalize={handleLibraryFinalize}
