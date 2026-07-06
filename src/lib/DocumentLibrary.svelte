@@ -32,6 +32,7 @@
     onunlink,
     ondelete,
     onanalyze,
+    oncopylatex,
     onchoosepdf,
     ondragstart = () => {},
     ondragend = () => {},
@@ -54,6 +55,7 @@
     onunlink: (document: LibraryDocument) => void | Promise<void>;
     ondelete: (document: LibraryDocument) => void;
     onanalyze: (documentId: string) => void | Promise<void>;
+    oncopylatex: (document: LibraryDocument) => Promise<boolean>;
     onchoosepdf: () => void | Promise<void>;
     ondragstart?: (entryId: string) => void;
     ondragend?: () => void;
@@ -194,6 +196,11 @@
     if (!menu) return;
     contextMenu = null;
     void action(menu);
+  }
+
+  function copyContextHighlightsAsLatex(): Promise<boolean> {
+    const menu = contextMenu;
+    return menu ? oncopylatex(menu.document) : Promise.resolve(false);
   }
 
   function handleWindowPointerDown(event: PointerEvent) {
@@ -361,6 +368,7 @@
         runContextAction((menu) => onlinkbibtex(menu.document))}
       onunlink={() => runContextAction((menu) => onunlink(menu.document))}
       onanalyze={() => runContextAction((menu) => onanalyze(menu.document.id))}
+      oncopylatex={copyContextHighlightsAsLatex}
       onprojectaction={() =>
         runContextAction((menu) => onadd(menu.document.id))}
       ondelete={() => runContextAction((menu) => ondelete(menu.document))}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import CopyBibtexButton from "./CopyBibtexButton.svelte";
+  import CopyLatexButton from "./CopyLatexButton.svelte";
   import type { AnalysisStatus, LibraryDocument } from "./types";
 
   let {
@@ -13,6 +14,7 @@
     onlinkbibtex,
     onunlink,
     onanalyze,
+    oncopylatex,
     onprojectaction,
     ondelete,
   }: {
@@ -26,6 +28,7 @@
     onlinkbibtex: () => void;
     onunlink: () => void;
     onanalyze: () => void;
+    oncopylatex?: () => Promise<boolean>;
     onprojectaction: () => void;
     ondelete: () => void;
   } = $props();
@@ -38,6 +41,9 @@
   </button>
   {#if document.referenceBibtex}
     <CopyBibtexButton bibtex={document.referenceBibtex} menuItem />
+  {/if}
+  {#if oncopylatex}
+    <CopyLatexButton oncopy={oncopylatex} />
   {/if}
   <button type="button" role="menuitem" onclick={onrename}>Rename</button>
   {#if document.referenceId}

@@ -9,6 +9,7 @@
   import { flip } from "svelte/animate";
   import { tick } from "svelte";
   import AnalysisProgressBar from "./AnalysisProgressBar.svelte";
+  import CopyLatexButton from "./CopyLatexButton.svelte";
   import DocumentMenuItems from "./DocumentMenuItems.svelte";
   import DropPlaceholder from "./DropPlaceholder.svelte";
   import PaperPile from "./PaperPile.svelte";
@@ -79,6 +80,9 @@
     onunlink,
     ondelete,
     onanalyze,
+    oncopydocumentlatex,
+    oncopypilelatex,
+    oncopycolumnlatex,
     onsetorder,
     onpile,
     onunpile,
@@ -106,6 +110,9 @@
     onunlink: (document: BoardMember["document"]) => void | Promise<void>;
     ondelete: (document: BoardMember["document"]) => void;
     onanalyze: (documentId: string) => void | Promise<void>;
+    oncopydocumentlatex: (document: BoardMember["document"]) => Promise<boolean>;
+    oncopypilelatex: (pileId: string) => Promise<boolean>;
+    oncopycolumnlatex: (stackId: string) => Promise<boolean>;
     onsetorder: (
       stackId: string,
       entries: { documentId: string; pileId: string | null }[],
@@ -738,6 +745,27 @@
     });
   }
 
+  function copyContextDocumentAsLatex(): Promise<boolean> {
+    const menu = contextMenu;
+    return menu?.kind === "document"
+      ? oncopydocumentlatex(menu.member.document)
+      : Promise.resolve(false);
+  }
+
+  function copyContextPileAsLatex(): Promise<boolean> {
+    const menu = contextMenu;
+    return menu?.kind === "pile"
+      ? oncopypilelatex(menu.pileId)
+      : Promise.resolve(false);
+  }
+
+  function copyContextColumnAsLatex(): Promise<boolean> {
+    const menu = contextMenu;
+    return menu?.kind === "stack"
+      ? oncopycolumnlatex(menu.stack.id)
+      : Promise.resolve(false);
+  }
+
   function handleWindowPointerDown(event: PointerEvent) {
     const target = event.target as Node;
     if (
@@ -1075,6 +1103,8 @@
     oncontextmenu={(event) => event.preventDefault()}
   >
     {#if contextMenu.kind === "stack"}
+      <CopyLatexButton oncopy={copyContextColumnAsLatex} />
+      <hr />
       <button
         type="button"
         role="menuitem"
@@ -1094,6 +1124,8 @@
         Delete stack
       </button>
     {:else if contextMenu.kind === "pile"}
+      <CopyLatexButton oncopy={copyContextPileAsLatex} />
+      <hr />
       <button
         type="button"
         role="menuitem"
@@ -1153,6 +1185,7 @@
           runDocumentContextAction((menu) => onunlink(menu.member.document))}
         onanalyze={() =>
           runDocumentContextAction((menu) => onanalyze(menu.documentId))}
+        oncopylatex={copyContextDocumentAsLatex}
         onprojectaction={() =>
           runDocumentContextAction((menu) => onremove(menu.documentId))}
         ondelete={() =>

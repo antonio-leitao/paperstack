@@ -1004,6 +1004,7 @@ pub fn run() {
         reference_resolver::semantic_scholar_api_key_configured(),
     );
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

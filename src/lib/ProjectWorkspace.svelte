@@ -11,7 +11,14 @@
   import { onMount } from "svelte";
   import BibtexLinkPrompt from "./BibtexLinkPrompt.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import { copyToClipboard } from "./copyToClipboard";
   import DocumentLibrary from "./DocumentLibrary.svelte";
+  import {
+    columnHighlightsAsLatex,
+    paperHighlightsAsLatex,
+    pileHighlightsAsLatex,
+    type HighlightLatexDocument,
+  } from "./highlightLatex";
   import NamePrompt from "./NamePrompt.svelte";
   import ProjectDocuments from "./ProjectDocuments.svelte";
   import { errorMessage } from "./errorMessage";
@@ -19,6 +26,7 @@
   import type {
     AnalysisStatus,
     BibtexPreview,
+    DocumentAnnotation,
     LibraryDocument,
     Project,
     ProjectDocument,
@@ -336,6 +344,67 @@
     return invoke<BibtexPreview>("preview_bibtex", { bibtex });
   }
 
+  async function highlightExportDocument(
+    document: LibraryDocument,
+    pileId: string | null = null,
+    pileName: string | null = null,
+  ): Promise<HighlightLatexDocument> {
+    const annotations = await invoke<DocumentAnnotation[]>("list_document_annotations", {
+      documentId: document.id,
+    });
+    let citationKey: string | null = null;
+    if (annotations.length && document.referenceBibtex) {
+      try {
+        citationKey = (await reviewBibtex(document.referenceBibtex)).citationKey;
+      } catch {
+        // An absent or unusable link should not prevent the highlight text from
+        // being exported; it simply remains uncited.
+      }
+    }
+    return { citationKey, pileId, pileName, annotations };
+  }
+
+  async function copyLatex(latex: string): Promise<boolean> {
+    if (!latex.trim()) return false;
+    await copyToClipboard(latex);
+    return true;
+  }
+
+  async function copyDocumentHighlightsAsLatex(
+    document: LibraryDocument,
+  ): Promise<boolean> {
+    const exportDocument = await highlightExportDocument(document);
+    return copyLatex(paperHighlightsAsLatex(exportDocument));
+  }
+
+  async function copyPileHighlightsAsLatex(pileId: string): Promise<boolean> {
+    const items = projectDocuments
+      .filter((item) => item.pileId === pileId)
+      .sort((left, right) => left.position - right.position);
+    const exportDocuments = await Promise.all(
+      items.map((item) =>
+        highlightExportDocument(item.document, item.pileId, item.pileName),
+      ),
+    );
+    return copyLatex(
+      pileHighlightsAsLatex(items[0]?.pileName ?? null, exportDocuments),
+    );
+  }
+
+  async function copyColumnHighlightsAsLatex(stackId: string): Promise<boolean> {
+    const stack = projectStacks.find((item) => item.id === stackId);
+    if (!stack) return false;
+    const items = projectDocuments
+      .filter((item) => item.stack.id === stackId)
+      .sort((left, right) => left.position - right.position);
+    const exportDocuments = await Promise.all(
+      items.map((item) =>
+        highlightExportDocument(item.document, item.pileId, item.pileName),
+      ),
+    );
+    return copyLatex(columnHighlightsAsLatex(stack.name, exportDocuments));
+  }
+
   async function linkDocumentFromBibtex(bibtex: string) {
     const document = documentToLinkFromBibtex;
     if (!document) return;
@@ -637,6 +706,7 @@
           onunlink={unlinkDocument}
           ondelete={(document) => (documentToDelete = document)}
           onanalyze={analyzeDocument}
+          oncopylatex={copyDocumentHighlightsAsLatex}
           onchoosepdf={choosePdf}
           ondragstart={(entryId) => (libraryDraggingEntryId = entryId)}
           ondragend={() => (libraryDraggingEntryId = null)}
@@ -661,6 +731,9 @@
         onunlink={unlinkDocument}
         ondelete={(document) => (documentToDelete = document)}
         onanalyze={analyzeDocument}
+        oncopydocumentlatex={copyDocumentHighlightsAsLatex}
+        oncopypilelatex={copyPileHighlightsAsLatex}
+        oncopycolumnlatex={copyColumnHighlightsAsLatex}
         onsetorder={setProjectDocumentOrder}
         onpile={pileProjectDocuments}
         onunpile={unpileProjectDocuments}
