@@ -1,13 +1,14 @@
 <script lang="ts">
   import type { LibraryDocument, Reference } from "./types";
   import CopyBibtexButton from "./CopyBibtexButton.svelte";
+  import CopyCitationKeyButton from "./CopyCitationKeyButton.svelte";
   import { openExternal } from "./openExternal";
   import { hasTrustedBibtex } from "./referenceBibtex";
   import { openViewerWindow } from "./viewerWindows";
 
   // The expanded reference detail shown in the citation hover popover. Its
-  // sidebar counterpart is ReferenceListItem; both share CopyBibtexButton but are
-  // otherwise deliberately separate so each stays a flat, easily-styled template.
+  // sidebar counterpart is ReferenceListItem; both share the citation copy
+  // controls but are otherwise separate so each stays an easily-styled template.
   // States are explicit: `resolving` (metadata still loading) hides external
   // actions, `linkedDoc` (a library PDF exists) adds an "Open document" button.
   let {
@@ -77,6 +78,10 @@
 
   {#if hasTrustedBibtex(reference) && !resolving}
     <CopyBibtexButton bibtex={reference.bibtex} ariaLabel={`Copy BibTeX for ${label}`} />
+    <CopyCitationKeyButton
+      bibtex={reference.bibtex}
+      ariaLabel={`Copy citation key for ${label}`}
+    />
   {/if}
 </div>
 

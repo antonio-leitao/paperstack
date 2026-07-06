@@ -1,5 +1,6 @@
 <script lang="ts">
   import CopyBibtexButton from "./CopyBibtexButton.svelte";
+  import CopyCitationKeyButton from "./CopyCitationKeyButton.svelte";
   import CopyLatexButton from "./CopyLatexButton.svelte";
   import type { AnalysisStatus, LibraryDocument } from "./types";
 
@@ -41,6 +42,7 @@
   </button>
   {#if document.referenceBibtex}
     <CopyBibtexButton bibtex={document.referenceBibtex} menuItem />
+    <CopyCitationKeyButton bibtex={document.referenceBibtex} menuItem />
   {/if}
   {#if oncopylatex}
     <CopyLatexButton oncopy={oncopylatex} />

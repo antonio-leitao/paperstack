@@ -1,13 +1,14 @@
 <script lang="ts">
   import type { LibraryDocument, Reference } from "./types";
   import CopyBibtexButton from "./CopyBibtexButton.svelte";
+  import CopyCitationKeyButton from "./CopyCitationKeyButton.svelte";
   import { openExternal } from "./openExternal";
   import { hasTrustedBibtex } from "./referenceBibtex";
   import { openViewerWindow } from "./viewerWindows";
 
   // The compact reference row in the viewer's sidebar list. Its richer
   // counterpart is ReferenceCard (the citation hover popover); both share
-  // CopyBibtexButton but stay separate so each is a flat, easily-styled template.
+  // citation copy controls but stay separate so each remains easy to style.
   let {
     reference,
     resolving = false,
@@ -57,6 +58,10 @@
 
   {#if hasTrustedBibtex(reference) && !resolving}
     <CopyBibtexButton bibtex={reference.bibtex} ariaLabel={`Copy BibTeX for ${label}`} />
+    <CopyCitationKeyButton
+      bibtex={reference.bibtex}
+      ariaLabel={`Copy citation key for ${label}`}
+    />
   {/if}
 </div>
 
