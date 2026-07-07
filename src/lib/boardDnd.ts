@@ -22,7 +22,8 @@ export const BOARD_DND_TYPE = "project-card";
 export const LIBRARY_ID_PREFIX = "library:";
 export const DOCUMENT_ID_PREFIX = "document:";
 export const PILE_ID_PREFIX = "pile:";
-export const FLIP_DURATION_MS = 80;
+export const CARD_FLIP_DURATION_MS = 120;
+export const COLUMN_FLIP_DURATION_MS = 200;
 
 export function libraryEntryId(documentId: string): string {
   return `${LIBRARY_ID_PREFIX}${documentId}`;

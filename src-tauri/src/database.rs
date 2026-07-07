@@ -246,6 +246,7 @@ fn initialize(connection: &Connection) -> Result<(), String> {
                 project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
                 name TEXT NOT NULL,
                 name_key TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 UNIQUE(project_id, id),
@@ -311,7 +312,23 @@ fn initialize(connection: &Connection) -> Result<(), String> {
         "position",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
+    ensure_column(
+        connection,
+        "project_stacks",
+        "position",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    normalize_project_stack_positions(connection)?;
     ensure_column(connection, "project_documents", "pile_id", "TEXT")?;
+    connection
+        .execute_batch(
+            r#"
+            DROP INDEX IF EXISTS project_stacks_by_project;
+            CREATE INDEX IF NOT EXISTS project_stacks_by_project
+                ON project_stacks(project_id, position, name_key, id);
+            "#,
+        )
+        .map_err(|error| format!("Could not index project stacks: {error}"))?;
     connection
         .execute(
             r#"
@@ -321,6 +338,56 @@ fn initialize(connection: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|error| format!("Could not index project document piles: {error}"))?;
+    Ok(())
+}
+
+fn normalize_project_stack_positions(connection: &Connection) -> Result<(), String> {
+    let project_ids = {
+        let mut statement = connection
+            .prepare("SELECT DISTINCT project_id FROM project_stacks")
+            .map_err(|error| format!("Could not prepare project stack normalization: {error}"))?;
+        let ids = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| format!("Could not read project stack projects: {error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Could not collect project stack projects: {error}"))?;
+        ids
+    };
+
+    for project_id in project_ids {
+        let stack_ids = {
+            let mut statement = connection
+                .prepare(
+                    r#"
+                    SELECT id
+                    FROM project_stacks
+                    WHERE project_id = ?1
+                    ORDER BY position, name_key, id
+                    "#,
+                )
+                .map_err(|error| format!("Could not prepare project stack ordering: {error}"))?;
+            let ids = statement
+                .query_map(params![&project_id], |row| row.get::<_, String>(0))
+                .map_err(|error| format!("Could not read project stack ordering: {error}"))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| format!("Could not collect project stack ordering: {error}"))?;
+            ids
+        };
+
+        for (position, stack_id) in stack_ids.iter().enumerate() {
+            connection
+                .execute(
+                    r#"
+                    UPDATE project_stacks
+                    SET position = ?1
+                    WHERE project_id = ?2 AND id = ?3
+                    "#,
+                    params![position as i64, &project_id, stack_id],
+                )
+                .map_err(|error| format!("Could not normalize project stack order: {error}"))?;
+        }
+    }
+
     Ok(())
 }
 

@@ -65,10 +65,12 @@
 
   .top {
     top: 0;
+    border-radius: var(--radius) var(--radius) 0 0;
   }
 
   .bottom {
     bottom: 0;
+    border-radius: 0 0 var(--radius) var(--radius);
   }
 
   .inline {

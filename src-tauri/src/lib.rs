@@ -1048,6 +1048,7 @@ pub fn run() {
             document_library::delete_project,
             document_library::create_project_stack,
             document_library::list_project_stacks,
+            document_library::set_project_stack_order,
             document_library::rename_project_stack,
             document_library::delete_project_stack,
             document_library::list_project_documents,

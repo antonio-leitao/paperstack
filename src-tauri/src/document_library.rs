@@ -35,6 +35,7 @@ pub(crate) struct ProjectStack {
     id: String,
     project_id: String,
     name: String,
+    position: i64,
     created_at: i64,
     updated_at: i64,
 }
@@ -691,20 +692,37 @@ pub(crate) fn create_project_stack(
     let name = clean_name(&name).ok_or_else(|| "Stack name cannot be empty".to_owned())?;
     let id = Uuid::new_v4().to_string();
     let now = database::unix_timestamp();
-    let connection = database::connection(&app)?;
-    require_project(&connection, &project_id)?;
-    connection
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start creating the project stack: {error}"))?;
+    require_project(&transaction, &project_id)?;
+    let next_position: i64 = transaction
+        .query_row(
+            r#"
+            SELECT COALESCE(MAX(position) + 1, 0)
+            FROM project_stacks
+            WHERE project_id = ?1
+            "#,
+            params![&project_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not determine the stack position: {error}"))?;
+    transaction
         .execute(
             r#"
             INSERT INTO project_stacks (
-                id, project_id, name, name_key, created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+                id, project_id, name, name_key, position, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
             "#,
-            params![id, project_id, name, name_key(&name), now],
+            params![&id, &project_id, &name, name_key(&name), next_position, now],
         )
         .map_err(|error| {
             format!("Could not create the project stack; its name may already exist: {error}")
         })?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish creating the project stack: {error}"))?;
     load_project_stack(&connection, &project_id, &id)
 }
 
@@ -715,22 +733,53 @@ pub(crate) fn list_project_stacks(
 ) -> Result<Vec<ProjectStack>, String> {
     let connection = database::connection(&app)?;
     require_project(&connection, &project_id)?;
-    let mut statement = connection
-        .prepare(
-            r#"
-            SELECT id, project_id, name, created_at, updated_at
-            FROM project_stacks
-            WHERE project_id = ?1
-            ORDER BY name_key, id
-            "#,
-        )
-        .map_err(|error| format!("Could not prepare the project stack list: {error}"))?;
-    let stacks = statement
-        .query_map(params![project_id], row_to_project_stack)
-        .map_err(|error| format!("Could not list project stacks: {error}"))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("Could not read the project stack list: {error}"))?;
-    Ok(stacks)
+    load_project_stacks(&connection, &project_id)
+}
+
+#[tauri::command]
+pub(crate) fn set_project_stack_order(
+    app: AppHandle,
+    project_id: String,
+    stack_ids: Vec<String>,
+) -> Result<Vec<ProjectStack>, String> {
+    let mut connection = database::connection(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start reordering the project stacks: {error}"))?;
+    require_project(&transaction, &project_id)?;
+    let existing_ids = project_stack_ids(&transaction, &project_id)?;
+    let existing: HashSet<_> = existing_ids.iter().cloned().collect();
+    let mut seen = HashSet::new();
+    for stack_id in &stack_ids {
+        if !seen.insert(stack_id.clone()) {
+            return Err("Stack order contains a duplicate stack".to_owned());
+        }
+        if !existing.contains(stack_id) {
+            return Err("Stack order is out of date".to_owned());
+        }
+    }
+    if seen.len() != existing.len() {
+        return Err("Stack order is missing a stack".to_owned());
+    }
+
+    let now = database::unix_timestamp();
+    for (position, stack_id) in stack_ids.iter().enumerate() {
+        transaction
+            .execute(
+                r#"
+                UPDATE project_stacks
+                SET position = ?1, updated_at = ?2
+                WHERE project_id = ?3 AND id = ?4
+                "#,
+                params![position as i64, now, &project_id, stack_id],
+            )
+            .map_err(|error| format!("Could not reorder the project stack: {error}"))?;
+    }
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish reordering the project stacks: {error}"))?;
+    emit_library_changed(&app, "projectStack", None, "reordered");
+    load_project_stacks(&connection, &project_id)
 }
 
 #[tauri::command]
@@ -822,7 +871,7 @@ fn load_project_documents(
             JOIN project_stacks ps ON ps.project_id = pd.project_id AND ps.id = pd.stack_id
             JOIN documents d ON d.id = pd.document_id
             WHERE pd.project_id = ?1
-            ORDER BY ps.name_key, pd.position, d.title, d.id
+            ORDER BY ps.position, ps.name_key, pd.position, d.title, d.id
             "#,
         )
         .map_err(|error| format!("Could not prepare project documents: {error}"))?;
@@ -1957,7 +2006,7 @@ fn load_project_stack(
     connection
         .query_row(
             r#"
-            SELECT id, project_id, name, created_at, updated_at
+            SELECT id, project_id, name, position, created_at, updated_at
             FROM project_stacks
             WHERE project_id = ?1 AND id = ?2
             "#,
@@ -1969,6 +2018,47 @@ fn load_project_stack(
         .ok_or_else(|| "Project stack not found".to_owned())
 }
 
+fn load_project_stacks(
+    connection: &Connection,
+    project_id: &str,
+) -> Result<Vec<ProjectStack>, String> {
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT id, project_id, name, position, created_at, updated_at
+            FROM project_stacks
+            WHERE project_id = ?1
+            ORDER BY position, name_key, id
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare the project stack list: {error}"))?;
+    let stacks = statement
+        .query_map(params![project_id], row_to_project_stack)
+        .map_err(|error| format!("Could not list project stacks: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read the project stack list: {error}"))?;
+    Ok(stacks)
+}
+
+fn project_stack_ids(connection: &Connection, project_id: &str) -> Result<Vec<String>, String> {
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT id
+            FROM project_stacks
+            WHERE project_id = ?1
+            ORDER BY position, name_key, id
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare the project stack ids: {error}"))?;
+    let ids = statement
+        .query_map(params![project_id], |row| row.get::<_, String>(0))
+        .map_err(|error| format!("Could not list project stack ids: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read project stack ids: {error}"))?;
+    Ok(ids)
+}
+
 fn load_project_document(
     app: &AppHandle,
     connection: &Connection,
@@ -1978,7 +2068,7 @@ fn load_project_document(
     let row = connection
         .query_row(
             r#"
-            SELECT ps.id, ps.project_id, ps.name, ps.created_at, ps.updated_at,
+            SELECT ps.id, ps.project_id, ps.name, ps.position, ps.created_at, ps.updated_at,
                    pd.pile_id, pd.position, pd.added_at, pd.updated_at, pp.name
             FROM project_documents pd
             JOIN project_stacks ps ON ps.project_id = pd.project_id AND ps.id = pd.stack_id
@@ -1993,14 +2083,15 @@ fn load_project_document(
                         id: row.get(0)?,
                         project_id: row.get(1)?,
                         name: row.get(2)?,
-                        created_at: row.get(3)?,
-                        updated_at: row.get(4)?,
+                        position: row.get(3)?,
+                        created_at: row.get(4)?,
+                        updated_at: row.get(5)?,
                     },
-                    row.get::<_, Option<String>>(5)?,
-                    row.get::<_, i64>(6)?,
+                    row.get::<_, Option<String>>(6)?,
                     row.get::<_, i64>(7)?,
                     row.get::<_, i64>(8)?,
-                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, i64>(9)?,
+                    row.get::<_, Option<String>>(10)?,
                 ))
             },
         )
@@ -2142,8 +2233,9 @@ fn row_to_project_stack(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectStac
         id: row.get(0)?,
         project_id: row.get(1)?,
         name: row.get(2)?,
-        created_at: row.get(3)?,
-        updated_at: row.get(4)?,
+        position: row.get(3)?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
     })
 }
 

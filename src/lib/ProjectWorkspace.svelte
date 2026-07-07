@@ -8,7 +8,7 @@
     getAllWebviewWindows,
     getCurrentWebviewWindow,
   } from "@tauri-apps/api/webviewWindow";
-  import { onMount } from "svelte";
+  import { flushSync, onMount } from "svelte";
   import BibtexLinkPrompt from "./BibtexLinkPrompt.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import { copyToClipboard } from "./copyToClipboard";
@@ -119,7 +119,9 @@
         } else if (payload.type === "leave") {
           fileDropState = "idle";
         } else if (payload.type === "drop") {
-          fileDropState = "idle";
+          flushSync(() => {
+            fileDropState = "idle";
+          });
           const paths = filterPdfPaths(payload.paths);
           if (paths.length) {
             void importPdfPaths(paths, false);
@@ -151,7 +153,12 @@
   }
 
   function sortStacks(items: ProjectStack[]): ProjectStack[] {
-    return [...items].sort((left, right) => left.name.localeCompare(right.name));
+    return [...items].sort(
+      (left, right) =>
+        left.position - right.position ||
+        left.name.localeCompare(right.name) ||
+        left.id.localeCompare(right.id),
+    );
   }
 
   function upsertDocument(document: LibraryDocument) {
@@ -182,7 +189,7 @@
       project = nextProject;
       documents = nextDocuments;
       projectDocuments = nextProjectDocuments;
-      projectStacks = nextProjectStacks;
+      projectStacks = sortStacks(nextProjectStacks);
       libraryError = null;
     } catch (error) {
       libraryError = errorMessage(error);
@@ -537,6 +544,51 @@
     }
   }
 
+  function stacksWithOrder(stackIds: string[], current: ProjectStack[]): ProjectStack[] {
+    const byId = new Map(current.map((stack) => [stack.id, stack]));
+    const ordered: ProjectStack[] = [];
+    for (const stackId of stackIds) {
+      const stack = byId.get(stackId);
+      if (!stack) continue;
+      ordered.push({ ...stack, position: ordered.length });
+    }
+    for (const stack of current) {
+      if (!stackIds.includes(stack.id)) {
+        ordered.push({ ...stack, position: ordered.length });
+      }
+    }
+    return ordered;
+  }
+
+  function applyProjectStacks(stacks: ProjectStack[]) {
+    const sorted = sortStacks(stacks);
+    const byId = new Map(sorted.map((stack) => [stack.id, stack]));
+    projectStacks = sorted;
+    projectDocuments = projectDocuments.map((item) => {
+      const stack = byId.get(item.stack.id);
+      return stack ? { ...item, stack } : item;
+    });
+  }
+
+  async function setProjectStackOrder(stackIds: string[]) {
+    const previousStacks = projectStacks;
+    const previousProjectDocuments = projectDocuments;
+    applyProjectStacks(stacksWithOrder(stackIds, projectStacks));
+    try {
+      const stacks = await invoke<ProjectStack[]>("set_project_stack_order", {
+        projectId,
+        stackIds,
+      });
+      applyProjectStacks(stacks);
+      libraryError = null;
+    } catch (error) {
+      projectStacks = previousStacks;
+      projectDocuments = previousProjectDocuments;
+      libraryError = errorMessage(error);
+      void refreshProject();
+    }
+  }
+
   async function pileProjectDocuments(
     sourceDocumentIds: string[],
     targetDocumentId: string,
@@ -735,6 +787,7 @@
         oncopypilelatex={copyPileHighlightsAsLatex}
         oncopycolumnlatex={copyColumnHighlightsAsLatex}
         onsetorder={setProjectDocumentOrder}
+        onsetstackorder={setProjectStackOrder}
         onpile={pileProjectDocuments}
         onunpile={unpileProjectDocuments}
         onrenamepile={requestRenamePile}

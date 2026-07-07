@@ -7,6 +7,7 @@
     type DndEvent,
   } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
+  import { quintOut, sineInOut } from "svelte/easing";
   import { tick } from "svelte";
   import AnalysisProgressBar from "./AnalysisProgressBar.svelte";
   import CopyLatexButton from "./CopyLatexButton.svelte";
@@ -15,8 +16,9 @@
   import PaperPile from "./PaperPile.svelte";
   import {
     BOARD_DND_TYPE,
+    CARD_FLIP_DURATION_MS,
+    COLUMN_FLIP_DURATION_MS,
     DOCUMENT_ID_PREFIX,
-    FLIP_DURATION_MS,
     LIBRARY_ID_PREFIX,
     PILE_ID_PREFIX,
     documentEntryId,
@@ -84,6 +86,7 @@
     oncopypilelatex,
     oncopycolumnlatex,
     onsetorder,
+    onsetstackorder,
     onpile,
     onunpile,
     onrenamepile,
@@ -117,6 +120,7 @@
       stackId: string,
       entries: { documentId: string; pileId: string | null }[],
     ) => void | Promise<void>;
+    onsetstackorder: (stackIds: string[]) => void | Promise<void>;
     onpile: (
       sourceDocumentIds: string[],
       targetDocumentId: string,
@@ -132,7 +136,16 @@
     onrequestdeletestack: (stack: ProjectStack) => void;
   } = $props();
 
-  const sortedStacks = $derived([...stacks].sort((left, right) => left.name.localeCompare(right.name)));
+  function sortStacks(items: ProjectStack[]): ProjectStack[] {
+    return [...items].sort(
+      (left, right) =>
+        left.position - right.position ||
+        left.name.localeCompare(right.name) ||
+        left.id.localeCompare(right.id),
+    );
+  }
+
+  const sortedStacks = $derived(sortStacks(stacks));
 
   // An expanded pile is flattened: each of its papers becomes its own loose-style
   // entry so it can be reordered, dragged out, or have a paper dragged into it,
@@ -346,6 +359,29 @@
 
   function clearSelection() {
     if (selectedIds.size) selectedIds = new Set();
+  }
+
+  function stackIds(items: ProjectStack[]): string[] {
+    return items.map((stack) => stack.id);
+  }
+
+  function stackIndex(stackId: string): number {
+    return sortedStacks.findIndex((stack) => stack.id === stackId);
+  }
+
+  function canMoveStack(stackId: string, direction: -1 | 1): boolean {
+    const index = stackIndex(stackId);
+    const nextIndex = index + direction;
+    return index !== -1 && nextIndex >= 0 && nextIndex < sortedStacks.length;
+  }
+
+  function moveStack(stackId: string, direction: -1 | 1) {
+    const index = stackIndex(stackId);
+    const nextIndex = index + direction;
+    if (index === -1 || nextIndex < 0 || nextIndex >= sortedStacks.length) return;
+    const ordered = [...sortedStacks];
+    [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
+    void onsetstackorder(stackIds(ordered));
   }
 
   // Selected documents in board reading order (stacks left→right, top→bottom).
@@ -966,10 +1002,36 @@
   {#if sortedStacks.length}
     <div class="columns">
       {#each sortedStacks as stack (stack.id)}
-        <section class="stack" aria-label={stack.name}>
+        <section
+          class="stack"
+          aria-label={stack.name}
+          animate:flip={{ duration: COLUMN_FLIP_DURATION_MS, easing: sineInOut }}
+        >
           <header class="stack__header">
             <strong>{stack.name}</strong>
             <span class="count eink-chip">{columnPaperCount(stack.id)}</span>
+            <div class="stack__order-controls" aria-label={`Move ${stack.name}`}>
+              <button
+                class="stack__move"
+                type="button"
+                aria-label={`Move ${stack.name} left`}
+                title="Move left"
+                disabled={!canMoveStack(stack.id, -1)}
+                onclick={() => moveStack(stack.id, -1)}
+              >
+                ←
+              </button>
+              <button
+                class="stack__move"
+                type="button"
+                aria-label={`Move ${stack.name} right`}
+                title="Move right"
+                disabled={!canMoveStack(stack.id, 1)}
+                onclick={() => moveStack(stack.id, 1)}
+              >
+                →
+              </button>
+            </div>
             <button
               class="stack__menu"
               type="button"
@@ -988,7 +1050,7 @@
             use:dndzone={{
               items: columns[stack.id] ?? [],
               type: BOARD_DND_TYPE,
-              flipDurationMs: FLIP_DURATION_MS,
+              flipDurationMs: CARD_FLIP_DURATION_MS,
               useCursorForDetection: true,
               dropAnimationDisabled: dragMode === "merge",
               dropTargetStyle: {},
@@ -1013,7 +1075,7 @@
                 )}
               <li
                 class="eink-card"
-                animate:flip={{ duration: FLIP_DURATION_MS }}
+                animate:flip={{ duration: CARD_FLIP_DURATION_MS, easing: quintOut }}
                 class:pile-member={inPile}
                 class:pile-first={firstInPile}
                 class:pile-last={lastInPile}
@@ -1293,11 +1355,19 @@
     white-space: nowrap;
   }
 
+  .stack__order-controls {
+    display: flex;
+    margin-left: auto;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 1px;
+  }
+
+  .stack__move,
   .stack__menu {
     display: grid;
     width: 24px;
     height: 24px;
-    margin-left: auto;
     flex: 0 0 auto;
     place-items: center;
     padding: 0;
@@ -1307,6 +1377,16 @@
     font: 700 18px/1 var(--font-sans);
   }
 
+  .stack__move {
+    font-size: 15px;
+  }
+
+  .stack__move:disabled {
+    opacity: 0.25;
+  }
+
+  .stack__move:hover:not(:disabled),
+  .stack__move:focus-visible,
   .stack__menu:hover,
   .stack__menu:focus-visible {
     background: var(--card);

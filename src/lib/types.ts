@@ -78,6 +78,7 @@ export type ProjectStack = {
   id: string;
   projectId: string;
   name: string;
+  position: number;
   createdAt: number;
   updatedAt: number;
 };
