@@ -88,7 +88,7 @@
   --bw: 1px;
   --bw-2: 1.5px;
   --bw-accent: 4px;
-  --radius: 0;
+  --radius: 5px;
   --radius-chip: 2px;
   --radius-pill: 50%;
 
@@ -96,7 +96,8 @@
   --shadow-sm: 2px 2px 0 var(--line-3);
   --shadow-card: 3px 3px 0 var(--paper-3);
   --shadow-btn: 3px 3px 0 var(--accent);
-  --shadow-drag: 5px 5px 0 color-mix(in oklab, var(--ink) 78%, transparent);
+  /* --shadow-drag: 5px 5px 0 color-mix(in oklab, var(--ink) 78%, transparent); */
+  --shadow-drag: 0px 5px 15px rgba(0, 0, 0, 0.25);
 
   /* Motion */
   --lift: translate(-1px, -1px);
@@ -113,6 +114,7 @@
   );
   --col-w: 270px;
   --sidebar-w: 302px;
+  --window-titlebar-height: 0px;
 
   /* Paper-grain overlay opacity (fixed fractal-noise layer, multiply blend). */
   --grain-op: 0.35;
@@ -191,6 +193,30 @@ body {
   font-size: var(--fs-body);
 }
 
+html.macos-titlebar-overlay {
+  --window-titlebar-height: 30px;
+}
+
+html.macos-titlebar-overlay body {
+  padding-top: var(--window-titlebar-height);
+}
+
+.window-titlebar-drag-region {
+  display: none;
+}
+
+html.macos-titlebar-overlay .window-titlebar-drag-region {
+  position: fixed;
+  z-index: 900;
+  top: 0;
+  right: 0;
+  left: 76px;
+  display: block;
+  height: var(--window-titlebar-height);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 button,
 input,
 select,
@@ -241,9 +267,13 @@ small {
 
 /* Reusable e-ink recipes. */
 .eink-card {
-  border: var(--bw) solid var(--line-2);
+  /* border: var(--bw) solid var(--line-2); */
   border-radius: var(--radius);
   background: var(--card);
+  --order: 2;
+  --shadow: calc(var(--order) * 1px);
+  box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 10px)
+    rgba(0, 0, 0, 0.25);
   transition:
     box-shadow var(--ease),
     transform var(--ease);
@@ -251,6 +281,8 @@ small {
 
 .eink-card:hover {
   box-shadow: var(--shadow-card);
+  box-shadow: 0px calc(var(--order) * 0.2px) min(var(--shadow), 5px)
+    rgba(0, 0, 0, 0.25);
 }
 
 .eink-btn {

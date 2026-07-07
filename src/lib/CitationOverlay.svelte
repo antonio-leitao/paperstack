@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from "svelte";
+  import { placeAnchoredPopover } from "./anchoredPopover";
   import type { LibraryDocument, PageSize, Reference } from "./types";
   import ReferenceCard from "./ReferenceCard.svelte";
 
@@ -19,6 +21,14 @@
   } = $props();
 
   let activeKey = $state<string | null>(null);
+  let activeCallout = $state<HTMLElement | null>(null);
+  let cardPlacement = $state<{
+    key: string;
+    left: number;
+    top: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
 
   const pageCallouts = $derived(
     references.flatMap((reference) =>
@@ -32,14 +42,73 @@
     return reference.title ?? reference.rawCitation ?? `Reference ${reference.id}`;
   }
 
+  function closeCallout(key: string) {
+    if (activeKey !== key) return;
+    activeKey = null;
+    activeCallout = null;
+    cardPlacement = null;
+  }
+
+  function updateCardPlacement(element: HTMLElement, key: string) {
+    if (activeKey !== key || !element.isConnected) return;
+    const card = element.querySelector<HTMLElement>(".card");
+    if (!card) return;
+
+    const anchor = element.getBoundingClientRect();
+    const viewport = element.closest<HTMLElement>(".viewport")?.getBoundingClientRect();
+    const boundary = viewport ?? {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    };
+
+    cardPlacement = {
+      key,
+      ...placeAnchoredPopover({
+        anchor,
+        boundary,
+        contentHeight: card.scrollHeight,
+        contentBoundaryWidth: renderedWidth,
+      }),
+    };
+  }
+
+  function openCallout(event: Event, key: string) {
+    const element = event.currentTarget as HTMLElement;
+    if (activeKey !== key) cardPlacement = null;
+    activeKey = key;
+    activeCallout = element;
+    void settleCardPlacement(element, key);
+  }
+
+  async function settleCardPlacement(element: HTMLElement, key: string) {
+    await tick();
+    updateCardPlacement(element, key);
+    // A horizontal shift can narrow the card and increase its wrapped height.
+    // Measure once more after that width has been applied.
+    await tick();
+    updateCardPlacement(element, key);
+  }
+
+  function refreshCardPlacement() {
+    if (activeKey && activeCallout) {
+      void settleCardPlacement(activeCallout, activeKey);
+    }
+  }
+
   function handleFocusOut(event: FocusEvent, key: string) {
     const nextTarget = event.relatedTarget;
     const container = event.currentTarget as HTMLElement;
     if (!(nextTarget instanceof Node) || !container.contains(nextTarget)) {
-      if (activeKey === key) activeKey = null;
+      closeCallout(key);
     }
   }
 </script>
+
+<svelte:window onresize={refreshCardPlacement} />
 
 <div class="overlay" aria-label={`Citation links on page ${page.page}`}>
   {#each pageCallouts as callout (callout.key)}
@@ -58,9 +127,9 @@
       style:top={`${top}px`}
       style:width={`${Math.max(width, 8)}px`}
       style:height={`${Math.max(height, 8)}px`}
-      onmouseenter={() => (activeKey = callout.key)}
-      onmouseleave={() => (activeKey = null)}
-      onfocusin={() => (activeKey = callout.key)}
+      onmouseenter={(event) => openCallout(event, callout.key)}
+      onmouseleave={() => closeCallout(callout.key)}
+      onfocusin={(event) => openCallout(event, callout.key)}
       onfocusout={(event) => handleFocusOut(event, callout.key)}
     >
       <button
@@ -75,7 +144,12 @@
         {@const linkedDoc = callout.reference.sharedId
           ? linkedDocuments[callout.reference.sharedId] ?? null
           : null}
-        <div class="card">
+        <div
+          class="card"
+          style={cardPlacement?.key === callout.key
+            ? `left: ${cardPlacement.left}px; top: ${cardPlacement.top}px; width: ${cardPlacement.width}px; max-height: ${cardPlacement.maxHeight}px;`
+            : undefined}
+        >
           <ReferenceCard reference={callout.reference} {resolving} {linkedDoc} />
         </div>
       {/if}
@@ -127,7 +201,7 @@
     z-index: 10;
     display: flex;
     flex-direction: column;
-    width: min(360px, 70vw);
+    width: min(360px, calc(100vw - 16px));
     max-height: 260px;
     overflow: auto;
     padding: 12px;

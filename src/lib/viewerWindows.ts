@@ -16,6 +16,9 @@ export async function openViewerWindow(document: LibraryDocument): Promise<void>
     title: document.referenceTitle ?? document.title ?? "PDF",
     width: 1000,
     height: 800,
+    decorations: true,
+    hiddenTitle: true,
+    titleBarStyle: "overlay",
     // PDF zoom is handled by EmbedPDF; webview zoom would scale the whole UI.
     zoomHotkeysEnabled: false,
   });

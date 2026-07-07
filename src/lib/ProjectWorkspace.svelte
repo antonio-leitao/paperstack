@@ -835,7 +835,7 @@
 
   main {
     display: grid;
-    height: 100vh;
+    height: calc(100vh - var(--window-titlebar-height));
     grid-template-rows: auto minmax(0, 1fr);
     background: var(--paper);
   }

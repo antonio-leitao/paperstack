@@ -1402,7 +1402,8 @@
      context and paint above its paper background but below the card's own
      opaque background — the top card hides all but the peeking edges. */
   .cards li.is-collapsed-pile {
-    border-color: var(--line-3);
+    --order:2;
+    /* border-color: var(--line-3); */
   }
 
   .cards li.is-collapsed-pile::before,
@@ -1410,19 +1411,35 @@
     content: "";
     position: absolute;
     inset: 0;
-    border: var(--bw) solid var(--line-2);
-    background: var(--card-2);
+    /* border: var(--bw) solid var(--line-2); */
+    /* background: var(--card-2); */
     pointer-events: none;
+    border-radius: var(--radius);
+    background: var(--card);
   }
 
   .cards li.is-collapsed-pile::before {
     z-index: -1;
     transform: translate(3px, 3px);
+    --order: 2;
+    --shadow: calc(var(--order) * 1px);
+    box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 10px)
+    rgba(0, 0, 0, 0.25);
   }
 
   .cards li.is-collapsed-pile::after {
     z-index: -2;
     transform: translate(6px, 6px);
+    --order: 1;
+    --shadow: calc(var(--order) * 1px);
+    box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 10px)
+    rgba(0, 0, 0, 0.25);
+  }
+
+  .cards li.is-collapsed-pile:hover::before,
+  .cards li.is-collapsed-pile:hover::after {
+    box-shadow: 0px calc(var(--order) * 0.2px) min(var(--shadow), 5px)
+    rgba(0, 0, 0, 0.25);
   }
 
   /* The reorder shadow slot IS the placeholder: the Kanban shell itself becomes
