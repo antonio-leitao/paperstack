@@ -1433,31 +1433,51 @@
   li {
     position: relative;
     display: grid;
+    flex: 0 0 auto;
     gap: 6px;
     margin-bottom: 9px;
     padding: var(--card-pad);
   }
 
-  /* An open pile: its members share one accent border so it reads as a single
-     container, and the gap between consecutive members is closed so the border is
-     continuous. This is the drag target users aim for to drop into / out of it. */
+  /* An open pile: papers become one continuous container. The outer accent
+     border wraps the whole pile; subtle inner rules separate members without
+     making them read as independent cards. */
   .cards li.pile-member {
     margin-bottom: 0;
-    border-width: var(--bw-2);
-    padding-block: calc(var(--card-pad) - var(--bw-2) + var(--bw));
+    border-style: solid;
     border-color: var(--accent);
-    border-top-color: transparent;
-    /* A faint line separates papers inside the pile; the outer edge stays accent. */
-    border-bottom-color: var(--border-subtle);
+    border-width: 0 var(--bw-2);
+    border-radius: 0;
+    box-shadow: none;
+    background: var(--card);
+    padding-inline: calc(var(--card-pad) - var(--bw-2) + var(--bw));
+    padding-block: calc(var(--card-pad) - var(--bw-2) + var(--bw));
+  }
+
+  .cards li.pile-member + li.pile-member {
+    border-top: var(--bw) solid var(--border-subtle);
   }
 
   .cards li.pile-first {
-    border-top-color: var(--accent);
+    overflow: hidden;
+    border-top-width: var(--bw-2);
+    border-radius: var(--radius) var(--radius) 0 0;
   }
 
   .cards li.pile-last {
     margin-bottom: 9px;
-    border-bottom-color: var(--accent);
+    border-bottom-width: var(--bw-2);
+    border-radius: 0 0 var(--radius) var(--radius);
+    box-shadow: 0px 1px 8px rgba(0, 0, 0, 0.14);
+  }
+
+  .cards li.pile-first.pile-last {
+    border-radius: var(--radius);
+  }
+
+  .cards li.pile-member.is-open {
+    border-left-width: var(--bw-2);
+    border-left-color: var(--accent);
   }
 
   /* Open paper: a full-thickness accent rule on the left keeps the state
@@ -1536,7 +1556,10 @@
     align-items: center;
     justify-content: space-between;
     gap: 6px;
-    margin: calc(-1 * var(--card-pad)) calc(-1 * var(--card-pad)) 0;
+    margin:
+      calc(-1 * (var(--card-pad) - var(--bw-2) + var(--bw)))
+      calc(-1 * (var(--card-pad) - var(--bw-2) + var(--bw)))
+      0;
     padding: 4px 8px;
     background: var(--accent-soft-bg);
   }
