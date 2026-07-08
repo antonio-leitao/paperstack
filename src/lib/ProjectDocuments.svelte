@@ -1513,6 +1513,7 @@
 
 <style>
   .board {
+    --stack-scrollbar-w: 4px;
     display: grid;
     height: 100%;
     min-height: 0;
@@ -1671,13 +1672,44 @@
     /* The visible 8px inset matches the guide. The extra 6px on either side
        extends the drop zone halfway across the 12px lane gutter. */
     margin: 0 -6px;
-    padding: 2px 14px 8px;
+    padding: 2px calc(14px - var(--stack-scrollbar-w)) 8px 14px;
     min-height: 0;
     /* Only scroll vertically; horizontal overflow from outlines/drag previews
        must not spawn a spurious horizontal scrollbar inside the column. */
     overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-color: color-mix(in oklab, var(--ink) 24%, transparent)
+      transparent;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
     list-style: none;
+  }
+
+  .stack__list::-webkit-scrollbar {
+    width: var(--stack-scrollbar-w);
+    background: transparent;
+  }
+
+  .stack__list::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .stack__list::-webkit-scrollbar-track-piece,
+  .stack__list::-webkit-scrollbar-corner,
+  .stack__list::-webkit-scrollbar-button {
+    display: none;
+    background: transparent;
+  }
+
+  .stack__list::-webkit-scrollbar-thumb {
+    border: 0;
+    border-radius: var(--radius);
+    background-color: color-mix(in oklab, var(--ink) 16%, transparent);
+    box-shadow: none;
+  }
+
+  .stack__list::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--ink) 30%, transparent);
   }
 
   .stack__list > :first-child {
