@@ -7,7 +7,8 @@
     type DndEvent,
   } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
-  import { quintOut, sineInOut } from "svelte/easing";
+  import { quintIn, quintOut, sineInOut } from "svelte/easing";
+  import { slide } from "svelte/transition";
   import { tick } from "svelte";
   import AnalysisProgressBar from "./AnalysisProgressBar.svelte";
   import CopyLatexButton from "./CopyLatexButton.svelte";
@@ -65,6 +66,25 @@
     stackId: string;
     index: number;
   };
+
+  type PileTransitionAction = "open" | "close";
+
+  type ActivePileTransition = {
+    pileId: string;
+    action: PileTransitionAction;
+  };
+
+  type PileEntryTransitionParams = {
+    enabled: boolean;
+    delay?: number;
+    duration: number;
+    easing: (t: number) => number;
+  };
+
+  const PILE_OPEN_TRANSITION_MS = 180;
+  const PILE_CLOSE_TRANSITION_MS = 170;
+  const PILE_COLLAPSED_DECK_ENTER_MS = 110;
+  const PILE_COLLAPSED_DECK_ENTER_DELAY_MS = 80;
 
   let {
     projectName,
@@ -216,6 +236,8 @@
   let observedExternalDragId = $state<string | null>(null);
   let externalDragWasHandled = $state(false);
   let suppressCardClicks = $state(false);
+  let activePileTransition = $state<ActivePileTransition | null>(null);
+  let activePileTransitionTimeout: ReturnType<typeof setTimeout> | null = null;
   let lastPointerX = 0;
   let lastPointerY = 0;
 
@@ -312,6 +334,22 @@
     mergeDropHandled = false;
   }
 
+  function markPileTransition(pileId: string, action: PileTransitionAction) {
+    activePileTransition = { pileId, action };
+    if (activePileTransitionTimeout) {
+      clearTimeout(activePileTransitionTimeout);
+    }
+    activePileTransitionTimeout = setTimeout(() => {
+      if (
+        activePileTransition?.pileId === pileId &&
+        activePileTransition.action === action
+      ) {
+        activePileTransition = null;
+      }
+      activePileTransitionTimeout = null;
+    }, PILE_OPEN_TRANSITION_MS + PILE_CLOSE_TRANSITION_MS);
+  }
+
   // A library drag starts outside this component, so capture the untouched board
   // when its id arrives. If it ends without any board finalize event, restore that
   // snapshot; otherwise retain the optimistic board result until the backend reply.
@@ -339,8 +377,13 @@
 
   function togglePile(pileId: string) {
     const next = new Set(expandedPiles);
-    if (next.has(pileId)) next.delete(pileId);
-    else next.add(pileId);
+    if (next.has(pileId)) {
+      next.delete(pileId);
+      markPileTransition(pileId, "close");
+    } else {
+      next.add(pileId);
+      markPileTransition(pileId, "open");
+    }
     expandedPiles = next;
   }
 
@@ -410,6 +453,14 @@
       .filter((entry) => entry.pileId === pileId)
       .sort((left, right) => left.position - right.position)
       .map((entry) => entry.document.id);
+  }
+
+  function pileEntrySlide(
+    node: Element,
+    { enabled, delay = 0, duration, easing }: PileEntryTransitionParams,
+  ) {
+    if (!enabled) return { duration: 0 };
+    return slide(node, { delay, duration, easing });
   }
 
   function previewFromConsider(
@@ -608,19 +659,19 @@
     return `${entry.id}${isShadowEntry(entry) ? ":shadow" : ""}`;
   }
 
-  // True when `neighbour` is another flattened member of the same open pile.
-  // Computed live against the current column order so the surrounding border and
-  // header track the pile while papers are dragged in and out.
-  function isSamePileMember(
-    neighbour: BoardEntry | undefined,
-    entry: BoardEntry,
-  ): boolean {
-    return Boolean(
-      neighbour &&
-        neighbour.members.length === 1 &&
-        neighbour.pileId !== null &&
-        neighbour.pileId === entry.pileId,
-    );
+  // Visual pile identity for the open-pile shell. A DnD placeholder dropped
+  // between two members of the same pile inherits that pile only for styling, so
+  // the shell opens a slot instead of splitting into two bordered groups.
+  function pileShellId(column: BoardEntry[], index: number): string | null {
+    const entry = column[index];
+    if (!entry) return null;
+    if (entry.members.length === 1 && entry.pileId !== null) return entry.pileId;
+    if (!isShadowEntry(entry)) return null;
+    const previousPileId = column[index - 1]?.pileId ?? null;
+    const nextPileId = column[index + 1]?.pileId ?? null;
+    return previousPileId !== null && previousPileId === nextPileId
+      ? previousPileId
+      : null;
   }
 
   function contextMenuKey(menu: BoardContextMenu): string {
@@ -1062,9 +1113,10 @@
             {#each columns[stack.id] ?? [] as entry, index (entryKey(entry))}
               {@const column = columns[stack.id] ?? []}
               {@const shadowEntry = isShadowEntry(entry)}
-              {@const inPile = entry.members.length === 1 && entry.pileId !== null}
-              {@const firstInPile = inPile && !isSamePileMember(column[index - 1], entry)}
-              {@const lastInPile = inPile && !isSamePileMember(column[index + 1], entry)}
+              {@const pileShell = pileShellId(column, index)}
+              {@const inPile = pileShell !== null}
+              {@const firstInPile = inPile && pileShellId(column, index - 1) !== pileShell}
+              {@const lastInPile = inPile && pileShellId(column, index + 1) !== pileShell}
               {@const isSelected =
                 entry.members.length > 0 &&
                 entry.members.every((member) => selectedIds.has(member.document.id))}
@@ -1073,15 +1125,37 @@
                 entry.members.some((member) =>
                   openDocumentIds.includes(member.document.id),
                 )}
+              {@const isCollapsedPile = !shadowEntry && entry.members.length > 1}
+              {@const pileTransitionAction =
+                entry.pileId !== null && activePileTransition?.pileId === entry.pileId
+                  ? activePileTransition.action
+                  : null}
+              {@const collapsedDeckReturning =
+                isCollapsedPile && pileTransitionAction === "close"}
               <li
                 class="eink-card"
                 animate:flip={{ duration: CARD_FLIP_DURATION_MS, easing: quintOut }}
+                in:pileEntrySlide={{
+                  enabled: !shadowEntry && entry.pileId !== null,
+                  delay: collapsedDeckReturning
+                    ? PILE_COLLAPSED_DECK_ENTER_DELAY_MS
+                    : 0,
+                  duration: collapsedDeckReturning
+                    ? PILE_COLLAPSED_DECK_ENTER_MS
+                    : PILE_OPEN_TRANSITION_MS,
+                  easing: quintOut,
+                }}
+                out:pileEntrySlide={{
+                  enabled: !shadowEntry && entry.pileId !== null,
+                  duration: PILE_CLOSE_TRANSITION_MS,
+                  easing: pileTransitionAction === "close" ? quintIn : sineInOut,
+                }}
                 class:pile-member={inPile}
                 class:pile-first={firstInPile}
                 class:pile-last={lastInPile}
                 class:is-open={isOpenEntry}
                 class:is-selected={isSelected && !shadowEntry}
-                class:is-collapsed-pile={!shadowEntry && entry.members.length > 1}
+                class:is-collapsed-pile={isCollapsedPile}
                 class:is-placeholder={shadowEntry}
                 aria-label={entryLabel(entry)}
                 data-is-dnd-shadow-item-hint={shadowEntry}
@@ -1454,10 +1528,24 @@
     padding-block: calc(var(--card-pad) - var(--bw-2) + var(--bw));
   }
 
-  .cards li.pile-member + li.pile-member {
-    border-top: var(--bw) solid var(--border-subtle);
+  .cards li.pile-member:hover {
+    background: var(--card-2);
   }
 
+  .cards li.pile-member + li.pile-member {
+    /* border-top: var(--bw) solid var(--border-subtle); */
+    border-top: 0;
+  }
+
+  .cards li.pile-member + li.pile-member::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: var(--bw);
+    right: var(--bw);
+    height: var(--bw);
+    background: var(--border-subtle);
+  }
   .cards li.pile-first {
     overflow: hidden;
     border-top-width: var(--bw-2);
@@ -1468,7 +1556,7 @@
     margin-bottom: 9px;
     border-bottom-width: var(--bw-2);
     border-radius: 0 0 var(--radius) var(--radius);
-    box-shadow: 0px 1px 8px rgba(0, 0, 0, 0.14);
+    /* box-shadow: 0px 1px 8px rgba(0, 0, 0, 0.14); */
   }
 
   .cards li.pile-first.pile-last {
@@ -1547,8 +1635,26 @@
      full size (not the inset content box). morphDisabled on the zone stops the
      floating dragged clone from copying these styles, keeping it opaque. */
   .cards li.is-placeholder {
+    visibility: visible !important;
     border: var(--bw-2) dashed var(--accent);
     background: color-mix(in oklab, var(--accent) 8%, var(--card));
+  }
+
+  .cards li.pile-member.is-placeholder {
+    border-style: solid;
+    border-color: var(--accent);
+    border-right-width: var(--bw-2);
+    border-left-width: var(--bw-2);
+    background: var(--accent-soft-bg);
+    box-shadow: none;
+  }
+
+  .cards li.pile-member.is-placeholder:not(.pile-first) {
+    border-top-width: 0;
+  }
+
+  .cards li.pile-member.is-placeholder:not(.pile-last) {
+    border-bottom-width: 0;
   }
 
   .pile-header {
@@ -1578,6 +1684,16 @@
     box-shadow: var(--shadow-drag) !important;
     transition: none !important;
     pointer-events: none !important;
+  }
+
+  :global(#dnd-action-dragged-el.is-collapsed-pile) {
+    overflow: visible !important;
+    box-shadow:
+      3px 3px 0 0 var(--card),
+      3px 4px 2px 0 rgba(0, 0, 0, 0.22),
+      6px 6px 0 0 var(--card),
+      6px 7px 2px 0 rgba(0, 0, 0, 0.18),
+      var(--shadow-drag) !important;
   }
 
   /* Use visibility (not display:none) so the header keeps its box. Removing it

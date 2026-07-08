@@ -1,9 +1,7 @@
 <script lang="ts">
-  // svelte-dnd-action hides the shadow item with inherited visibility. This
-  // spacer opts back in so the shadow reserves a real card's height without
-  // revealing the shadow card itself. The dashed accent slot is drawn by the
-  // parent `li.is-placeholder` (the Kanban shell), so it matches the full card
-  // size; `active` is retained for the caller but no longer styles anything.
+  // The parent `li.is-placeholder` draws the visible drop slot; this inner spacer
+  // keeps the shadow at a real card's content height. `active` is retained for
+  // the caller but no longer styles anything.
   let { active = false }: { active?: boolean } = $props();
 </script>
 
