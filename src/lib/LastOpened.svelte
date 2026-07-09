@@ -41,7 +41,7 @@
 
 <style>
   time {
-    color: var(--text-muted);
+    color: var(--ink-3);
     font-size: var(--font-size-small);
     white-space: nowrap;
   }

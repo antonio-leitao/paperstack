@@ -78,6 +78,7 @@
 
   type PileEntryTransitionParams = {
     enabled: boolean;
+    role: "in" | "out";
     delay?: number;
     duration: number;
     easing: (t: number) => number;
@@ -478,18 +479,19 @@
 
   function pileEntrySlide(
     node: Element,
-    { enabled, delay = 0, duration, easing }: PileEntryTransitionParams,
+    { enabled, role, delay = 0, duration, easing }: PileEntryTransitionParams,
   ) {
-    // A collapsing pile does not slide at all — the collapsed deck appears at its
-    // final size and the column flips up to close the gap. Suppress every per-row
-    // in/out slide while a close is active, so the leaving papers don't play a
-    // stray "closing up" animation on top of that. This checks the live
-    // transition state rather than the row's cached props, because a *leaving*
-    // row evaluates its out: params from the render before the toggle (where
-    // pileTransitionAction was still null) — the template guard alone misses it.
-    if (!enabled || activePileTransition?.action === "close") {
-      return { duration: 0 };
-    }
+    // Suppress stray per-row slides during a pile toggle, checking the *live*
+    // transition state (a leaving row evaluates its out: params from the render
+    // before the toggle, so the template guard alone misses it):
+    //  - close: nothing slides — the deck appears at its final size, the rows
+    //    leave instantly, and the column flips up to close the gap.
+    //  - open: the members spring in (role "in"), but the collapsed deck must
+    //    NOT slide out (role "out") — that lone slide reads as an artifact.
+    // A leaving row only slides when there is no active toggle (e.g. a merge).
+    if (!enabled) return { duration: 0 };
+    if (activePileTransition?.action === "close") return { duration: 0 };
+    if (role === "out" && activePileTransition) return { duration: 0 };
     return slide(node, { delay, duration, easing });
   }
 
@@ -1186,11 +1188,13 @@
                 animate:flip={{ duration: CARD_FLIP_DURATION_MS, easing: quintOut }}
                 in:pileEntrySlide={{
                   enabled: !shadowEntry && pileTransitionAction === "open",
+                  role: "in",
                   duration: PILE_OPEN_IN_MS,
                   easing: quintOut,
                 }}
                 out:pileEntrySlide={{
                   enabled: !shadowEntry && entry.pileId !== null,
+                  role: "out",
                   duration: PILE_SLIDE_MS,
                   easing: sineInOut,
                 }}
@@ -1536,21 +1540,13 @@
     height: 100%;
     flex-direction: column;
     gap: 0;
-    /* The visible 8px inset matches the guide. The extra 6px on either side
-       extends the drop zone halfway across the 12px lane gutter. */
+    /* The column always owns a scrollbar lane. The cards keep the same width
+       because the lane occupies the space subtracted from the right padding. */
     margin: 0 -6px;
-    /* Reserve the scrollbar lane so every column keeps the same width whether it
-       scrolls or not — no width shift, no flicker, no asymmetry between scrolling
-       and non-scrolling columns. The right pad is trimmed by the lane width so
-       the visible inset still matches the 14px on the left. The scrollbar's
-       appearance comes from the shared *::-webkit-scrollbar rules in app.css. */
     padding: 2px calc(14px - var(--scrollbar-size)) 8px 14px;
     min-height: 0;
-    /* Only scroll vertically; horizontal overflow from outlines/drag previews
-       must not spawn a spurious horizontal scrollbar inside the column. */
     overflow-x: hidden;
-    overflow-y: auto;
-    scrollbar-gutter: stable;
+    overflow-y: scroll;
     list-style: none;
   }
 
