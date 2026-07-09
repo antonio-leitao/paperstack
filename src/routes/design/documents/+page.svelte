@@ -570,22 +570,25 @@
   framing classes. Callers wrap a run of these in a mirrored board column.
 -->
 {#snippet cardSlot(slot: CardSlot)}
-  <li
-    class="eink-card"
-    class:is-open={(slot.openIds ?? []).length > 0}
-    class:pile-member={slot.pileMember}
-    class:pile-first={slot.first}
-    class:pile-last={slot.last}
-    class:is-selected={slot.selected}
-  >
-    {#if slot.header !== undefined && slot.header !== null}
-      <div class="pile-header">
+  {@const hasHeader = slot.header !== undefined && slot.header !== null}
+  {#if hasHeader}
+    <li class="eink-card pile-member pile-first is-pile-header">
+      <div class="pile-header" data-pile-header>
         <strong class="pile-header-name">{slot.header}</strong>
         <button class="eink-btn" type="button" onclick={() => setActivity("Collapse pile requested.")}>
           Collapse
         </button>
       </div>
-    {/if}
+    </li>
+  {/if}
+  <li
+    class="eink-card"
+    class:is-open={(slot.openIds ?? []).length > 0}
+    class:pile-member={slot.pileMember}
+    class:pile-first={slot.first && !hasHeader}
+    class:pile-last={slot.last}
+    class:is-selected={slot.selected}
+  >
     <PaperPile
       entry={slot.entry}
       openDocumentIds={slot.openIds ?? []}
@@ -1086,14 +1089,22 @@
     background: var(--accent-soft-bg);
   }
 
+  /* The header is its own board row (li.is-pile-header) rather than a strip
+     nested in the first card, so it fills the row with no break-out margins. */
   .pile-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 6px;
-    margin: calc(-1 * var(--card-pad)) calc(-1 * var(--card-pad)) 0;
     padding: 4px 8px;
     background: var(--accent-soft-bg);
+  }
+
+  .cards li.is-pile-header {
+    gap: 0;
+    padding: 0;
+    /* No hairline under the header: the accent-soft strip is the separator. */
+    border-bottom-color: transparent;
   }
 
   .pile-header-name {

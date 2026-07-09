@@ -7,7 +7,7 @@
     type DndEvent,
   } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
-  import { quintIn, quintOut, sineInOut } from "svelte/easing";
+  import { quintOut, sineInOut } from "svelte/easing";
   import { slide } from "svelte/transition";
   import { tick } from "svelte";
   import AnalysisProgressBar from "./AnalysisProgressBar.svelte";
@@ -23,6 +23,8 @@
     LIBRARY_ID_PREFIX,
     PILE_ID_PREFIX,
     documentEntryId,
+    headerEntryId,
+    isHeaderEntry,
     pileEntryId,
     type BoardDragMode,
     type BoardEntry,
@@ -74,17 +76,6 @@
     action: PileTransitionAction;
   };
 
-  type ClosingPileAnimation = {
-    pileId: string;
-    pileName: string | null;
-    members: BoardMember[];
-    left: number;
-    top: number;
-    width: number;
-    fromHeight: number;
-    toHeight: number;
-  };
-
   type PileEntryTransitionParams = {
     enabled: boolean;
     delay?: number;
@@ -92,9 +83,14 @@
     easing: (t: number) => number;
   };
 
-  const PILE_OPEN_TRANSITION_MS = 180;
-  const PILE_CLOSE_TRANSITION_MS = 170;
-  const PILE_CLOSE_GHOST_MS = 260;
+  // Members spring in when a pile opens (its original feel).
+  const PILE_OPEN_IN_MS = 180;
+  // Duration + easing for the pile height slides that remain: the deck sliding
+  // out as a pile opens, and cards leaving on data-driven reshapes (e.g. merges).
+  // Closing no longer slides at all — the collapsed deck just appears at its
+  // final size and the cards below flip up to close the gap — so there is no
+  // in/out height animation on close, and nothing to grow from the top.
+  const PILE_SLIDE_MS = 190;
 
   let {
     projectName,
@@ -187,10 +183,28 @@
   ): Record<string, BoardEntry[]> {
     const columns: Record<string, BoardEntry[]> = {};
     const entriesByPile = new Map<string, BoardEntry>();
+    // Open piles emit a member-less header row once, right before their first
+    // (top) member, so the header owns a real column slot instead of hiding
+    // inside the first card.
+    const headerEmitted = new Set<string>();
     for (const stack of stackList) columns[stack.id] = [];
     for (const item of [...items].sort((left, right) => left.position - right.position)) {
       const member = { document: item.document, projectDocument: item };
       if (!item.pileId || expanded.has(item.pileId)) {
+        if (
+          item.pileId &&
+          expanded.has(item.pileId) &&
+          !headerEmitted.has(item.pileId)
+        ) {
+          headerEmitted.add(item.pileId);
+          (columns[item.stack.id] ??= []).push({
+            id: headerEntryId(item.pileId),
+            pileId: item.pileId,
+            pileName: item.pileName,
+            members: [],
+            source: "board",
+          });
+        }
         (columns[item.stack.id] ??= []).push({
           id: documentEntryId(item.document.id),
           pileId: item.pileId,
@@ -248,8 +262,6 @@
   let suppressCardClicks = $state(false);
   let activePileTransition = $state<ActivePileTransition | null>(null);
   let activePileTransitionTimeout: ReturnType<typeof setTimeout> | null = null;
-  let closingPileAnimation = $state<ClosingPileAnimation | null>(null);
-  let closingPileAnimationTimeout: ReturnType<typeof setTimeout> | null = null;
   let lastPointerX = 0;
   let lastPointerY = 0;
 
@@ -359,7 +371,7 @@
         activePileTransition = null;
       }
       activePileTransitionTimeout = null;
-    }, PILE_OPEN_TRANSITION_MS + PILE_CLOSE_TRANSITION_MS);
+    }, Math.max(PILE_OPEN_IN_MS, PILE_SLIDE_MS) + 60);
   }
 
   // A library drag starts outside this component, so capture the untouched board
@@ -388,15 +400,11 @@
   });
 
   function togglePile(pileId: string) {
+    const opening = !expandedPiles.has(pileId);
+    markPileTransition(pileId, opening ? "open" : "close");
     const next = new Set(expandedPiles);
-    if (next.has(pileId)) {
-      startClosingPileAnimation(pileId);
-      next.delete(pileId);
-      markPileTransition(pileId, "close");
-    } else {
-      next.add(pileId);
-      markPileTransition(pileId, "open");
-    }
+    if (opening) next.add(pileId);
+    else next.delete(pileId);
     expandedPiles = next;
   }
 
@@ -468,104 +476,20 @@
       .map((entry) => entry.document.id);
   }
 
-  function pileMembers(pileId: string): BoardMember[] {
-    return projectDocuments
-      .filter((entry) => entry.pileId === pileId)
-      .sort((left, right) => left.position - right.position)
-      .map((entry) => ({
-        document: entry.document,
-        projectDocument: entry,
-      }));
-  }
-
-  function cssNumber(value: string, fallback = 0): number {
-    const parsed = parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  }
-
-  function captureClosingPile(pileId: string): ClosingPileAnimation | null {
-    const nodes = Array.from(
-      document.querySelectorAll<HTMLElement>("[data-pile-shell-id]"),
-    ).filter(
-      (node) =>
-        node.dataset.pileShellId === pileId &&
-        !node.classList.contains("is-placeholder"),
-    );
-    if (!nodes.length) return null;
-
-    const members = pileMembers(pileId);
-    if (members.length < 2) return null;
-
-    const rects = nodes.map((node) => node.getBoundingClientRect());
-    const left = Math.min(...rects.map((rect) => rect.left));
-    const top = Math.min(...rects.map((rect) => rect.top));
-    const right = Math.max(...rects.map((rect) => rect.right));
-    const bottom = Math.max(...rects.map((rect) => rect.bottom));
-    const style = getComputedStyle(nodes[0]);
-    return {
-      pileId,
-      pileName: projectDocuments.find((entry) => entry.pileId === pileId)
-        ?.pileName ?? null,
-      members,
-      left,
-      top,
-      width: right - left,
-      fromHeight: bottom - top,
-      toHeight: cssNumber(style.getPropertyValue("--card-h"), 80),
-    };
-  }
-
-  function startClosingPileAnimation(pileId: string) {
-    const animation = captureClosingPile(pileId);
-    if (!animation) return;
-    closingPileAnimation = animation;
-    if (closingPileAnimationTimeout) {
-      clearTimeout(closingPileAnimationTimeout);
-    }
-    closingPileAnimationTimeout = setTimeout(() => {
-      if (closingPileAnimation?.pileId === pileId) {
-        closingPileAnimation = null;
-      }
-      closingPileAnimationTimeout = null;
-    }, PILE_CLOSE_GHOST_MS);
-  }
-
-  function ghostDeckEntry(animation: ClosingPileAnimation): BoardEntry {
-    return {
-      id: pileEntryId(animation.pileId),
-      pileId: animation.pileId,
-      pileName: animation.pileName,
-      members: animation.members,
-      source: "board",
-    };
-  }
-
-  function ghostMemberEntry(
-    animation: ClosingPileAnimation,
-    member: BoardMember,
-  ): BoardEntry {
-    return {
-      id: documentEntryId(member.document.id),
-      pileId: animation.pileId,
-      pileName: animation.pileName,
-      members: [member],
-      source: "board",
-    };
-  }
-
-  function ignoreDocumentId(_documentId: string) {}
-  function ignorePileId(_pileId: string) {}
-  function ignoreSelection(_documentIds: string[]) {}
-  function ignoreCardPointer(_event: MouseEvent, _member: BoardMember) {}
-  function ignoreCardKeyboard(_event: KeyboardEvent, _member: BoardMember) {}
-  function ignorePilePointer(_event: MouseEvent, _entry: BoardEntry) {}
-  function ignorePileKeyboard(_event: KeyboardEvent, _entry: BoardEntry) {}
-
   function pileEntrySlide(
     node: Element,
     { enabled, delay = 0, duration, easing }: PileEntryTransitionParams,
   ) {
-    if (!enabled) return { duration: 0 };
+    // A collapsing pile does not slide at all — the collapsed deck appears at its
+    // final size and the column flips up to close the gap. Suppress every per-row
+    // in/out slide while a close is active, so the leaving papers don't play a
+    // stray "closing up" animation on top of that. This checks the live
+    // transition state rather than the row's cached props, because a *leaving*
+    // row evaluates its out: params from the render before the toggle (where
+    // pileTransitionAction was still null) — the template guard alone misses it.
+    if (!enabled || activePileTransition?.action === "close") {
+      return { duration: 0 };
+    }
     return slide(node, { delay, duration, easing });
   }
 
@@ -706,6 +630,9 @@
       const entries: { documentId: string; pileId: string | null }[] = [];
       const seen = new Set<string>();
       real.forEach((entry, index) => {
+        // Header rows carry no documents; they are re-derived from member
+        // positions on the next rebuild. Skip them here.
+        if (isHeaderEntry(entry)) return;
         const pileId =
           index === movedIndex ? recomputePileId(real, index) : entry.pileId;
         for (const member of entry.members) {
@@ -727,6 +654,18 @@
     ) {
       finishDrag(entryId);
     }
+  }
+
+  // The header row lives inside the sortable column so it can act as a drop
+  // boundary (papers drop between it and member 1) and slide with the pile, but
+  // it is not itself draggable — to move a pile the user collapses it and drags
+  // the deck. svelte-dnd-action has no per-item drag lock, so we stop the
+  // drag-start pointer event before it reaches the row's own listener. Capturing
+  // on the list (an ancestor) runs ahead of the row's bubble-phase mousedown;
+  // click, and thus the Collapse button, is untouched.
+  function blockHeaderDragStart(event: PointerEvent | MouseEvent | TouchEvent) {
+    const target = event.target as Element | null;
+    if (target?.closest("li.is-pile-header")) event.stopPropagation();
   }
 
   function cardTitle(member: BoardMember): string {
@@ -771,6 +710,8 @@
   function pileShellId(column: BoardEntry[], index: number): string | null {
     const entry = column[index];
     if (!entry) return null;
+    // The header row is the top of its pile's shell.
+    if (isHeaderEntry(entry)) return entry.pileId;
     if (entry.members.length === 1 && entry.pileId !== null) return entry.pileId;
     if (!isShadowEntry(entry)) return null;
     const previousPileId = column[index - 1]?.pileId ?? null;
@@ -1213,12 +1154,15 @@
               dropTargetStyle: {},
               morphDisabled: true,
             }}
+            onmousedowncapture={blockHeaderDragStart}
+            ontouchstartcapture={blockHeaderDragStart}
             onconsider={(event) => consider(stack.id, event)}
             onfinalize={(event) => finalize(stack.id, event)}
           >
             {#each columns[stack.id] ?? [] as entry, index (entryKey(entry))}
               {@const column = columns[stack.id] ?? []}
               {@const shadowEntry = isShadowEntry(entry)}
+              {@const isHeader = !shadowEntry && isHeaderEntry(entry)}
               {@const pileShell = pileShellId(column, index)}
               {@const inPile = pileShell !== null}
               {@const firstInPile = inPile && pileShellId(column, index - 1) !== pileShell}
@@ -1233,35 +1177,34 @@
                 )}
               {@const isCollapsedPile = !shadowEntry && entry.members.length > 1}
               {@const pileTransitionAction =
-                entry.pileId !== null && activePileTransition?.pileId === entry.pileId
+                entry.pileId !== null &&
+                activePileTransition?.pileId === entry.pileId
                   ? activePileTransition.action
                   : null}
-              {@const collapsedDeckReturning =
-                isCollapsedPile && pileTransitionAction === "close"}
               <li
                 class="eink-card"
                 animate:flip={{ duration: CARD_FLIP_DURATION_MS, easing: quintOut }}
                 in:pileEntrySlide={{
-                  enabled: !shadowEntry && entry.pileId !== null,
-                  delay: 0,
-                  duration: collapsedDeckReturning
-                    ? 0
-                    : PILE_OPEN_TRANSITION_MS,
+                  enabled: !shadowEntry && pileTransitionAction === "open",
+                  duration: PILE_OPEN_IN_MS,
                   easing: quintOut,
                 }}
                 out:pileEntrySlide={{
                   enabled: !shadowEntry && entry.pileId !== null,
-                  duration: PILE_CLOSE_TRANSITION_MS,
-                  easing: pileTransitionAction === "close" ? quintIn : sineInOut,
+                  duration: PILE_SLIDE_MS,
+                  easing: sineInOut,
                 }}
                 class:pile-member={inPile}
                 class:pile-first={firstInPile}
                 class:pile-last={lastInPile}
+                class:is-pile-header={isHeader}
                 class:is-open={isOpenEntry}
                 class:is-selected={isSelected && !shadowEntry}
                 class:is-collapsed-pile={isCollapsedPile}
                 class:is-placeholder={shadowEntry}
-                aria-label={entryLabel(entry)}
+                aria-label={isHeader
+                  ? `${entry.pileName ?? "Untitled pile"} pile`
+                  : entryLabel(entry)}
                 data-pile-shell-id={pileShell ?? undefined}
                 data-is-dnd-shadow-item-hint={shadowEntry}
               >
@@ -1271,21 +1214,21 @@
                       reorderPreview?.stackId === stack.id &&
                       reorderPreview.index === index}
                   />
+                {:else if isHeader}
+                  <div class="pile-header" data-pile-header>
+                    <strong class="pile-header-name">
+                      {entry.pileName ?? "Untitled pile"}
+                    </strong>
+                    <button
+                      class="eink-btn"
+                      type="button"
+                      aria-label={`Collapse ${entry.pileName ?? "Untitled pile"}`}
+                      onclick={() => entry.pileId && togglePile(entry.pileId)}
+                    >
+                      Collapse
+                    </button>
+                  </div>
                 {:else}
-                  {#if firstInPile}
-                    <div class="pile-header">
-                      <strong class="pile-header-name">
-                        {entry.pileName ?? "Untitled pile"}
-                      </strong>
-                      <button
-                        class="eink-btn"
-                        type="button"
-                        onclick={() => entry.pileId && togglePile(entry.pileId)}
-                      >
-                        Collapse
-                      </button>
-                    </div>
-                  {/if}
                   <PaperPile
                     {entry}
                     {openDocumentIds}
@@ -1326,81 +1269,6 @@
     <div class="drag-hint" aria-hidden="true">{dragHint}</div>
   {/if}
 </section>
-
-{#if closingPileAnimation}
-  {@const ghostTopMember = closingPileAnimation.members[0]}
-  {@const ghostDeck = ghostDeckEntry(closingPileAnimation)}
-  <div
-    class="pile-close-ghost"
-    aria-hidden="true"
-    inert
-    style={`left: ${closingPileAnimation.left}px; top: ${closingPileAnimation.top}px; width: ${closingPileAnimation.width}px; --pile-close-from: ${closingPileAnimation.fromHeight}px; --pile-close-to: ${closingPileAnimation.toHeight}px;`}
-  >
-    <div class="pile-close-ghost-header">
-      <strong class="pile-header-name">
-        {closingPileAnimation.pileName ?? "Untitled pile"}
-      </strong>
-    </div>
-
-    <div class="pile-close-ghost-top">
-      <PaperPile
-        entry={ghostMemberEntry(closingPileAnimation, ghostTopMember)}
-        {openDocumentIds}
-        {analysisStates}
-        draggingEntryId={null}
-        dragMode="idle"
-        selected={false}
-        onopen={ignoreDocumentId}
-        ontogglepile={ignorePileId}
-        onselect={ignoreSelection}
-        oncardcontextmenu={ignoreCardPointer}
-        oncardkeydown={ignoreCardKeyboard}
-        onpilecontextmenu={ignorePilePointer}
-        onpilekeydown={ignorePileKeyboard}
-      />
-    </div>
-
-    <div class="pile-close-ghost-rest">
-      {#each closingPileAnimation.members.slice(1) as member (member.document.id)}
-        <div class="pile-close-ghost-member">
-          <PaperPile
-            entry={ghostMemberEntry(closingPileAnimation, member)}
-            {openDocumentIds}
-            {analysisStates}
-            draggingEntryId={null}
-            dragMode="idle"
-            selected={false}
-            onopen={ignoreDocumentId}
-            ontogglepile={ignorePileId}
-            onselect={ignoreSelection}
-            oncardcontextmenu={ignoreCardPointer}
-            oncardkeydown={ignoreCardKeyboard}
-            onpilecontextmenu={ignorePilePointer}
-            onpilekeydown={ignorePileKeyboard}
-          />
-        </div>
-      {/each}
-    </div>
-
-    <div class="pile-close-ghost-deck">
-      <PaperPile
-        entry={ghostDeck}
-        {openDocumentIds}
-        {analysisStates}
-        draggingEntryId={null}
-        dragMode="idle"
-        selected={false}
-        onopen={ignoreDocumentId}
-        ontogglepile={ignorePileId}
-        onselect={ignoreSelection}
-        oncardcontextmenu={ignoreCardPointer}
-        oncardkeydown={ignoreCardKeyboard}
-        onpilecontextmenu={ignorePilePointer}
-        onpilekeydown={ignorePileKeyboard}
-      />
-    </div>
-  </div>
-{/if}
 
 {#if contextMenu}
   <div
@@ -1513,7 +1381,6 @@
 
 <style>
   .board {
-    --stack-scrollbar-w: 4px;
     display: grid;
     height: 100%;
     min-height: 0;
@@ -1672,44 +1539,19 @@
     /* The visible 8px inset matches the guide. The extra 6px on either side
        extends the drop zone halfway across the 12px lane gutter. */
     margin: 0 -6px;
-    padding: 2px calc(14px - var(--stack-scrollbar-w)) 8px 14px;
+    /* Reserve the scrollbar lane so every column keeps the same width whether it
+       scrolls or not — no width shift, no flicker, no asymmetry between scrolling
+       and non-scrolling columns. The right pad is trimmed by the lane width so
+       the visible inset still matches the 14px on the left. The scrollbar's
+       appearance comes from the shared *::-webkit-scrollbar rules in app.css. */
+    padding: 2px calc(14px - var(--scrollbar-size)) 8px 14px;
     min-height: 0;
     /* Only scroll vertically; horizontal overflow from outlines/drag previews
        must not spawn a spurious horizontal scrollbar inside the column. */
     overflow-x: hidden;
     overflow-y: auto;
-    scrollbar-color: color-mix(in oklab, var(--ink) 24%, transparent)
-      transparent;
     scrollbar-gutter: stable;
-    scrollbar-width: thin;
     list-style: none;
-  }
-
-  .stack__list::-webkit-scrollbar {
-    width: var(--stack-scrollbar-w);
-    background: transparent;
-  }
-
-  .stack__list::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .stack__list::-webkit-scrollbar-track-piece,
-  .stack__list::-webkit-scrollbar-corner,
-  .stack__list::-webkit-scrollbar-button {
-    display: none;
-    background: transparent;
-  }
-
-  .stack__list::-webkit-scrollbar-thumb {
-    border: 0;
-    border-radius: var(--radius);
-    background-color: color-mix(in oklab, var(--ink) 16%, transparent);
-    box-shadow: none;
-  }
-
-  .stack__list::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in oklab, var(--ink) 30%, transparent);
   }
 
   .stack__list > :first-child {
@@ -1869,124 +1711,30 @@
     border-bottom-width: 0;
   }
 
+  /* The header is now its own board row (li.is-pile-header) rather than a strip
+     nested inside the first card, so it fills the row edge-to-edge with no
+     break-out margins. */
   .pile-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 6px;
-    margin:
-      calc(-1 * (var(--card-pad) - var(--bw-2) + var(--bw)))
-      calc(-1 * (var(--card-pad) - var(--bw-2) + var(--bw)))
-      0;
     padding: 4px 8px;
     background: var(--accent-soft-bg);
   }
 
-  .pile-close-ghost {
-    position: fixed;
-    z-index: 90;
-    height: var(--pile-close-from);
-    border: var(--bw-2) solid var(--accent);
-    border-radius: var(--radius);
-    background: var(--card);
-    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.16);
-    overflow: hidden;
-    pointer-events: none;
-    animation: pile-close-shell-collapse 260ms cubic-bezier(0.36, 0, 0.2, 1)
-      forwards;
+  /* The header row carries the pile's top border + radius (via .pile-first) and
+     its side accent borders (via .pile-member); the bar itself owns the box, so
+     the row drops the card padding and grid gap. */
+  .cards li.is-pile-header {
+    gap: 0;
+    padding: 0;
   }
 
-  .pile-close-ghost-header {
-    display: flex;
-    align-items: center;
-    min-height: 28px;
-    padding: 4px 8px;
-    background: var(--accent-soft-bg);
-    animation: pile-close-header-out 150ms ease-in forwards;
-  }
-
-  .pile-close-ghost-top,
-  .pile-close-ghost-member,
-  .pile-close-ghost-deck {
-    padding: var(--card-pad);
-  }
-
-  .pile-close-ghost-top {
-    animation: pile-close-top-to-deck 220ms ease-in forwards;
-  }
-
-  .pile-close-ghost-rest {
-    animation: pile-close-rest-fold 220ms ease-in forwards;
-    transform-origin: top center;
-  }
-
-  .pile-close-ghost-member {
-    border-top: var(--bw) solid var(--border-subtle);
-  }
-
-  .pile-close-ghost-deck {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    background: var(--card);
-    opacity: 0;
-    animation: pile-close-deck-in 230ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  }
-
-  @keyframes pile-close-shell-collapse {
-    from {
-      opacity: 1;
-      height: var(--pile-close-from);
-    }
-
-    84% {
-      opacity: 1;
-    }
-
-    to {
-      opacity: 0;
-      height: var(--pile-close-to);
-    }
-  }
-
-  @keyframes pile-close-header-out {
-    to {
-      opacity: 0;
-      transform: translateY(-5px);
-    }
-  }
-
-  @keyframes pile-close-top-to-deck {
-    0%,
-    35% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-
-    100% {
-      opacity: 0;
-      transform: translateY(-8px) scale(0.985);
-    }
-  }
-
-  @keyframes pile-close-rest-fold {
-    to {
-      opacity: 0;
-      transform: translateY(-22px) scaleY(0.74);
-    }
-  }
-
-  @keyframes pile-close-deck-in {
-    0%,
-    24% {
-      opacity: 0;
-      transform: translateY(5px) scale(0.985);
-    }
-
-    100% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
+  /* No inner hairline directly beneath the header bar: the accent-soft strip is
+     already the separator from the first paper. */
+  .cards li.is-pile-header + li.pile-member::before {
+    content: none;
   }
 
   /* svelte-dnd-action floats the grabbed <li> as #dnd-action-dragged-el and
@@ -2013,13 +1761,6 @@
       6px 6px 0 0 var(--card),
       6px 7px 2px 0 rgba(0, 0, 0, 0.18),
       var(--shadow-drag) !important;
-  }
-
-  /* Use visibility (not display:none) so the header keeps its box. Removing it
-     would let the card slide up into that space, making the grabbed top-of-pile
-     card drift above the cursor. */
-  :global(#dnd-action-dragged-el .pile-header) {
-    visibility: hidden !important;
   }
 
   /* While Shift-merging over a valid target, the floating dragged card carries

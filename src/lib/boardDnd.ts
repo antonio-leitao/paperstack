@@ -22,6 +22,10 @@ export const BOARD_DND_TYPE = "project-card";
 export const LIBRARY_ID_PREFIX = "library:";
 export const DOCUMENT_ID_PREFIX = "document:";
 export const PILE_ID_PREFIX = "pile:";
+// An open pile renders a header row as its own board entry (a member-less entry
+// that occupies real column space). It carries its pileId so it acts as the top
+// boundary of the pile's shell, and dragging it moves the whole pile.
+export const HEADER_ID_PREFIX = "header:";
 export const CARD_FLIP_DURATION_MS = 120;
 export const COLUMN_FLIP_DURATION_MS = 200;
 
@@ -35,4 +39,12 @@ export function documentEntryId(documentId: string): string {
 
 export function pileEntryId(pileId: string): string {
   return `${PILE_ID_PREFIX}${pileId}`;
+}
+
+export function headerEntryId(pileId: string): string {
+  return `${HEADER_ID_PREFIX}${pileId}`;
+}
+
+export function isHeaderEntry(entry: BoardEntry): boolean {
+  return entry.id.startsWith(HEADER_ID_PREFIX);
 }
