@@ -89,7 +89,6 @@
 <main>
   <header>
     <h1>Projects</h1>
-    <a class="lab-link" href="/design/documents">Document Lab</a>
     <button class="eink-btn" type="button" onclick={() => (projectNamePrompt = { mode: "create" })}>
       New Project
     </button>
@@ -172,11 +171,6 @@
     margin-right: auto;
   }
 
-  .lab-link {
-    color: var(--text-muted);
-    font-size: var(--font-size-small);
-  }
-
   ul {
     display: grid;
     gap: 8px;
@@ -198,8 +192,8 @@
   }
 
   .count {
-    color: var(--text-muted);
-    font-size: var(--font-size-small);
+    color: var(--ink-2);
+    font-size: var(--fs-body);
   }
 
   .empty {

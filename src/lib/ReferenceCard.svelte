@@ -97,7 +97,7 @@
   .authors,
   .meta,
   .resolving {
-    color: var(--text-muted);
+    color: var(--ink-2);
   }
 
   .abstract {

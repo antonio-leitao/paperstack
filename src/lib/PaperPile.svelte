@@ -78,14 +78,6 @@
     );
   }
 
-  function thumbnailSource(path: string): string {
-    // The design lab uses self-contained data URLs so its fixtures never need
-    // files in the user's library. Real document thumbnails remain native paths.
-    return path.startsWith("data:") || path.startsWith("blob:")
-      ? path
-      : convertFileSrc(path);
-  }
-
   function handleDeckClick(event: MouseEvent) {
     if (draggingEntryId !== null || suppressClick) return;
     if (event.shiftKey) {
@@ -154,7 +146,7 @@
           {#if member.document.thumbnailPath}
             <img
               class="deck-thumb"
-              src={thumbnailSource(member.document.thumbnailPath)}
+              src={convertFileSrc(member.document.thumbnailPath)}
               alt=""
               loading="lazy"
             />
@@ -188,7 +180,7 @@
       {#if member.document.thumbnailPath}
         <img
           class="thumb"
-          src={thumbnailSource(member.document.thumbnailPath)}
+          src={convertFileSrc(member.document.thumbnailPath)}
           alt=""
           loading="lazy"
         />
@@ -369,7 +361,7 @@
     border: var(--bw) solid var(--line);
     object-fit: cover;
     object-position: top;
-    background: var(--surface);
+    background: var(--card);
   }
 
   .deck-thumb + .deck-thumb {

@@ -1,12 +1,4 @@
-/*
- * Global reset + design tokens.
- *
- * The app intentionally ships with function-only styling for now. Every colour,
- * shadow, border, font size and the font family live here as tokens so the whole
- * app can be rethemed from one place instead of hunting through component
- * <style> blocks. Components should reference var(--token) rather than
- * hardcoding literals.
- */
+/* Global reset, shared design tokens, and reusable interaction styles. */
 
 /* Public Sans, served locally from /static/fonts (no network fetch at runtime). */
 @font-face {
@@ -66,17 +58,10 @@
   --accent: #1f6b52;
   --amber: #9a7526;
   --brick: #94402f;
-  --accent-pine: #1f6b52;
-  --accent-slate: #33556f;
-  --accent-plum: #6a3f5c;
-  --accent-clay: #8a5a2b;
 
   /* Typography. Public Sans ships weights 400, 500, 600 and 700, so the medium
      (500) and semibold (600) recipe tiers render at their intended weight. */
   --font-sans: "Public Sans", system-ui, sans-serif;
-  --font-mono: var(--font-sans);
-  --sans: var(--font-sans);
-  --mono: var(--font-mono);
   --fs-title: 20px;
   --fs-card: 13px;
   --fs-body: 12.5px;
@@ -94,9 +79,7 @@
 
   /* Hard e-ink shadows */
   --shadow-sm: 2px 2px 0 var(--line-3);
-  --shadow-card: 3px 3px 0 var(--paper-3);
   --shadow-btn: 3px 3px 0 var(--accent);
-  /* --shadow-drag: 5px 5px 0 color-mix(in oklab, var(--ink) 78%, transparent); */
   --shadow-drag: 0px 5px 15px rgba(0, 0, 0, 0.25);
 
   /* Motion */
@@ -105,7 +88,6 @@
 
   /* Layout */
   --card-h: 80px;
-  --card-h-compact: 66px;
   --card-pad: 8px;
   /* The content sits inside the card shell's padding and 1px border. Keeping
      that subtraction here makes --card-h describe the complete card. */
@@ -118,21 +100,6 @@
 
   /* Paper-grain overlay opacity (fixed fractal-noise layer, multiply blend). */
   --grain-op: 0.35;
-
-  /* Compatibility aliases used by the existing components. */
-  --font-family: var(--font-sans);
-  --font-size-heading: var(--fs-title);
-  --font-size-title: var(--fs-card);
-  --font-size-small: var(--fs-body);
-  --surface: var(--card);
-  --surface-sunken: var(--paper-3);
-  --surface-muted: var(--paper-2);
-  --surface-empty: var(--paper-3);
-  --text: var(--ink);
-  --text-muted: var(--ink-2);
-  --border: var(--line-2);
-  --border-strong: var(--line-3);
-  --border-subtle: var(--line);
 
   /* Semantic variants retained for the PDF viewer and interaction states. */
   --accent-strong: #0d4f3c;
@@ -156,7 +123,6 @@
   /* PDF text highlights remain a distinct annotation palette. */
   --highlight: #ffcd45;
   --highlight-strong: #ffd033;
-  --highlight-soft: rgba(255, 205, 69, 0.38);
   --highlight-menu-bg: #ffdf65;
   --highlight-menu-border: #8a741f;
   --highlight-menu-text: #211a05;
@@ -219,7 +185,7 @@
 html,
 body {
   margin: 0;
-  font-family: var(--font-family);
+  font-family: var(--font-sans);
 }
 
 html {
@@ -234,7 +200,7 @@ body {
 }
 
 html.macos-titlebar-overlay {
-  --window-titlebar-height: 30px;
+  --window-titlebar-height: 44px;
 }
 
 html.macos-titlebar-overlay body {
@@ -301,28 +267,22 @@ dialog {
 /* Muted secondary text. Every <small> in the app shares one colour + size;
    components add only layout (ellipsis, clamp) on top. */
 small {
-  color: var(--text-muted);
-  font-size: var(--font-size-small);
+  color: var(--ink-2);
+  font-size: var(--fs-body);
 }
 
 /* Reusable e-ink recipes. */
 .eink-card {
-  /* border: var(--bw) solid var(--line-2); */
   border-radius: var(--radius);
   background: var(--card);
-  --order: 2;
-  --shadow: calc(var(--order) * 1px);
-  box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 10px)
-    rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   transition:
     box-shadow var(--ease),
     transform var(--ease);
 }
 
 .eink-card:hover {
-  box-shadow: var(--shadow-card);
-  box-shadow: 0px calc(var(--order) * 0.2px) min(var(--shadow), 5px)
-    rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0.4px 2px rgba(0, 0, 0, 0.25);
 }
 
 .eink-btn {
@@ -373,12 +333,12 @@ small {
   border-radius: var(--radius-chip);
   background: var(--card);
   color: var(--ink-3);
-  font: 400 var(--fs-meta) var(--font-mono);
+  font: 400 var(--fs-meta) var(--font-sans);
 }
 
 .eink-label {
   color: var(--ink-3);
-  font: 600 var(--fs-label) var(--font-mono);
+  font: 600 var(--fs-label) var(--font-sans);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
@@ -399,8 +359,8 @@ small {
   display: grid;
   min-width: 160px;
   padding: 4px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
+  border: 1px solid var(--line-3);
+  background: var(--card);
   box-shadow: var(--shadow-menu);
 }
 
@@ -414,7 +374,7 @@ small {
   width: 100%;
   margin: 4px 0;
   border: 0;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--line);
 }
 
 /* Shared spinner rotation. Defined globally (not inside a component) so the

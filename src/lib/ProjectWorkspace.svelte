@@ -8,6 +8,11 @@
     getAllWebviewWindows,
     getCurrentWebviewWindow,
   } from "@tauri-apps/api/webviewWindow";
+  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
+  import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
+  import FolderKanban from "@lucide/svelte/icons/folder-kanban";
+  import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
+  import PanelLeftOpen from "@lucide/svelte/icons/panel-left-open";
   import { flushSync, onMount } from "svelte";
   import BibtexLinkPrompt from "./BibtexLinkPrompt.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -64,6 +69,7 @@
   let libraryDraggingEntryId = $state<string | null>(null);
   let fileDropState = $state<"idle" | "ready" | "invalid">("idle");
   let importingPdfs = $state(false);
+  let selectedProjectDocumentIds = $state<Set<string>>(new Set());
   // documentId -> live background-analysis status, for the per-card loaders.
   let analysisStates = $state<Record<string, AnalysisStatus>>({});
 
@@ -634,6 +640,34 @@
     }
   }
 
+  function orderedProjectSelection(): string[] {
+    const ordered: string[] = [];
+    for (const stack of sortStacks(projectStacks)) {
+      const stackDocuments = projectDocuments
+        .filter(
+          (item) =>
+            item.stack.id === stack.id &&
+            selectedProjectDocumentIds.has(item.document.id),
+        )
+        .sort((left, right) => left.position - right.position);
+      for (const item of stackDocuments) ordered.push(item.document.id);
+    }
+    return ordered;
+  }
+
+  function clearProjectSelection() {
+    if (selectedProjectDocumentIds.size) {
+      selectedProjectDocumentIds = new Set();
+    }
+  }
+
+  function groupProjectSelection() {
+    const documentIds = orderedProjectSelection();
+    if (documentIds.length < 2) return;
+    clearProjectSelection();
+    void groupDocumentsIntoPile(documentIds);
+  }
+
   function requestRenamePile(pileId: string, currentName: string | null) {
     if (!pileId) return;
     pileNamePrompt = { pileId, currentName };
@@ -711,6 +745,76 @@
 </script>
 
 <main>
+  <header class="project-toolbar" class:library-open={leftSidebarOpen}>
+    <div class="toolbar-library">
+      <button
+        class="toolbar-button"
+        type="button"
+        aria-label={leftSidebarOpen ? "Hide library" : "Show library"}
+        aria-pressed={leftSidebarOpen}
+        title={leftSidebarOpen ? "Hide library" : "Show library"}
+        onclick={() => (leftSidebarOpen = !leftSidebarOpen)}
+      >
+        {#if leftSidebarOpen}
+          <PanelLeftClose size={16} strokeWidth={1.8} aria-hidden="true" />
+        {:else}
+          <PanelLeftOpen size={16} strokeWidth={1.8} aria-hidden="true" />
+        {/if}
+      </button>
+      <button
+        class="toolbar-button"
+        type="button"
+        aria-label={importingPdfs ? "Adding PDFs" : "Add PDF"}
+        title={importingPdfs ? "Adding PDFs…" : "Add PDF"}
+        disabled={importingPdfs}
+        onclick={() => void choosePdf()}
+      >
+        <FilePlus2 size={16} strokeWidth={1.8} aria-hidden="true" />
+      </button>
+    </div>
+
+    <div class="toolbar-project">
+      <a
+        class="toolbar-button"
+        href="/"
+        aria-label="Back to projects"
+        title="Back to projects"
+      >
+        <ArrowLeft size={16} strokeWidth={1.8} aria-hidden="true" />
+      </a>
+      <div class="project-identity" title={project?.name ?? "Project"}>
+        <FolderKanban size={17} strokeWidth={1.8} aria-hidden="true" />
+        <strong>{project?.name ?? "Project"}</strong>
+      </div>
+      <span class="toolbar-spacer" aria-hidden="true"></span>
+      {#if selectedProjectDocumentIds.size}
+        <div class="toolbar-selection" aria-label="Selected paper actions">
+          <span class="toolbar-selection-count">
+            {selectedProjectDocumentIds.size} selected
+          </span>
+          <button
+            class="toolbar-action toolbar-action--accent"
+            type="button"
+            disabled={selectedProjectDocumentIds.size < 2}
+            onclick={groupProjectSelection}
+          >
+            Group into pile
+          </button>
+          <button
+            class="toolbar-action"
+            type="button"
+            onclick={() => void showDocumentsInFolder(orderedProjectSelection())}
+          >
+            Show in Folder
+          </button>
+          <button class="toolbar-action" type="button" onclick={clearProjectSelection}>
+            Clear
+          </button>
+        </div>
+      {/if}
+    </div>
+  </header>
+
   <div class="paper-grain" aria-hidden="true"></div>
 
   {#if libraryError}
@@ -728,17 +832,6 @@
   <section class="workspace" class:left-closed={!leftSidebarOpen}>
     {#if leftSidebarOpen}
       <aside class="library" aria-label="Document library">
-        <header class="library-header">
-          <button
-            class="eink-btn"
-            type="button"
-            aria-label="Hide library"
-            onclick={() => (leftSidebarOpen = false)}
-          >
-            Hide
-          </button>
-        </header>
-
         <DocumentLibrary
           {documents}
           projectDocumentIds={projectDocuments.map((item) => item.document.id)}
@@ -759,7 +852,6 @@
           ondelete={(document) => (documentToDelete = document)}
           onanalyze={analyzeDocument}
           oncopylatex={copyDocumentHighlightsAsLatex}
-          onchoosepdf={choosePdf}
           ondragstart={(entryId) => (libraryDraggingEntryId = entryId)}
           ondragend={() => (libraryDraggingEntryId = null)}
         />
@@ -768,13 +860,11 @@
 
     <section class="center">
       <ProjectDocuments
-        projectName={project?.name ?? "Project"}
         {projectDocuments}
         stacks={projectStacks}
-        libraryOpen={leftSidebarOpen}
+        bind:selectedIds={selectedProjectDocumentIds}
         {openDocumentIds}
         {analysisStates}
-        onshowlibrary={() => (leftSidebarOpen = true)}
         onopen={(documentId) => void openLibraryDocument(documentId)}
         onshowinfolder={showDocumentsInFolder}
         onremove={requestRemoveProjectDocument}
@@ -792,9 +882,7 @@
         onunpile={unpileProjectDocuments}
         onrenamepile={requestRenamePile}
         onremovepile={requestRemovePile}
-        ongroup={groupDocumentsIntoPile}
         externalDraggingEntryId={libraryDraggingEntryId}
-        onchoosepdf={choosePdf}
         oncreatestack={() => (stackNamePrompt = { mode: "create" })}
         onrequestrenamestack={(stack) => (stackNamePrompt = { mode: "rename", stack })}
         onrequestdeletestack={(stack) => (stackToDelete = stack)}
@@ -887,10 +975,160 @@
   }
 
   main {
-    display: grid;
+    display: flex;
     height: calc(100vh - var(--window-titlebar-height));
-    grid-template-rows: auto minmax(0, 1fr);
+    flex-direction: column;
     background: var(--paper);
+  }
+
+  .project-toolbar {
+    position: relative;
+    z-index: 80;
+    display: grid;
+    height: 44px;
+    flex: 0 0 44px;
+    grid-template-columns: max-content minmax(0, 1fr);
+    border-bottom: var(--bw) solid var(--line-2);
+    background: var(--paper);
+    pointer-events: none;
+  }
+
+  .project-toolbar.library-open {
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  }
+
+  .toolbar-library,
+  .toolbar-project {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .toolbar-library {
+    padding: 7px 9px;
+    border-right: var(--bw) solid var(--line-2);
+    background: var(--paper);
+  }
+
+  .library-open .toolbar-library {
+    background: var(--paper-2);
+  }
+
+  .toolbar-project {
+    padding: 7px 10px;
+    background: var(--paper);
+  }
+
+  .toolbar-button {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--ink-2);
+    text-decoration: none;
+    pointer-events: auto;
+  }
+
+  .toolbar-button:hover:not(:disabled),
+  .toolbar-button:focus-visible {
+    background: color-mix(in oklab, var(--ink) 8%, transparent);
+    color: var(--ink);
+    outline: none;
+  }
+
+  .toolbar-button:focus-visible {
+    box-shadow: inset 0 0 0 var(--bw) var(--accent);
+  }
+
+  .project-identity {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    margin-left: 2px;
+    color: var(--ink);
+  }
+
+  .project-identity :global(svg) {
+    flex: 0 0 auto;
+    color: var(--accent);
+  }
+
+  .project-identity strong {
+    overflow: hidden;
+    font-size: var(--fs-card);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .toolbar-spacer {
+    flex: 1 1 auto;
+  }
+
+  .toolbar-selection {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+    pointer-events: auto;
+  }
+
+  .toolbar-selection-count {
+    margin-right: 2px;
+    color: var(--accent);
+    font-size: var(--fs-meta);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .toolbar-action {
+    height: 28px;
+    padding: 0 9px;
+    border: var(--bw) solid var(--line-2);
+    border-radius: 4px;
+    background: var(--card);
+    color: var(--ink-2);
+    font-size: var(--fs-meta);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .toolbar-action--accent {
+    border-color: color-mix(in oklab, var(--accent) 42%, var(--line-2));
+    background: var(--accent-soft-bg);
+    color: var(--accent-strong);
+  }
+
+  .toolbar-action:hover:not(:disabled),
+  .toolbar-action:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent-strong);
+    outline: none;
+  }
+
+  .toolbar-action:disabled {
+    opacity: 0.45;
+  }
+
+  :global(html.macos-titlebar-overlay) .project-toolbar {
+    position: fixed;
+    z-index: 910;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: var(--window-titlebar-height);
+    flex-basis: var(--window-titlebar-height);
+  }
+
+  :global(html.macos-titlebar-overlay) .toolbar-library {
+    padding-left: 76px;
   }
 
   /* Fixed paper-grain: a single fractal-noise tile multiplied over the whole
@@ -914,10 +1152,10 @@
 
   .notice.error {
     padding: 7px 10px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--line-2);
     background: var(--danger-bg);
     color: var(--danger);
-    font-size: var(--font-size-small);
+    font-size: var(--fs-body);
   }
 
   .file-drop-overlay {
@@ -926,15 +1164,15 @@
     z-index: 2000;
     display: grid;
     place-items: center;
-    border: 2px dashed var(--border-strong);
-    background: var(--surface);
+    border: 2px dashed var(--line-3);
+    background: var(--card);
     pointer-events: none;
   }
 
   .workspace {
     display: grid;
+    flex: 1 1 auto;
     min-height: 0;
-    grid-row: 2;
     grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   }
 
@@ -949,19 +1187,8 @@
     padding: 10px;
   }
 
-  aside > header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 10px;
-  }
-
-  .library-header {
-    flex-wrap: wrap;
-  }
-
   .library {
-    border-right: 1px solid var(--border);
+    border-right: 1px solid var(--line-2);
     background: var(--paper-2);
   }
 

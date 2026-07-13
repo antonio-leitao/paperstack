@@ -7,16 +7,13 @@
     libraryDocumentId,
     ondelete,
   }: AnnotationSelectionMenuProps & {
-    libraryDocumentId: string | null;
+    libraryDocumentId: string;
     ondelete: (annotationId: string, pageIndex: number) => void;
   } = $props();
 
   const action = $derived(menuWrapperProps.action);
   const isAppHighlight = $derived(
-    Boolean(
-      libraryDocumentId &&
-        context.annotation.object.custom?.researchPdf?.documentId === libraryDocumentId,
-    ),
+    context.annotation.object.custom?.researchPdf?.documentId === libraryDocumentId,
   );
 
   function remove(event: MouseEvent) {
@@ -47,7 +44,7 @@
     padding: 5px 9px;
     border: 1px solid var(--danger-menu-border);
     border-radius: 4px;
-    background: var(--surface);
+    background: var(--card);
     box-shadow: var(--shadow-menu);
     color: var(--danger-menu-text);
     font: 12px system-ui, sans-serif;

@@ -42,7 +42,7 @@
 <style>
   time {
     color: var(--ink-3);
-    font-size: var(--font-size-small);
+    font-size: var(--fs-body);
     white-space: nowrap;
   }
 </style>

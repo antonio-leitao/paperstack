@@ -52,7 +52,7 @@
     linkedDocuments = {},
   }: {
     documentId: string;
-    libraryDocumentId: string | null;
+    libraryDocumentId: string;
     analysis: AnalysisResult | null;
     resolvingReferenceIds?: string[];
     linkedDocuments?: Record<string, LibraryDocument>;
@@ -79,7 +79,7 @@
   let loadingAnnotations = $state(false);
 
   const pageSizes = $derived(new Map(analysis?.pages.map((page) => [page.page, page]) ?? []));
-  const highlightsAvailable = $derived(Boolean(desktop && libraryDocumentId));
+  const highlightsAvailable = desktop;
 
   function clearNativeSelection() {
     window.getSelection()?.removeAllRanges();
@@ -185,7 +185,7 @@
     const activeLibraryId = libraryDocumentId;
     savedAnnotations = [];
     annotationError = null;
-    if (!desktop || !activeLibraryId) return;
+    if (!desktop) return;
 
     let cancelled = false;
     loadingAnnotations = true;
@@ -232,7 +232,6 @@
   });
 
   async function createHighlightFromSelection() {
-    if (!libraryDocumentId) return;
     const selection = selectionCapability.provides;
     const annotationScope = annotationCapability.provides?.forDocument(documentId);
     if (!selection || !annotationScope) return;
@@ -302,7 +301,6 @@
   }
 
   async function deleteHighlight(annotationId: string, pageIndex: number) {
-    if (!libraryDocumentId) return;
     const annotationScope = annotationCapability.provides?.forDocument(documentId);
     const annotation = annotationScope?.getAnnotationById(annotationId)?.object;
     if (annotation?.custom?.researchPdf?.documentId !== libraryDocumentId) return;
@@ -419,7 +417,7 @@
 
   :global(.viewport) {
     min-height: 0;
-    background: var(--surface-sunken);
+    background: var(--paper-3);
   }
 
   .annotation-status-slot {
@@ -429,7 +427,7 @@
   .page {
     position: relative;
     overflow: visible;
-    background: var(--surface);
+    background: var(--card);
     box-shadow: var(--shadow-page);
     user-select: none;
     -webkit-user-select: none;

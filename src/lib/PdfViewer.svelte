@@ -17,20 +17,20 @@
   let {
     buffer,
     fileName,
-    libraryDocumentId = null,
+    libraryDocumentId,
     analysis,
     resolvingReferenceIds = [],
     linkedDocuments = {},
   }: {
     buffer: ArrayBuffer;
     fileName: string;
-    libraryDocumentId?: string | null;
+    libraryDocumentId: string;
     analysis: AnalysisResult | null;
     resolvingReferenceIds?: string[];
     linkedDocuments?: Record<string, LibraryDocument>;
   } = $props();
 
-  const documentId = $derived(libraryDocumentId ?? "prototype-document");
+  const documentId = $derived(libraryDocumentId);
   const pdfEngine = usePdfiumEngine();
 
   function createPlugins() {

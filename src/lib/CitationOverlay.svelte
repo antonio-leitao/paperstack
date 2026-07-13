@@ -205,10 +205,10 @@
     max-height: 260px;
     overflow: auto;
     padding: 12px;
-    border: 1px solid var(--border);
-    background: var(--surface);
+    border: 1px solid var(--line-2);
+    background: var(--card);
     box-shadow: var(--shadow-popover);
-    color: var(--text);
+    color: var(--ink);
     font: 13px/1.35 system-ui, sans-serif;
     cursor: default;
   }

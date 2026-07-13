@@ -326,6 +326,7 @@ where
                 .map(|(members, pending)| {
                     let semantic_works = Arc::clone(&semantic_works);
                     let semantic_batch_error = semantic_batch_error.clone();
+                    let lookups = lookups.clone();
                     async move {
                         (
                             members,
@@ -334,6 +335,7 @@ where
                                 pending,
                                 &semantic_works,
                                 semantic_batch_error.as_deref(),
+                                &lookups,
                             )
                             .await,
                         )
@@ -543,35 +545,6 @@ async fn resolve_primary_reference(
         }
     }
 
-    let explicit_arxiv = explicit_arxiv_id(&input);
-    if let Some(arxiv_id) = explicit_arxiv.as_deref() {
-        let arxiv_batch = lookups.arxiv.clone().await;
-        let arxiv_work = arxiv_batch
-            .as_ref()
-            .as_ref()
-            .ok()
-            .and_then(|found| found.get(arxiv_id))
-            .cloned();
-        match arxiv_work {
-            Some(work) if !has_arxiv_hard_conflict(&input, &work) => {
-                let confidence = arxiv_title_similarity(&input, &work).max(0.97);
-                return PrimaryResolution::Complete(accepted_arxiv_resolution(
-                    &input, work, confidence, "arxiv-id",
-                ));
-            }
-            Some(work) => {
-                fallback.status = ResolutionStatus::Ambiguous;
-                fallback.confidence = Some(arxiv_title_similarity(&input, &work));
-                fallback.source = Some("arxiv-id-conflict".to_owned());
-            }
-            None => {
-                if let Err(error) = arxiv_batch.as_ref() {
-                    provider_errors.push(error.clone());
-                }
-            }
-        }
-    }
-
     if let Some(title) = input
         .title
         .as_deref()
@@ -612,48 +585,6 @@ async fn resolve_primary_reference(
         }
     }
 
-    if explicit_arxiv.is_none() {
-        if let Some(title) = input
-            .title
-            .as_deref()
-            .filter(|title| !title.trim().is_empty())
-        {
-            let title = normalize_provider_text(title);
-            match arxiv::search(client, &title).await {
-                Ok(candidates) => {
-                    let mut scored: Vec<ScoredArxivCandidate> = candidates
-                        .into_iter()
-                        .map(|work| score_arxiv_candidate(&input, work))
-                        .collect();
-                    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
-                    if let Some(top) = scored.first() {
-                        let runner_up_score = scored
-                            .get(1)
-                            .map(|candidate| candidate.score)
-                            .unwrap_or(0.0);
-                        if should_accept_arxiv(top, runner_up_score) {
-                            let top = scored.remove(0);
-                            return PrimaryResolution::Complete(accepted_arxiv_resolution(
-                                &input,
-                                top.work,
-                                top.score,
-                                "arxiv-search",
-                            ));
-                        }
-                        if top.title_similarity >= 0.80
-                            && fallback.status != ResolutionStatus::Ambiguous
-                        {
-                            fallback.status = ResolutionStatus::Ambiguous;
-                            fallback.confidence = Some(top.score);
-                            fallback.source = Some("arxiv-search".to_owned());
-                        }
-                    }
-                }
-                Err(error) => provider_errors.push(error),
-            }
-        }
-    }
-
     PrimaryResolution::Pending(PendingSemanticResolution {
         input,
         fallback,
@@ -666,6 +597,7 @@ async fn resolve_semantic_reference(
     pending: PendingSemanticResolution,
     semantic_works: &HashMap<String, SemanticWork>,
     semantic_batch_error: Option<&str>,
+    lookups: &BatchLookups,
 ) -> ReferenceResolution {
     let PendingSemanticResolution {
         input,
@@ -734,6 +666,76 @@ async fn resolve_semantic_reference(
                 }
             }
             Err(error) => provider_errors.push(error),
+        }
+    }
+
+    // arXiv is consulted only after Semantic Scholar so that a richer published
+    // record (venue, pages, DOI) is preferred over a bare preprint.
+    let explicit_arxiv = explicit_arxiv_id(&input);
+    if let Some(arxiv_id) = explicit_arxiv.as_deref() {
+        let arxiv_batch = lookups.arxiv.clone().await;
+        let arxiv_work = arxiv_batch
+            .as_ref()
+            .as_ref()
+            .ok()
+            .and_then(|found| found.get(arxiv_id))
+            .cloned();
+        match arxiv_work {
+            Some(work) if !has_arxiv_hard_conflict(&input, &work) => {
+                let confidence = arxiv_title_similarity(&input, &work).max(0.97);
+                return accepted_arxiv_resolution(&input, work, confidence, "arxiv-id");
+            }
+            Some(work) => {
+                if fallback.status != ResolutionStatus::Ambiguous {
+                    fallback.status = ResolutionStatus::Ambiguous;
+                    fallback.confidence = Some(arxiv_title_similarity(&input, &work));
+                    fallback.source = Some("arxiv-id-conflict".to_owned());
+                }
+            }
+            None => {
+                if let Err(error) = arxiv_batch.as_ref() {
+                    provider_errors.push(error.clone());
+                }
+            }
+        }
+    }
+
+    if explicit_arxiv.is_none() {
+        if let Some(title) = input
+            .title
+            .as_deref()
+            .filter(|title| !title.trim().is_empty())
+        {
+            let title = normalize_provider_text(title);
+            match arxiv::search(client, &title).await {
+                Ok(candidates) => {
+                    let mut scored: Vec<ScoredArxivCandidate> = candidates
+                        .into_iter()
+                        .map(|work| score_arxiv_candidate(&input, work))
+                        .collect();
+                    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+                    if let Some(top) = scored.first() {
+                        let runner_up_score = scored
+                            .get(1)
+                            .map(|candidate| candidate.score)
+                            .unwrap_or(0.0);
+                        if should_accept_arxiv(top, runner_up_score) {
+                            let top = scored.remove(0);
+                            return accepted_arxiv_resolution(
+                                &input, top.work, top.score, "arxiv-search",
+                            );
+                        }
+                        if top.title_similarity >= 0.80
+                            && fallback.status != ResolutionStatus::Ambiguous
+                        {
+                            fallback.status = ResolutionStatus::Ambiguous;
+                            fallback.confidence = Some(top.score);
+                            fallback.source = Some("arxiv-search".to_owned());
+                        }
+                    }
+                }
+                Err(error) => provider_errors.push(error),
+            }
         }
     }
 

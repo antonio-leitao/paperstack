@@ -33,7 +33,6 @@
     ondelete,
     onanalyze,
     oncopylatex,
-    onchoosepdf,
     ondragstart = () => {},
     ondragend = () => {},
   }: {
@@ -56,7 +55,6 @@
     ondelete: (document: LibraryDocument) => void;
     onanalyze: (documentId: string) => void | Promise<void>;
     oncopylatex: (document: LibraryDocument) => Promise<boolean>;
-    onchoosepdf: () => void | Promise<void>;
     ondragstart?: (entryId: string) => void;
     ondragend?: () => void;
   } = $props();
@@ -255,9 +253,6 @@
 <section class="document-library" aria-label="Library">
   <header>
     <strong class="eink-label">Library</strong>
-    <button class="eink-btn eink-btn--accent" type="button" onclick={onchoosepdf}>
-      + Add PDF
-    </button>
   </header>
 
   <label>
@@ -385,7 +380,6 @@
   header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
   }
 
@@ -459,7 +453,7 @@
 
   /* Match the project card title: semibold, 13px. */
   .document-title {
-    font-size: var(--font-size-title);
+    font-size: var(--fs-card);
     font-weight: 600;
   }
 

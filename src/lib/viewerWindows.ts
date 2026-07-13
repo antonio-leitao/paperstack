@@ -1,3 +1,4 @@
+import { LogicalPosition } from "@tauri-apps/api/dpi";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { LibraryDocument } from "./types";
 
@@ -19,6 +20,7 @@ export async function openViewerWindow(document: LibraryDocument): Promise<void>
     decorations: true,
     hiddenTitle: true,
     titleBarStyle: "overlay",
+    trafficLightPosition: new LogicalPosition(14, 16),
     // PDF zoom is handled by EmbedPDF; webview zoom would scale the whole UI.
     zoomHotkeysEnabled: false,
   });

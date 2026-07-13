@@ -300,12 +300,12 @@
           Show references
         </button>
       {/if}
-      {#if pdfBuffer}
+      {#if pdfBuffer && libraryDocument}
         {#key pdfBuffer}
           <PdfViewer
             buffer={pdfBuffer}
             fileName={pdfName}
-            libraryDocumentId={libraryDocument?.id ?? null}
+            libraryDocumentId={libraryDocument.id}
             {analysis}
             {resolvingReferenceIds}
             {linkedDocuments}
@@ -376,9 +376,9 @@
     align-items: center;
     gap: 8px;
     padding: 7px 10px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--line-2);
     background: var(--warning-bg);
-    font-size: var(--font-size-small);
+    font-size: var(--fs-body);
   }
 
   .notice.error {
@@ -419,7 +419,7 @@
     min-height: 0;
     overflow: auto;
     padding: 10px;
-    border-left: 1px solid var(--border);
+    border-left: 1px solid var(--line-2);
     background: var(--paper-2);
   }
 
@@ -450,7 +450,7 @@
 
   .references li {
     margin-bottom: 13px;
-    font-size: var(--font-size-small);
+    font-size: var(--fs-body);
   }
 
   .references li.is-busy {
@@ -461,6 +461,6 @@
     display: grid;
     height: 100%;
     place-content: center;
-    background: var(--surface-empty);
+    background: var(--paper-3);
   }
 </style>

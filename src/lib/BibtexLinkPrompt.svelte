@@ -136,7 +136,7 @@
 
   section {
     padding: 10px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--line-2);
   }
 
   section span,

@@ -94,13 +94,10 @@
   const PILE_SLIDE_MS = 190;
 
   let {
-    projectName,
     projectDocuments,
     stacks,
-    libraryOpen,
     openDocumentIds = [],
     analysisStates = {},
-    onshowlibrary,
     onopen,
     onshowinfolder,
     onremove,
@@ -118,20 +115,16 @@
     onunpile,
     onrenamepile,
     onremovepile,
-    ongroup,
+    selectedIds = $bindable(new Set<string>()),
     externalDraggingEntryId = null,
-    onchoosepdf,
     oncreatestack,
     onrequestrenamestack,
     onrequestdeletestack,
   }: {
-    projectName: string;
     projectDocuments: ProjectDocument[];
     stacks: ProjectStack[];
-    libraryOpen: boolean;
     openDocumentIds?: string[];
     analysisStates?: Record<string, AnalysisStatus>;
-    onshowlibrary: () => void;
     onopen: (documentId: string) => void | Promise<void>;
     onshowinfolder: (documentIds: string[]) => void | Promise<void>;
     onremove: (documentId: string) => void | Promise<void>;
@@ -155,9 +148,8 @@
     onunpile: (pileId: string) => void | Promise<void>;
     onrenamepile: (pileId: string, currentName: string | null) => void;
     onremovepile: (pileId: string, currentName: string | null) => void;
-    ongroup: (documentIds: string[]) => void | Promise<void>;
+    selectedIds?: Set<string>;
     externalDraggingEntryId?: string | null;
-    onchoosepdf: () => void | Promise<void>;
     oncreatestack: () => void;
     onrequestrenamestack: (stack: ProjectStack) => void;
     onrequestdeletestack: (stack: ProjectStack) => void;
@@ -243,8 +235,8 @@
   let boardDraggingEntryId = $state<string | null>(null);
   // Which piles are open. While open a pile is flattened into the column.
   let expandedPiles = $state<Set<string>>(new Set());
-  // Multi-selected papers (Shift+click) waiting to be grouped into a pile.
-  let selectedIds = $state<Set<string>>(new Set());
+  // Multi-selected papers (Shift+click) are bound to the workspace so their
+  // actions can live in the persistent window toolbar.
   // One explicit drag intent is active at a time. Shift can switch an in-flight
   // drag into merge mode; without it the column lists own ordinary reordering.
   let shiftHeld = $state(false);
@@ -447,27 +439,6 @@
     const ordered = [...sortedStacks];
     [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
     void onsetstackorder(stackIds(ordered));
-  }
-
-  // Selected documents in board reading order (stacks left→right, top→bottom).
-  function orderedSelection(): string[] {
-    const order: string[] = [];
-    for (const stack of sortedStacks) {
-      const docs = projectDocuments
-        .filter(
-          (item) => item.stack.id === stack.id && selectedIds.has(item.document.id),
-        )
-        .sort((left, right) => left.position - right.position);
-      for (const item of docs) order.push(item.document.id);
-    }
-    return order;
-  }
-
-  function groupSelection() {
-    const documentIds = orderedSelection();
-    if (documentIds.length < 2) return;
-    clearSelection();
-    void ongroup(documentIds);
   }
 
   function pileDocumentIds(pileId: string): string[] {
@@ -1060,53 +1031,13 @@
 />
 
 <section class="board" aria-label="Project board">
-  <header class="board-header">
-    <div class="board-heading">
-      <a class="back-button" href="/" aria-label="Back to projects" title="Back to projects">←</a>
-      <div class="board-title">
-        <h1>{projectName}</h1>
-        <p>{projectDocuments.length} PDF{projectDocuments.length === 1 ? "" : "s"} in this project.</p>
-      </div>
-    </div>
-    <div class="actions">
-      {#if selectedIds.size}
-        <span class="selection-count">{selectedIds.size} selected</span>
-        <button
-          class="eink-btn eink-btn--soft-accent"
-          type="button"
-          disabled={selectedIds.size < 2}
-          onclick={groupSelection}
-        >
-          Group into pile
-        </button>
-        <button
-          class="eink-btn"
-          type="button"
-          onclick={() => void onshowinfolder(orderedSelection())}
-        >
-          Show in Folder
-        </button>
-        <button class="eink-btn" type="button" onclick={clearSelection}>Clear</button>
-        <span class="action-separator" aria-hidden="true"></span>
-      {/if}
-      {#if !libraryOpen}
-        <button class="eink-btn" type="button" onclick={onshowlibrary}>Show Library</button>
-      {/if}
-      <button class="eink-btn" type="button" onclick={oncreatestack}>New Stack</button>
-      <button class="eink-btn eink-btn--accent" type="button" onclick={onchoosepdf}>
-        + Add PDF
-      </button>
-    </div>
-  </header>
-
-  {#if sortedStacks.length}
-    <div class="columns">
-      {#each sortedStacks as stack (stack.id)}
-        <section
-          class="stack"
-          aria-label={stack.name}
-          animate:flip={{ duration: COLUMN_FLIP_DURATION_MS, easing: sineInOut }}
-        >
+  <div class="columns">
+    {#each sortedStacks as stack (stack.id)}
+      <section
+        class="stack"
+        aria-label={stack.name}
+        animate:flip={{ duration: COLUMN_FLIP_DURATION_MS, easing: sineInOut }}
+      >
           <header class="stack__header">
             <strong>{stack.name}</strong>
             <span class="count eink-chip">{columnPaperCount(stack.id)}</span>
@@ -1259,15 +1190,13 @@
               </li>
             {/each}
           </ul>
-        </section>
-      {/each}
-    </div>
-  {:else}
-    <div class="empty">
-      <p>Create a stack before adding PDFs to this project.</p>
-      <button class="eink-btn" type="button" onclick={oncreatestack}>New Stack</button>
-    </div>
-  {/if}
+      </section>
+    {/each}
+    <button class="new-stack-column" type="button" onclick={oncreatestack}>
+      <span aria-hidden="true">+</span>
+      New stack
+    </button>
+  </div>
 
   {#if dragHint}
     <div class="drag-hint" aria-hidden="true">{dragHint}</div>
@@ -1388,7 +1317,7 @@
     display: grid;
     height: 100%;
     min-height: 0;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     gap: 14px;
     padding: 16px 18px 6px;
     background: var(--paper);
@@ -1396,48 +1325,6 @@
        layers paint on top of this paper background (but still behind each
        card), instead of being hidden by it. */
     isolation: isolate;
-  }
-
-  .board-header,
-  .actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .board-header {
-    justify-content: space-between;
-    align-items: start;
-  }
-
-  .board-heading {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .board-title {
-    min-width: 0;
-  }
-
-  .back-button {
-    flex: 0 0 auto;
-    color: inherit;
-    font-size: var(--font-size-heading);
-    line-height: 1;
-    text-decoration: none;
-  }
-
-  h1,
-  p {
-    margin: 0;
-  }
-
-  h1 {
-    overflow: hidden;
-    font-size: var(--font-size-heading);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .columns {
@@ -1457,6 +1344,33 @@
     flex: 0 0 auto;
     max-height: 100%;
     min-height: 0;
+  }
+
+  .new-stack-column {
+    display: flex;
+    width: var(--col-w);
+    height: 38px;
+    min-height: 38px;
+    flex: 0 0 auto;
+    align-self: flex-start;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 11px;
+    border: var(--bw) dashed var(--line-3);
+    border-radius: var(--radius);
+    background: color-mix(in oklab, var(--paper-2) 45%, transparent);
+    color: var(--ink-3);
+    font-size: var(--fs-body);
+    font-weight: 500;
+  }
+
+  .new-stack-column:hover,
+  .new-stack-column:focus-visible {
+    border-color: var(--accent);
+    background: var(--accent-soft-bg);
+    color: var(--accent);
+    outline: none;
   }
 
   .stack__header {
@@ -1523,18 +1437,6 @@
     flex: 0 0 auto;
   }
 
-  .selection-count {
-    align-self: center;
-    color: var(--accent);
-    font-size: var(--font-size-small);
-  }
-
-  .action-separator {
-    align-self: stretch;
-    width: var(--bw);
-    background: var(--line-2);
-  }
-
   .stack__list {
     display: flex;
     height: 100%;
@@ -1583,7 +1485,6 @@
   }
 
   .cards li.pile-member + li.pile-member {
-    /* border-top: var(--bw) solid var(--border-subtle); */
     border-top: 0;
   }
 
@@ -1594,7 +1495,7 @@
     left: var(--bw);
     right: var(--bw);
     height: var(--bw);
-    background: var(--border-subtle);
+    background: var(--line);
   }
   .cards li.pile-first {
     overflow: hidden;
@@ -1606,7 +1507,6 @@
     margin-bottom: 9px;
     border-bottom-width: var(--bw-2);
     border-radius: 0 0 var(--radius) var(--radius);
-    /* box-shadow: 0px 1px 8px rgba(0, 0, 0, 0.14); */
   }
 
   .cards li.pile-first.pile-last {
@@ -1639,45 +1539,34 @@
      stacking context), so these negative-z pseudo layers hoist up to .board's
      context and paint above its paper background but below the card's own
      opaque background — the top card hides all but the peeking edges. */
-  .cards li.is-collapsed-pile {
-    --order:2;
-    /* border-color: var(--line-3); */
-  }
-
   .cards li.is-collapsed-pile::before,
   .cards li.is-collapsed-pile::after {
     content: "";
     position: absolute;
     inset: 0;
-    /* border: var(--bw) solid var(--line-2); */
-    /* background: var(--card-2); */
-    pointer-events: none;
     border-radius: var(--radius);
     background: var(--card);
+    pointer-events: none;
   }
 
   .cards li.is-collapsed-pile::before {
     z-index: -1;
     transform: translate(3px, 3px);
-    --order: 2;
-    --shadow: calc(var(--order) * 1px);
-    box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 10px)
-    rgba(0, 0, 0, 0.25);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   }
 
   .cards li.is-collapsed-pile::after {
     z-index: -2;
     transform: translate(6px, 6px);
-    --order: 1;
-    --shadow: calc(var(--order) * 1px);
-    box-shadow: 0px calc(var(--order) * 0.5px) min(var(--shadow), 10px)
-    rgba(0, 0, 0, 0.25);
+    box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.25);
   }
 
-  .cards li.is-collapsed-pile:hover::before,
+  .cards li.is-collapsed-pile:hover::before {
+    box-shadow: 0 0.4px 2px rgba(0, 0, 0, 0.25);
+  }
+
   .cards li.is-collapsed-pile:hover::after {
-    box-shadow: 0px calc(var(--order) * 0.2px) min(var(--shadow), 5px)
-    rgba(0, 0, 0, 0.25);
+    box-shadow: 0 0.2px 1px rgba(0, 0, 0, 0.25);
   }
 
   /* The reorder shadow slot IS the placeholder: the Kanban shell itself becomes
@@ -1738,7 +1627,7 @@
      copy so a dragged paper doesn't carry the pile border, name or collapse
      button (the pile in the column keeps its border as the drop target). */
   :global(#dnd-action-dragged-el.pile-member) {
-    border-color: var(--border-subtle) !important;
+    border-color: var(--line) !important;
   }
 
   /* Pointer hit-testing in merge mode must see the real card underneath the
@@ -1783,7 +1672,7 @@
     padding: 2px 7px;
     background: var(--accent);
     color: var(--paper);
-    font: 600 9px var(--font-mono);
+    font: 600 9px var(--font-sans);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     white-space: nowrap;
@@ -1801,17 +1690,10 @@
   .pile-header-name {
     min-width: 0;
     overflow: hidden;
-    font-size: var(--font-size-small);
+    font-size: var(--fs-body);
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .empty {
-    display: grid;
-    justify-items: start;
-    align-content: start;
-    gap: 8px;
   }
 
   /* Floating drag hint: names the Shift-to-merge shortcut while dragging. Above
@@ -1826,7 +1708,7 @@
     border: var(--bw) solid var(--ink);
     background: var(--ink);
     color: var(--paper);
-    font: 500 11px var(--font-mono);
+    font: 500 11px var(--font-sans);
     letter-spacing: 0.02em;
     white-space: nowrap;
     pointer-events: none;
