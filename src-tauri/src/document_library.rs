@@ -53,6 +53,15 @@ pub(crate) struct ProjectDocument {
     updated_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DocumentNote {
+    document_id: String,
+    text: String,
+    created_at: i64,
+    updated_at: i64,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LibraryDocument {
@@ -63,6 +72,7 @@ pub(crate) struct LibraryDocument {
     byte_size: u64,
     stored_path: String,
     thumbnail_path: Option<String>,
+    note: Option<DocumentNote>,
     reference_id: Option<String>,
     reference_bibtex: Option<String>,
     reference_title: Option<String>,
@@ -535,6 +545,112 @@ pub(crate) fn rename_document(
     let document = load_document(&app, &connection, &id)?;
     emit_library_changed(&app, "document", Some(&id), "updated");
     Ok(document)
+}
+
+#[tauri::command]
+pub(crate) fn get_document_note(
+    app: AppHandle,
+    document_id: String,
+) -> Result<Option<DocumentNote>, String> {
+    let connection = database::connection(&app)?;
+    require_document(&connection, &document_id)?;
+    load_document_note(&connection, &document_id)
+}
+
+#[tauri::command]
+pub(crate) fn save_document_note(
+    app: AppHandle,
+    document_id: String,
+    note: String,
+) -> Result<DocumentNote, String> {
+    let mut connection = database::connection(&app)?;
+    let saved = save_document_note_in_connection(&mut connection, &document_id, &note)?;
+    emit_library_changed(&app, "document", Some(&document_id), "updated");
+    Ok(saved)
+}
+
+#[tauri::command]
+pub(crate) fn delete_document_note(app: AppHandle, document_id: String) -> Result<(), String> {
+    let mut connection = database::connection(&app)?;
+    delete_document_note_in_connection(&mut connection, &document_id)?;
+    emit_library_changed(&app, "document", Some(&document_id), "updated");
+    Ok(())
+}
+
+fn save_document_note_in_connection(
+    connection: &mut Connection,
+    document_id: &str,
+    note: &str,
+) -> Result<DocumentNote, String> {
+    let note = clean_note(note).ok_or_else(|| "Note cannot be empty".to_owned())?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start saving the note: {error}"))?;
+    require_document(&transaction, &document_id)?;
+
+    let now = database::unix_timestamp();
+    let created_at = transaction
+        .query_row(
+            "SELECT created_at FROM document_notes WHERE document_id = ?1",
+            params![document_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not read the existing note: {error}"))?
+        .unwrap_or(now);
+    transaction
+        .execute(
+            r#"
+            INSERT INTO document_notes (document_id, text, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(document_id) DO UPDATE SET
+                text = excluded.text,
+                updated_at = excluded.updated_at
+            "#,
+            params![document_id, note, created_at, now],
+        )
+        .map_err(|error| format!("Could not save the note: {error}"))?;
+    transaction
+        .execute(
+            "UPDATE documents SET updated_at = ?1 WHERE id = ?2",
+            params![now, document_id],
+        )
+        .map_err(|error| format!("Could not update the document timestamp: {error}"))?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish saving the note: {error}"))?;
+
+    load_document_note(connection, document_id)?
+        .ok_or_else(|| "Could not load the saved note".to_owned())
+}
+
+fn delete_document_note_in_connection(
+    connection: &mut Connection,
+    document_id: &str,
+) -> Result<(), String> {
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start deleting the note: {error}"))?;
+    require_document(&transaction, document_id)?;
+    let changed = transaction
+        .execute(
+            "DELETE FROM document_notes WHERE document_id = ?1",
+            params![document_id],
+        )
+        .map_err(|error| format!("Could not delete the note: {error}"))?;
+    if changed == 0 {
+        return Err("Document note not found".to_owned());
+    }
+    transaction
+        .execute(
+            "UPDATE documents SET updated_at = ?1 WHERE id = ?2",
+            params![database::unix_timestamp(), document_id],
+        )
+        .map_err(|error| format!("Could not update the document timestamp: {error}"))?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not finish deleting the note: {error}"))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1920,8 +2036,10 @@ fn load_document(
         .query_row(
             r#"
             SELECT d.content_hash, d.original_filename, d.title, d.byte_size,
-                   l.reference_id, r.data_json, d.created_at, d.updated_at, d.last_viewed_at
+                   l.reference_id, r.data_json, d.created_at, d.updated_at, d.last_viewed_at,
+                   n.text, n.created_at, n.updated_at
             FROM documents d
+            LEFT JOIN document_notes n ON n.document_id = d.id
             LEFT JOIN document_reference_links l ON l.document_id = d.id
             LEFT JOIN "references" r ON r.id = l.reference_id
             WHERE d.id = ?1
@@ -1938,6 +2056,9 @@ fn load_document(
                     row.get::<_, i64>(6)?,
                     row.get::<_, i64>(7)?,
                     row.get::<_, i64>(8)?,
+                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, Option<i64>>(10)?,
+                    row.get::<_, Option<i64>>(11)?,
                 ))
             },
         )
@@ -1957,6 +2078,15 @@ fn load_document(
     let reference_bibtex = linked_reference.as_ref().and_then(|reference| {
         (!reference.bibtex.trim().is_empty()).then(|| reference.bibtex.clone())
     });
+    let note = match (row.9, row.10, row.11) {
+        (Some(text), Some(created_at), Some(updated_at)) => Some(DocumentNote {
+            document_id: id.to_owned(),
+            text,
+            created_at,
+            updated_at,
+        }),
+        _ => None,
+    };
     Ok(LibraryDocument {
         id: id.to_owned(),
         content_hash: row.0,
@@ -1965,6 +2095,7 @@ fn load_document(
         byte_size: row.3.max(0) as u64,
         stored_path: document_path(app, id)?.to_string_lossy().into_owned(),
         thumbnail_path,
+        note,
         reference_id: row.4,
         reference_bibtex,
         reference_title: linked_reference
@@ -2239,6 +2370,33 @@ fn row_to_project_stack(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectStac
     })
 }
 
+fn load_document_note(
+    connection: &Connection,
+    document_id: &str,
+) -> Result<Option<DocumentNote>, String> {
+    connection
+        .query_row(
+            r#"
+            SELECT document_id, text, created_at, updated_at
+            FROM document_notes
+            WHERE document_id = ?1
+            "#,
+            params![document_id],
+            row_to_document_note,
+        )
+        .optional()
+        .map_err(|error| format!("Could not load the document note: {error}"))
+}
+
+fn row_to_document_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentNote> {
+    Ok(DocumentNote {
+        document_id: row.get(0)?,
+        text: row.get(1)?,
+        created_at: row.get(2)?,
+        updated_at: row.get(3)?,
+    })
+}
+
 fn load_document_annotation(
     connection: &Connection,
     document_id: &str,
@@ -2405,6 +2563,12 @@ fn clean_name(value: &str) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
+fn clean_note(value: &str) -> Option<String> {
+    let value = value.replace("\r\n", "\n").replace('\r', "\n");
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_owned())
+}
+
 fn name_key(value: &str) -> String {
     value.chars().flat_map(char::to_lowercase).collect()
 }
@@ -2465,6 +2629,81 @@ mod tests {
             Some("Machine Learning")
         );
         assert_eq!(name_key("Machine Learning"), "machine learning");
+    }
+
+    #[test]
+    fn document_note_crud_rejects_empty_content_and_preserves_created_at() {
+        let directory =
+            std::env::temp_dir().join(format!("research-pdf-note-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("notes.sqlite3");
+        let mut connection = database::open_connection(&path).unwrap();
+        connection
+            .execute(
+                r#"
+                INSERT INTO documents (
+                    id, content_hash, original_filename, title, byte_size,
+                    created_at, updated_at, last_viewed_at
+                ) VALUES ('document', 'hash', 'paper.pdf', 'Paper', 100, 1, 1, 1)
+                "#,
+                [],
+            )
+            .unwrap();
+
+        assert!(load_document_note(&connection, "document")
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            save_document_note_in_connection(&mut connection, "missing", "A note").unwrap_err(),
+            "Document not found"
+        );
+        assert_eq!(
+            delete_document_note_in_connection(&mut connection, "missing").unwrap_err(),
+            "Document not found"
+        );
+        for empty in ["", "   ", "\n\r\t", "\u{2003}\n"] {
+            assert_eq!(
+                save_document_note_in_connection(&mut connection, "document", empty).unwrap_err(),
+                "Note cannot be empty"
+            );
+        }
+
+        let created = save_document_note_in_connection(
+            &mut connection,
+            "document",
+            "  First line\r\nsecond line  ",
+        )
+        .unwrap();
+        assert_eq!(created.text, "First line\nsecond line");
+
+        let updated =
+            save_document_note_in_connection(&mut connection, "document", "Replacement note")
+                .unwrap();
+        assert_eq!(updated.text, "Replacement note");
+        assert_eq!(updated.created_at, created.created_at);
+        let note_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM document_notes", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(note_count, 1);
+        assert_eq!(
+            load_document_note(&connection, "document")
+                .unwrap()
+                .unwrap()
+                .text,
+            "Replacement note"
+        );
+
+        delete_document_note_in_connection(&mut connection, "document").unwrap();
+        assert!(load_document_note(&connection, "document")
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            delete_document_note_in_connection(&mut connection, "document").unwrap_err(),
+            "Document note not found"
+        );
+
+        drop(connection);
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]

@@ -1,4 +1,10 @@
 <script lang="ts">
+  import FolderMinus from "@lucide/svelte/icons/folder-minus";
+  import FolderOpen from "@lucide/svelte/icons/folder-open";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import Ungroup from "@lucide/svelte/icons/ungroup";
   import {
     dndzone,
     SHADOW_ITEM_MARKER_PROPERTY_NAME,
@@ -102,6 +108,8 @@
     onshowinfolder,
     onremove,
     onrename,
+    oneditnote,
+    onremovenote,
     onlinkbibtex,
     onunlink,
     ondelete,
@@ -129,6 +137,8 @@
     onshowinfolder: (documentIds: string[]) => void | Promise<void>;
     onremove: (documentId: string) => void | Promise<void>;
     onrename: (document: BoardMember["document"]) => void;
+    oneditnote: (document: BoardMember["document"]) => void;
+    onremovenote: (document: BoardMember["document"]) => void;
     onlinkbibtex: (document: BoardMember["document"]) => void;
     onunlink: (document: BoardMember["document"]) => void | Promise<void>;
     ondelete: (document: BoardMember["document"]) => void;
@@ -1039,41 +1049,45 @@
         animate:flip={{ duration: COLUMN_FLIP_DURATION_MS, easing: sineInOut }}
       >
           <header class="stack__header">
-            <strong>{stack.name}</strong>
-            <span class="count eink-chip">{columnPaperCount(stack.id)}</span>
-            <div class="stack__order-controls" aria-label={`Move ${stack.name}`}>
+            <div class="stack__heading">
+              <strong>{stack.name}</strong>
+              <span class="count">{columnPaperCount(stack.id)}</span>
+            </div>
+            <div class="stack__controls">
+              <div class="stack__order-controls" aria-label={`Move ${stack.name}`}>
+                <button
+                  class="stack__move"
+                  type="button"
+                  aria-label={`Move ${stack.name} left`}
+                  title="Move left"
+                  disabled={!canMoveStack(stack.id, -1)}
+                  onclick={() => moveStack(stack.id, -1)}
+                >
+                  ←
+                </button>
+                <button
+                  class="stack__move"
+                  type="button"
+                  aria-label={`Move ${stack.name} right`}
+                  title="Move right"
+                  disabled={!canMoveStack(stack.id, 1)}
+                  onclick={() => moveStack(stack.id, 1)}
+                >
+                  →
+                </button>
+              </div>
               <button
-                class="stack__move"
+                class="stack__menu"
                 type="button"
-                aria-label={`Move ${stack.name} left`}
-                title="Move left"
-                disabled={!canMoveStack(stack.id, -1)}
-                onclick={() => moveStack(stack.id, -1)}
+                aria-label={`Actions for ${stack.name}`}
+                aria-haspopup="menu"
+                aria-expanded={contextMenu?.kind === "stack" &&
+                  contextMenu.stack.id === stack.id}
+                onclick={(event) => handleStackMenu(event, stack)}
               >
-                ←
-              </button>
-              <button
-                class="stack__move"
-                type="button"
-                aria-label={`Move ${stack.name} right`}
-                title="Move right"
-                disabled={!canMoveStack(stack.id, 1)}
-                onclick={() => moveStack(stack.id, 1)}
-              >
-                →
+                ⋮
               </button>
             </div>
-            <button
-              class="stack__menu"
-              type="button"
-              aria-label={`Actions for ${stack.name}`}
-              aria-haspopup="menu"
-              aria-expanded={contextMenu?.kind === "stack" &&
-                contextMenu.stack.id === stack.id}
-              onclick={(event) => handleStackMenu(event, stack)}
-            >
-              ⋮
-            </button>
           </header>
           <ul
             class="stack__list cards"
@@ -1148,6 +1162,9 @@
                     active={dragMode === "reorder" &&
                       reorderPreview?.stackId === stack.id &&
                       reorderPreview.index === index}
+                    note={entry.members.length === 1
+                      ? entry.members[0].document.note?.text ?? null
+                      : null}
                   />
                 {:else if isHeader}
                   <div class="pile-header" data-pile-header>
@@ -1193,8 +1210,10 @@
       </section>
     {/each}
     <button class="new-stack-column" type="button" onclick={oncreatestack}>
-      <span aria-hidden="true">+</span>
-      New stack
+      <strong>New stack</strong>
+      <span class="new-stack-column__add" aria-hidden="true">
+        <Plus size={16} strokeWidth={1.8} />
+      </span>
     </button>
   </div>
 
@@ -1220,68 +1239,91 @@
     oncontextmenu={(event) => event.preventDefault()}
   >
     {#if contextMenu.kind === "stack"}
-      <CopyLatexButton oncopy={copyContextColumnAsLatex} />
+      <div class="menu-group" role="group">
+        <CopyLatexButton oncopy={copyContextColumnAsLatex} />
+      </div>
       <hr />
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
-          runStackContextAction((menu) =>
-            onrequestrenamestack(menu.stack))}
-      >
-        Rename stack
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
-          runStackContextAction((menu) =>
-            onrequestdeletestack(menu.stack))}
-      >
-        Delete stack
-      </button>
+      <div class="menu-group" role="group">
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() =>
+            runStackContextAction((menu) =>
+              onrequestrenamestack(menu.stack))}
+        >
+          <Pencil size={16} strokeWidth={1.8} aria-hidden="true" />
+          <span>Rename stack</span>
+        </button>
+      </div>
+      <hr />
+      <div class="menu-group" role="group">
+        <button
+          class="context-menu-danger"
+          type="button"
+          role="menuitem"
+          onclick={() =>
+            runStackContextAction((menu) =>
+              onrequestdeletestack(menu.stack))}
+        >
+          <Trash2 size={16} strokeWidth={1.8} aria-hidden="true" />
+          <span>Delete stack</span>
+        </button>
+      </div>
     {:else if contextMenu.kind === "pile"}
-      <CopyLatexButton oncopy={copyContextPileAsLatex} />
+      <div class="menu-group" role="group">
+        <CopyLatexButton oncopy={copyContextPileAsLatex} />
+      </div>
       <hr />
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
-          runPileContextAction((menu) =>
-            onshowinfolder(pileDocumentIds(menu.pileId)))}
-      >
-        Show in Folder
-      </button>
+      <div class="menu-group" role="group">
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() =>
+            runPileContextAction((menu) =>
+              onshowinfolder(pileDocumentIds(menu.pileId)))}
+        >
+          <FolderOpen size={16} strokeWidth={1.8} aria-hidden="true" />
+          <span>Show in Folder</span>
+        </button>
+      </div>
       <hr />
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
-          runPileContextAction((menu) =>
-            onrenamepile(menu.pileId, menu.pileName),
-          )}
-      >
-        Rename pile
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
-          runPileContextAction((menu) => onunpile(menu.pileId))}
-      >
-        Unstack pile
-      </button>
+      <div class="menu-group" role="group">
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() =>
+            runPileContextAction((menu) =>
+              onrenamepile(menu.pileId, menu.pileName),
+            )}
+        >
+          <Pencil size={16} strokeWidth={1.8} aria-hidden="true" />
+          <span>Rename pile</span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() =>
+            runPileContextAction((menu) => onunpile(menu.pileId))}
+        >
+          <Ungroup size={16} strokeWidth={1.8} aria-hidden="true" />
+          <span>Unstack pile</span>
+        </button>
+      </div>
       <hr />
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
-          runPileContextAction((menu) =>
-            onremovepile(menu.pileId, menu.pileName),
-          )}
-      >
-        Remove pile from project
-      </button>
+      <div class="menu-group" role="group">
+        <button
+          class="context-menu-danger"
+          type="button"
+          role="menuitem"
+          onclick={() =>
+            runPileContextAction((menu) =>
+              onremovepile(menu.pileId, menu.pileName),
+            )}
+        >
+          <FolderMinus size={16} strokeWidth={1.8} aria-hidden="true" />
+          <span>Remove pile from project</span>
+        </button>
+      </div>
     {:else}
       {@const menuAnalysisState = analysisStates[contextMenu.documentId]}
       <DocumentMenuItems
@@ -1295,6 +1337,10 @@
             onshowinfolder([menu.documentId]))}
         onrename={() =>
           runDocumentContextAction((menu) => onrename(menu.member.document))}
+        oneditnote={() =>
+          runDocumentContextAction((menu) => oneditnote(menu.member.document))}
+        onremovenote={() =>
+          runDocumentContextAction((menu) => onremovenote(menu.member.document))}
         onlinkbibtex={() =>
           runDocumentContextAction((menu) =>
             onlinkbibtex(menu.member.document))}
@@ -1336,9 +1382,11 @@
   }
 
   .stack {
+    --stack-content-inset: 8px;
+
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    gap: 9px;
+    gap: 6px;
     width: var(--col-w);
     height: 100%;
     flex: 0 0 auto;
@@ -1347,47 +1395,85 @@
   }
 
   .new-stack-column {
+    position: relative;
     display: flex;
     width: var(--col-w);
-    height: 38px;
-    min-height: 38px;
+    min-height: 32px;
     flex: 0 0 auto;
     align-self: flex-start;
     align-items: center;
-    justify-content: center;
     gap: 6px;
-    padding: 9px 11px;
-    border: var(--bw) dashed var(--line-3);
-    border-radius: var(--radius);
-    background: color-mix(in oklab, var(--paper-2) 45%, transparent);
+    padding: 2px 8px 7px;
+    border: 0;
+    background: transparent;
     color: var(--ink-3);
-    font-size: var(--fs-body);
-    font-weight: 500;
+    text-align: left;
+  }
+
+  .new-stack-column::after {
+    content: "";
+    position: absolute;
+    right: 8px;
+    bottom: 0;
+    left: 8px;
+    height: var(--bw);
+    background: var(--line-2);
+    transition: background var(--ease);
+  }
+
+  .new-stack-column strong {
+    flex: 1 1 auto;
+    font: 600 var(--fs-card) var(--font-sans);
+  }
+
+  .new-stack-column__add {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: var(--radius-chip);
+    transition: background var(--ease);
   }
 
   .new-stack-column:hover,
   .new-stack-column:focus-visible {
-    border-color: var(--accent);
-    background: var(--accent-soft-bg);
     color: var(--accent);
     outline: none;
   }
 
-  .stack__header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 9px 11px;
-    border: var(--bw) solid var(--line-2);
-    background-color: var(--card-2);
-    background-image: radial-gradient(
-      color-mix(in oklab, var(--ink) 24%, transparent) 0.5px,
-      transparent 0.6px
-    );
-    background-size: 3px 3px;
+  .new-stack-column:hover::after,
+  .new-stack-column:focus-visible::after {
+    background: var(--accent);
   }
 
-  .stack__header strong {
+  .new-stack-column:hover .new-stack-column__add,
+  .new-stack-column:focus-visible .new-stack-column__add {
+    background: var(--accent-soft-bg);
+  }
+
+  .stack__header {
+    display: flex;
+    min-height: 32px;
+    align-items: center;
+    gap: 6px;
+    margin-inline: var(--stack-content-inset);
+    padding: 2px 0 7px;
+    border: 0;
+    border-bottom: var(--bw) solid var(--line-2);
+    background: transparent;
+  }
+
+  .stack__heading {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: baseline;
+    gap: 7px;
+  }
+
+  .stack__heading strong {
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     font: 600 var(--fs-card) var(--font-sans);
@@ -1395,23 +1481,38 @@
     white-space: nowrap;
   }
 
+  .stack__controls,
   .stack__order-controls {
     display: flex;
-    margin-left: auto;
     flex: 0 0 auto;
     align-items: center;
-    gap: 1px;
+    gap: 0;
+  }
+
+  .stack__controls {
+    margin-left: auto;
+  }
+
+  .stack__order-controls {
+    opacity: 0.12;
+    transition: opacity var(--ease);
+  }
+
+  .stack__header:hover .stack__order-controls,
+  .stack__header:focus-within .stack__order-controls {
+    opacity: 0.72;
   }
 
   .stack__move,
   .stack__menu {
     display: grid;
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     flex: 0 0 auto;
     place-items: center;
     padding: 0;
     border: 0;
+    border-radius: var(--radius-chip);
     background: transparent;
     color: var(--ink-3);
     font: 700 18px/1 var(--font-sans);
@@ -1419,6 +1520,10 @@
 
   .stack__move {
     font-size: 15px;
+  }
+
+  .stack__menu {
+    opacity: 0.62;
   }
 
   .stack__move:disabled {
@@ -1429,12 +1534,24 @@
   .stack__move:focus-visible,
   .stack__menu:hover,
   .stack__menu:focus-visible {
-    background: var(--card);
+    background: var(--paper-3);
     color: var(--ink);
+    opacity: 1;
   }
 
   .count {
     flex: 0 0 auto;
+    color: var(--ink-3);
+    font-size: var(--fs-meta);
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stack__order-controls,
+    .new-stack-column::after,
+    .new-stack-column__add {
+      transition: none;
+    }
   }
 
   .stack__list {

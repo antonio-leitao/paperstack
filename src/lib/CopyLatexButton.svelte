@@ -1,4 +1,10 @@
 <script lang="ts">
+  import Braces from "@lucide/svelte/icons/braces";
+  import Check from "@lucide/svelte/icons/check";
+  import CircleSlash from "@lucide/svelte/icons/circle-slash";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+
   let {
     oncopy,
   }: {
@@ -33,13 +39,26 @@
 </script>
 
 <button type="button" role="menuitem" onclick={copy} disabled={status === "copying"}>
-  {status === "copying"
-    ? "Copying…"
-    : status === "copied"
-      ? "Copied"
-      : status === "empty"
-        ? "No highlights"
-        : status === "failed"
-          ? failureMessage
-          : "Copy as LaTeX"}
+  {#if status === "copying"}
+    <LoaderCircle class="menu-icon--spin" size={16} strokeWidth={1.8} aria-hidden="true" />
+  {:else if status === "copied"}
+    <Check size={16} strokeWidth={1.8} aria-hidden="true" />
+  {:else if status === "empty"}
+    <CircleSlash size={16} strokeWidth={1.8} aria-hidden="true" />
+  {:else if status === "failed"}
+    <TriangleAlert size={16} strokeWidth={1.8} aria-hidden="true" />
+  {:else}
+    <Braces size={16} strokeWidth={1.8} aria-hidden="true" />
+  {/if}
+  <span>
+    {status === "copying"
+      ? "Copying…"
+      : status === "copied"
+        ? "Copied"
+        : status === "empty"
+          ? "No highlights"
+          : status === "failed"
+            ? failureMessage
+            : "Copy as LaTeX"}
+  </span>
 </button>

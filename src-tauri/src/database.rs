@@ -226,6 +226,14 @@ fn initialize(connection: &Connection) -> Result<(), String> {
                 last_viewed_at INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS document_notes (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                text TEXT NOT NULL
+                    CHECK (length(trim(text, char(9) || char(10) || char(13) || char(32))) > 0),
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS document_reference_links (
                 document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
                 reference_id TEXT NOT NULL UNIQUE REFERENCES "references"(id),
@@ -300,6 +308,7 @@ fn initialize(connection: &Connection) -> Result<(), String> {
             "#,
         )
         .map_err(|error| format!("Could not initialize analysis cache: {error}"))?;
+    migrate_document_notes(connection)?;
     ensure_column(
         connection,
         "projects",
@@ -338,6 +347,27 @@ fn initialize(connection: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|error| format!("Could not index project document piles: {error}"))?;
+    Ok(())
+}
+
+fn migrate_document_notes(connection: &Connection) -> Result<(), String> {
+    let columns = table_columns(connection, "document_notes")?;
+    if columns.iter().any(|name| name == "text") {
+        return Ok(());
+    }
+    if !columns.iter().any(|name| name == "note") {
+        return Err(
+            "Could not migrate document notes: neither text nor legacy note column exists"
+                .to_owned(),
+        );
+    }
+
+    connection
+        .execute(
+            "ALTER TABLE document_notes RENAME COLUMN note TO text",
+            [],
+        )
+        .map_err(|error| format!("Could not migrate document notes: {error}"))?;
     Ok(())
 }
 
@@ -397,14 +427,7 @@ fn ensure_column(
     column: &str,
     definition: &str,
 ) -> Result<(), String> {
-    let mut statement = connection
-        .prepare(&format!("PRAGMA table_info({table})"))
-        .map_err(|error| format!("Could not inspect {table}: {error}"))?;
-    let columns = statement
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(|error| format!("Could not inspect {table}: {error}"))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("Could not read {table} columns: {error}"))?;
+    let columns = table_columns(connection, table)?;
     if columns.iter().any(|name| name == column) {
         return Ok(());
     }
@@ -415,6 +438,18 @@ fn ensure_column(
         )
         .map_err(|error| format!("Could not add {table}.{column}: {error}"))?;
     Ok(())
+}
+
+fn table_columns(connection: &Connection, table: &str) -> Result<Vec<String>, String> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|error| format!("Could not inspect {table}: {error}"))?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| format!("Could not inspect {table}: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read {table} columns: {error}"))?;
+    Ok(columns)
 }
 
 fn load_pdf_from_connection(
@@ -1388,6 +1423,104 @@ mod tests {
             params!["document-b", reference_id],
         );
         assert!(duplicate.is_err());
+    }
+
+    #[test]
+    fn document_notes_reject_empty_text_and_follow_document_lifetime() {
+        let connection = Connection::open_in_memory().unwrap();
+        initialize(&connection).unwrap();
+        insert_document(&connection, "document");
+
+        let empty = connection.execute(
+            r#"
+            INSERT INTO document_notes (document_id, text, created_at, updated_at)
+            VALUES (?1, ?2, 1, 1)
+            "#,
+            params!["document", " \n\t\r "],
+        );
+        assert!(empty.is_err());
+
+        connection
+            .execute(
+                r#"
+                INSERT INTO document_notes (document_id, text, created_at, updated_at)
+                VALUES (?1, ?2, 1, 1)
+                "#,
+                params!["document", "A useful note"],
+            )
+            .unwrap();
+        let duplicate = connection.execute(
+            r#"
+            INSERT INTO document_notes (document_id, text, created_at, updated_at)
+            VALUES (?1, ?2, 2, 2)
+            "#,
+            params!["document", "Another note"],
+        );
+        assert!(duplicate.is_err());
+
+        connection
+            .execute("DELETE FROM documents WHERE id = ?1", params!["document"])
+            .unwrap();
+        let note_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM document_notes", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(note_count, 0);
+    }
+
+    #[test]
+    fn legacy_document_note_column_is_migrated_without_data_loss() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                r#"
+                CREATE TABLE documents (
+                    id TEXT PRIMARY KEY,
+                    content_hash TEXT NOT NULL UNIQUE,
+                    original_filename TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    byte_size INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    last_viewed_at INTEGER NOT NULL
+                );
+                CREATE TABLE document_notes (
+                    document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                    note TEXT NOT NULL
+                        CHECK (length(trim(note, char(9) || char(10) || char(13) || char(32))) > 0),
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                "#,
+            )
+            .unwrap();
+        insert_document(&connection, "legacy-document");
+        connection
+            .execute(
+                r#"
+                INSERT INTO document_notes (document_id, note, created_at, updated_at)
+                VALUES ('legacy-document', 'Preserved note', 2, 3)
+                "#,
+                [],
+            )
+            .unwrap();
+
+        initialize(&connection).unwrap();
+
+        let columns = table_columns(&connection, "document_notes").unwrap();
+        assert!(columns.iter().any(|column| column == "text"));
+        assert!(!columns.iter().any(|column| column == "note"));
+        let migrated: (String, i64, i64) = connection
+            .query_row(
+                r#"
+                SELECT text, created_at, updated_at
+                FROM document_notes
+                WHERE document_id = 'legacy-document'
+                "#,
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(migrated, ("Preserved note".to_owned(), 2, 3));
     }
 
     #[test]

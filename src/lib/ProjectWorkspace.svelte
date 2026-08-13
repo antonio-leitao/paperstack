@@ -25,6 +25,7 @@
     type HighlightLatexDocument,
   } from "./highlightLatex";
   import NamePrompt from "./NamePrompt.svelte";
+  import NotePrompt from "./NotePrompt.svelte";
   import ProjectDocuments from "./ProjectDocuments.svelte";
   import { errorMessage } from "./errorMessage";
   import { openViewerWindow as openDocumentWindow } from "./viewerWindows";
@@ -32,6 +33,7 @@
     AnalysisStatus,
     BibtexPreview,
     DocumentAnnotation,
+    DocumentNote,
     LibraryDocument,
     Project,
     ProjectDocument,
@@ -63,6 +65,8 @@
   } | null>(null);
   let projectDocumentToRemove = $state<ProjectDocument | null>(null);
   let documentToRename = $state<LibraryDocument | null>(null);
+  let documentToEditNote = $state<LibraryDocument | null>(null);
+  let documentNoteToRemove = $state<LibraryDocument | null>(null);
   let documentToLinkFromBibtex = $state<LibraryDocument | null>(null);
   let documentToDelete = $state<LibraryDocument | null>(null);
   let openDocumentIds = $state<string[]>([]);
@@ -334,6 +338,31 @@
         title,
       });
       upsertDocument(renamed);
+      libraryError = null;
+    } catch (error) {
+      libraryError = errorMessage(error);
+    }
+  }
+
+  async function saveDocumentNote(value: string) {
+    const document = documentToEditNote;
+    if (!document) return;
+    const note = await invoke<DocumentNote>("save_document_note", {
+      documentId: document.id,
+      note: value,
+    });
+    upsertDocument({ ...document, note });
+    documentToEditNote = null;
+    libraryError = null;
+  }
+
+  async function confirmRemoveDocumentNote() {
+    const document = documentNoteToRemove;
+    documentNoteToRemove = null;
+    if (!document?.note) return;
+    try {
+      await invoke("delete_document_note", { documentId: document.id });
+      upsertDocument({ ...document, note: null });
       libraryError = null;
     } catch (error) {
       libraryError = errorMessage(error);
@@ -847,6 +876,8 @@
           onshowinfolder={showDocumentsInFolder}
           onadd={addLibraryDocument}
           onrename={(document) => (documentToRename = document)}
+          oneditnote={(document) => (documentToEditNote = document)}
+          onremovenote={(document) => (documentNoteToRemove = document)}
           onlinkbibtex={(document) => (documentToLinkFromBibtex = document)}
           onunlink={unlinkDocument}
           ondelete={(document) => (documentToDelete = document)}
@@ -869,6 +900,8 @@
         onshowinfolder={showDocumentsInFolder}
         onremove={requestRemoveProjectDocument}
         onrename={(document) => (documentToRename = document)}
+        oneditnote={(document) => (documentToEditNote = document)}
+        onremovenote={(document) => (documentNoteToRemove = document)}
         onlinkbibtex={(document) => (documentToLinkFromBibtex = document)}
         onunlink={unlinkDocument}
         ondelete={(document) => (documentToDelete = document)}
@@ -898,6 +931,16 @@
     onconfirm={submitDocumentRename}
     oncancel={() => (documentToRename = null)}
   />
+  <NotePrompt
+    open={documentToEditNote !== null}
+    title={documentToEditNote?.note ? "Edit note" : "Add note"}
+    documentTitle={documentToEditNote?.referenceTitle ??
+      documentToEditNote?.title ??
+      ""}
+    initialValue={documentToEditNote?.note?.text ?? ""}
+    onconfirm={saveDocumentNote}
+    oncancel={() => (documentToEditNote = null)}
+  />
   <BibtexLinkPrompt
     open={documentToLinkFromBibtex !== null}
     documentTitle={documentToLinkFromBibtex?.referenceTitle ??
@@ -916,6 +959,16 @@
     confirmLabel="Delete"
     onconfirm={confirmDeleteDocument}
     oncancel={() => (documentToDelete = null)}
+  />
+  <ConfirmDialog
+    open={documentNoteToRemove !== null}
+    title="Remove note"
+    message={documentNoteToRemove
+      ? `Remove the note from "${documentNoteToRemove.referenceTitle ?? documentNoteToRemove.title}"?`
+      : ""}
+    confirmLabel="Remove"
+    onconfirm={confirmRemoveDocumentNote}
+    oncancel={() => (documentNoteToRemove = null)}
   />
   <NamePrompt
     open={stackNamePrompt !== null}

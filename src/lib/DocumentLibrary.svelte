@@ -28,6 +28,8 @@
     onshowinfolder,
     onadd,
     onrename,
+    oneditnote,
+    onremovenote,
     onlinkbibtex,
     onunlink,
     ondelete,
@@ -50,6 +52,8 @@
     onshowinfolder: (documentIds: string[]) => void | Promise<void>;
     onadd: (documentId: string) => void | Promise<void>;
     onrename: (document: LibraryDocument) => void;
+    oneditnote: (document: LibraryDocument) => void;
+    onremovenote: (document: LibraryDocument) => void;
     onlinkbibtex: (document: LibraryDocument) => void;
     onunlink: (document: LibraryDocument) => void | Promise<void>;
     ondelete: (document: LibraryDocument) => void;
@@ -359,6 +363,10 @@
       onshowinfolder={() =>
         runContextAction((menu) => onshowinfolder([menu.document.id]))}
       onrename={() => runContextAction((menu) => onrename(menu.document))}
+      oneditnote={() =>
+        runContextAction((menu) => oneditnote(menu.document))}
+      onremovenote={() =>
+        runContextAction((menu) => onremovenote(menu.document))}
       onlinkbibtex={() =>
         runContextAction((menu) => onlinkbibtex(menu.document))}
       onunlink={() => runContextAction((menu) => onunlink(menu.document))}

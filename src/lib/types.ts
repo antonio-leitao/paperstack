@@ -83,6 +83,13 @@ export type ProjectStack = {
   updatedAt: number;
 };
 
+export type DocumentNote = {
+  documentId: string;
+  text: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type LibraryDocument = {
   id: string;
   contentHash: string;
@@ -91,6 +98,7 @@ export type LibraryDocument = {
   byteSize: number;
   storedPath: string;
   thumbnailPath: string | null;
+  note: DocumentNote | null;
   referenceId: string | null;
   referenceBibtex?: string | null;
   referenceTitle: string | null;

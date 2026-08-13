@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Check from "@lucide/svelte/icons/check";
+  import Copy from "@lucide/svelte/icons/copy";
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import { copyToClipboard } from "./copyToClipboard";
 
   // Self-contained "Copy BibTeX" control. Owns its three visual states
@@ -39,5 +42,14 @@
   aria-label={ariaLabel}
   onclick={copy}
 >
-  {status === "failed" ? "Copy failed" : status === "copied" ? "Copied" : label}
+  {#if menuItem}
+    {#if status === "failed"}
+      <TriangleAlert size={16} strokeWidth={1.8} aria-hidden="true" />
+    {:else if status === "copied"}
+      <Check size={16} strokeWidth={1.8} aria-hidden="true" />
+    {:else}
+      <Copy size={16} strokeWidth={1.8} aria-hidden="true" />
+    {/if}
+  {/if}
+  <span>{status === "failed" ? "Copy failed" : status === "copied" ? "Copied" : label}</span>
 </button>

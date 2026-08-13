@@ -1,4 +1,8 @@
 <script lang="ts">
+  import Check from "@lucide/svelte/icons/check";
+  import KeyRound from "@lucide/svelte/icons/key-round";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import { invoke } from "@tauri-apps/api/core";
   import { copyToClipboard } from "./copyToClipboard";
   import type { BibtexPreview } from "./types";
@@ -40,11 +44,24 @@
   onclick={copy}
   disabled={status === "copying"}
 >
-  {status === "copying"
-    ? "Copying…"
-    : status === "failed"
-      ? "Copy failed"
-      : status === "copied"
-        ? "Copied"
-        : "Copy citation key"}
+  {#if menuItem}
+    {#if status === "copying"}
+      <LoaderCircle class="menu-icon--spin" size={16} strokeWidth={1.8} aria-hidden="true" />
+    {:else if status === "failed"}
+      <TriangleAlert size={16} strokeWidth={1.8} aria-hidden="true" />
+    {:else if status === "copied"}
+      <Check size={16} strokeWidth={1.8} aria-hidden="true" />
+    {:else}
+      <KeyRound size={16} strokeWidth={1.8} aria-hidden="true" />
+    {/if}
+  {/if}
+  <span>
+    {status === "copying"
+      ? "Copying…"
+      : status === "failed"
+        ? "Copy failed"
+        : status === "copied"
+          ? "Copied"
+          : "Copy citation key"}
+  </span>
 </button>

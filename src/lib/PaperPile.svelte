@@ -78,6 +78,10 @@
     );
   }
 
+  function documentNote(member: BoardMember): string {
+    return member.document.note?.text.replace(/\s+/gu, " ").trim() ?? "";
+  }
+
   function handleDeckClick(event: MouseEvent) {
     if (draggingEntryId !== null || suppressClick) return;
     if (event.shiftKey) {
@@ -205,6 +209,9 @@
           <small class="byline">{documentByline(member)}</small>
         {/if}
       </div>
+      {#if member.document.note}
+        <p class="paper-note">{documentNote(member)}</p>
+      {/if}
     </div>
   {/if}
 
@@ -217,14 +224,17 @@
     gap: 6px;
   }
 
-  /* The outer Kanban shell owns --card-h. This inner content height subtracts
-     that shell's padding and border so the complete card is exactly 80px. */
+  /* The identity row remains exactly 80px including the outer Kanban shell.
+     An optional note adds a second row without changing the compact no-note
+     card or the thumbnail proportions. */
   .paper-card {
     position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 10px;
-    height: var(--card-content-h);
+    grid-template-rows: var(--card-content-h);
+    column-gap: 10px;
+    row-gap: 0;
+    min-height: var(--card-content-h);
     min-width: 0;
     overflow: hidden;
   }
@@ -291,6 +301,22 @@
     font-size: var(--fs-meta);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .paper-note {
+    display: -webkit-box;
+    grid-column: 1 / -1;
+    overflow: hidden;
+    margin: 8px 0 0;
+    padding: 8px 0 0;
+    border-top: var(--bw) solid var(--line);
+    color: var(--ink-2);
+    font-size: var(--fs-meta);
+    font-weight: 400;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
   .analysis {

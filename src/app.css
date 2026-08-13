@@ -357,17 +357,99 @@ small {
   position: fixed;
   z-index: 1000;
   display: grid;
-  min-width: 160px;
+  min-width: 224px;
+  max-width: min(320px, calc(100vw - 16px));
   padding: 4px;
-  border: 1px solid var(--line-3);
+  border: var(--bw) solid var(--line);
+  border-radius: calc(var(--radius) + 3px);
   background: var(--card);
-  box-shadow: var(--shadow-menu);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.25),
+    0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+.context-menu .items,
+.context-menu .menu-group {
+  display: grid;
+}
+
+.context-menu .menu-group {
+  gap: 1px;
 }
 
 .context-menu button {
-  padding: 4px 8px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.2;
   text-align: left;
   white-space: nowrap;
+  transition:
+    background var(--ease),
+    color var(--ease);
+}
+
+.context-menu button svg {
+  flex: none;
+  color: var(--ink-3);
+  transition: color var(--ease);
+}
+
+.context-menu button:hover:not(:disabled),
+.context-menu button:focus-visible:not(:disabled) {
+  outline: 0;
+  background: var(--paper-2);
+}
+
+.context-menu button:hover:not(:disabled) svg,
+.context-menu button:focus-visible:not(:disabled) svg {
+  color: var(--ink-2);
+}
+
+.context-menu button:focus-visible:not(:disabled) {
+  box-shadow: inset 0 0 0 var(--bw) var(--line-2);
+}
+
+.context-menu button:active:not(:disabled) {
+  background: var(--paper-3);
+}
+
+.context-menu button.context-menu-danger:hover:not(:disabled),
+.context-menu button.context-menu-danger:focus-visible:not(:disabled) {
+  background: var(--danger-menu-hover-bg);
+  color: var(--danger-menu-text);
+}
+
+.context-menu button.context-menu-danger:hover:not(:disabled) svg,
+.context-menu button.context-menu-danger:focus-visible:not(:disabled) svg {
+  color: var(--danger);
+}
+
+.context-menu button.context-menu-danger:focus-visible:not(:disabled) {
+  box-shadow: inset 0 0 0 var(--bw) var(--danger-border);
+}
+
+.context-menu button.context-menu-danger:active:not(:disabled) {
+  background: color-mix(in oklab, var(--brick) 17%, var(--paper));
+}
+
+.context-menu button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.context-menu .menu-icon--spin {
+  animation: spin 0.85s linear infinite;
 }
 
 .context-menu hr {
@@ -375,6 +457,13 @@ small {
   margin: 4px 0;
   border: 0;
   border-top: 1px solid var(--line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-menu button,
+  .context-menu button svg {
+    transition: none;
+  }
 }
 
 /* Shared spinner rotation. Defined globally (not inside a component) so the
