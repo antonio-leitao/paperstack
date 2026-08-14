@@ -50,7 +50,7 @@
   let libraryQuery = $state("");
   let libraryUnlinkedOnly = $state(false);
   let libraryNotInProjectOnly = $state(false);
-  let leftSidebarOpen = $state(true);
+  let leftSidebarOpen = $state(false);
   let stackNamePrompt = $state<
     { mode: "create" } | { mode: "rename"; stack: ProjectStack } | null
   >(null);

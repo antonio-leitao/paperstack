@@ -23,6 +23,8 @@
   import { RenderLayer } from "@embedpdf/plugin-render/svelte";
   import {
     Scroller,
+    useScroll,
+    type LayoutChangePayload,
     type RenderPageProps,
   } from "@embedpdf/plugin-scroll/svelte";
   import { Viewport } from "@embedpdf/plugin-viewport/svelte";
@@ -34,6 +36,7 @@
   import CitationOverlay from "./CitationOverlay.svelte";
   import HighlightAnnotationMenu from "./HighlightAnnotationMenu.svelte";
   import HighlightSelectionMenu from "./HighlightSelectionMenu.svelte";
+  import PdfHighlight from "./PdfHighlight.svelte";
   import PdfLink from "./PdfLink.svelte";
   import { copyToClipboard } from "./copyToClipboard";
   import { errorMessage } from "./errorMessage";
@@ -62,7 +65,18 @@
   const annotationCapability = useAnnotationCapability();
   const selectionCapability = useSelectionCapability();
   const zoom = useZoom(() => documentId);
+  const scroll = useScroll(() => documentId);
   const annotationRenderers = [
+    createRenderer<PdfHighlightAnnoObject>({
+      id: "highlight",
+      matches: (annotation): annotation is PdfHighlightAnnoObject =>
+        annotation.type === PdfAnnotationSubtype.HIGHLIGHT,
+      component: PdfHighlight,
+      useAppearanceStream: false,
+      defaultBlendMode: PdfBlendMode.Multiply,
+      zIndex: 0,
+      interactionDefaults: { isDraggable: false, isResizable: false, isRotatable: false },
+    }),
     createRenderer<PdfLinkAnnoObject>({
       id: "link",
       matches: (annotation): annotation is PdfLinkAnnoObject =>
@@ -77,9 +91,31 @@
   let savedAnnotations = $state<DocumentAnnotation[]>([]);
   let annotationError = $state<string | null>(null);
   let loadingAnnotations = $state(false);
+  let scrollLayout = $state<LayoutChangePayload | null>(null);
 
   const pageSizes = $derived(new Map(analysis?.pages.map((page) => [page.page, page]) ?? []));
   const highlightsAvailable = desktop;
+  const highlightMarkers = $derived.by(() => {
+    const layout = scrollLayout;
+    const documentHeight = layout?.totalContentSize.height ?? 0;
+    if (!layout || documentHeight <= 0) return [];
+
+    return savedAnnotations.flatMap((saved) => {
+      const annotation = saved.annotation;
+      const item = layout.virtualItems.find((candidate) =>
+        candidate.pageNumbers.includes(annotation.pageIndex + 1),
+      );
+      const page = item?.pageLayouts.find(
+        (candidate) => candidate.pageIndex === annotation.pageIndex,
+      );
+      if (!item || !page) return [];
+
+      const annotationMidpoint =
+        annotation.rect.origin.y + annotation.rect.size.height / 2;
+      const percentage = ((item.y + page.y + annotationMidpoint) / documentHeight) * 100;
+      return [{ id: saved.id, position: Math.min(99.5, Math.max(0.5, percentage)) }];
+    });
+  });
 
   function clearNativeSelection() {
     window.getSelection()?.removeAllRanges();
@@ -119,6 +155,12 @@
     if (!selection?.getFormattedSelection(documentId).length) return;
     event.preventDefault();
     void copyPdfSelection();
+  }
+
+  function handleWindowPointerdown(event: PointerEvent) {
+    const target = event.target;
+    if (target instanceof Element && target.closest("[data-no-interaction]")) return;
+    annotationCapability.provides?.forDocument(documentId).deselectAnnotation();
   }
 
   async function copyPdfSelection() {
@@ -221,6 +263,24 @@
   });
 
   $effect(() => {
+    const scope = scroll.provides;
+    if (!scope) {
+      scrollLayout = null;
+      return;
+    }
+
+    try {
+      scrollLayout = scope.getLayout();
+    } catch {
+      scrollLayout = null;
+    }
+
+    return scope.onLayoutChange((layout) => {
+      scrollLayout = layout;
+    });
+  });
+
+  $effect(() => {
     const scope = annotationCapability.provides?.forDocument(documentId);
     if (!scope || !savedAnnotations.length) return;
     const annotations = savedAnnotations
@@ -319,7 +379,7 @@
   }
 </script>
 
-<svelte:window onkeydown={handleCopyKeydown} />
+<svelte:window onkeydown={handleCopyKeydown} onpointerdown={handleWindowPointerdown} />
 
 {#snippet highlightSelectionMenu(menuProps: SelectionSelectionMenuProps)}
   {#if highlightsAvailable}
@@ -358,12 +418,18 @@
             style:height={`${page.height}px`}
           >
             <PagePointerProvider {documentId} pageIndex={page.pageIndex}>
-              <RenderLayer {documentId} pageIndex={page.pageIndex} />
+              <RenderLayer
+                {documentId}
+                pageIndex={page.pageIndex}
+                draggable={false}
+                ondragstart={(event) => event.preventDefault()}
+              />
               <AnnotationLayer
                 {documentId}
                 pageIndex={page.pageIndex}
                 {annotationRenderers}
                 selectionMenuSnippet={highlightAnnotationMenu}
+                selectionOutline={{ width: 0, offset: 0 }}
               />
               {#if sourcePage && analysis}
                 <CitationOverlay
@@ -388,18 +454,27 @@
           </div>
         {/snippet}
 
-        <Viewport
-          {documentId}
-          class="viewport"
-          role="region"
-          aria-label="PDF pages"
-          tabindex={0}
-          onkeydown={handleViewportKeydown}
-        >
-          <ZoomGestureWrapper {documentId}>
-            <Scroller {documentId} {renderPage} />
-          </ZoomGestureWrapper>
-        </Viewport>
+        <div class="viewport-shell">
+          <Viewport
+            {documentId}
+            class="viewport"
+            role="region"
+            aria-label="PDF pages"
+            tabindex={0}
+            onkeydown={handleViewportKeydown}
+          >
+            <ZoomGestureWrapper {documentId}>
+              <Scroller {documentId} {renderPage} />
+            </ZoomGestureWrapper>
+          </Viewport>
+          {#if highlightMarkers.length}
+            <div class="highlight-scroll-markers" aria-hidden="true">
+              {#each highlightMarkers as marker (marker.id)}
+                <span style:top={`${marker.position}%`}></span>
+              {/each}
+            </div>
+          {/if}
+        </div>
       {/if}
     {/snippet}
   </DocumentContent>
@@ -418,6 +493,31 @@
   :global(.viewport) {
     min-height: 0;
     background: var(--paper-3);
+  }
+
+  .viewport-shell {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .highlight-scroll-markers {
+    position: absolute;
+    z-index: 20;
+    top: var(--scrollbar-inset);
+    right: var(--scrollbar-inset);
+    bottom: var(--scrollbar-inset);
+    width: calc(var(--scrollbar-size) - 2 * var(--scrollbar-inset));
+    pointer-events: none;
+  }
+
+  .highlight-scroll-markers span {
+    position: absolute;
+    right: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--highlight-scroll-marker);
+    transform: translateY(-50%);
   }
 
   .annotation-status-slot {

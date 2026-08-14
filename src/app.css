@@ -123,6 +123,8 @@
   /* PDF text highlights remain a distinct annotation palette. */
   --highlight: #ffcd45;
   --highlight-strong: #ffd033;
+  --highlight-selected: color-mix(in oklab, var(--highlight) 72%, var(--amber));
+  --highlight-scroll-marker: color-mix(in oklab, var(--highlight) 88%, var(--amber));
   --highlight-menu-bg: #ffdf65;
   --highlight-menu-border: #8a741f;
   --highlight-menu-text: #211a05;
