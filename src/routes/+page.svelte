@@ -1,9 +1,13 @@
 <script lang="ts">
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
-  import { onMount } from "svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import { onMount, tick } from "svelte";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
   import NamePrompt from "$lib/NamePrompt.svelte";
+  import NewProjectPaperStackCard from "$lib/NewProjectPaperStackCard.svelte";
+  import ProjectPaperStackCard from "$lib/ProjectPaperStackCard.svelte";
   import { errorMessage } from "$lib/errorMessage";
   import type { Project, ProjectStack } from "$lib/types";
 
@@ -14,6 +18,17 @@
     { mode: "create" } | { mode: "rename"; project: Project } | null
   >(null);
   let projectToDelete = $state<Project | null>(null);
+
+  type ProjectContextMenu = {
+    project: Project;
+    trigger: HTMLElement;
+    x: number;
+    y: number;
+    focusFirst: boolean;
+  };
+
+  let contextMenu = $state<ProjectContextMenu | null>(null);
+  let contextMenuElement = $state<HTMLDivElement | null>(null);
 
   onMount(() => {
     if (desktop) void refreshProjects();
@@ -80,7 +95,81 @@
     projectToDelete = null;
     if (project) void deleteProject(project);
   }
+
+  async function showContextMenu(menu: ProjectContextMenu) {
+    contextMenu = menu;
+    await tick();
+    if (!contextMenu || contextMenu.project.id !== menu.project.id || !contextMenuElement) {
+      return;
+    }
+    const bounds = contextMenuElement.getBoundingClientRect();
+    contextMenu = {
+      ...contextMenu,
+      x: Math.max(4, Math.min(menu.x, window.innerWidth - bounds.width - 4)),
+      y: Math.max(4, Math.min(menu.y, window.innerHeight - bounds.height - 4)),
+    };
+    await tick();
+    if (menu.focusFirst) {
+      contextMenuElement
+        ?.querySelector<HTMLButtonElement>('button:not([disabled])')
+        ?.focus();
+    }
+  }
+
+  function closeContextMenu(restoreFocus = false) {
+    const trigger = contextMenu?.trigger;
+    contextMenu = null;
+    if (restoreFocus) trigger?.focus();
+  }
+
+  function runContextAction(
+    action: (menu: ProjectContextMenu) => void | Promise<void>,
+  ) {
+    const menu = contextMenu;
+    if (!menu) return;
+    contextMenu = null;
+    void action(menu);
+  }
+
+  function handleWindowPointerDown(event: PointerEvent) {
+    if (!contextMenu || contextMenuElement?.contains(event.target as Node)) return;
+    closeContextMenu();
+  }
+
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (event.key !== "Escape" || !contextMenu) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeContextMenu(true);
+  }
+
+  function handleMenuKeydown(event: KeyboardEvent) {
+    if (!contextMenuElement || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      return;
+    }
+    const items = [
+      ...contextMenuElement.querySelectorAll<HTMLButtonElement>('button:not([disabled])'),
+    ];
+    if (!items.length) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    let nextIndex = 0;
+    if (event.key === "End") nextIndex = items.length - 1;
+    else if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % items.length;
+    else if (event.key === "ArrowUp") {
+      nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1;
+    }
+    items[nextIndex]?.focus();
+  }
 </script>
+
+<svelte:window
+  onpointerdown={handleWindowPointerDown}
+  onkeydown={handleWindowKeydown}
+  onblur={() => closeContextMenu()}
+  onresize={() => closeContextMenu()}
+  onwheel={() => closeContextMenu()}
+/>
 
 <svelte:head>
   <title>Projects - Research PDF</title>
@@ -89,9 +178,6 @@
 <main>
   <header>
     <h1>Projects</h1>
-    <button class="eink-btn" type="button" onclick={() => (projectNamePrompt = { mode: "create" })}>
-      New Project
-    </button>
   </header>
 
   {#if error}
@@ -100,32 +186,29 @@
 
   {#if !desktop}
     <p>The project library requires the desktop app.</p>
-  {:else if projects.length}
-    <ul>
+  {:else}
+    <ul class="project-grid">
       {#each projects as project (project.id)}
         <li>
-          <a href={`/projects/${project.id}`}>{project.name}</a>
-          <span class="count eink-chip">{project.documentCount} PDF{project.documentCount === 1 ? "" : "s"}</span>
-          <button
-            class="eink-btn"
-            type="button"
-            onclick={() => (projectNamePrompt = { mode: "rename", project })}
-          >
-            Rename
-          </button>
-          <button class="eink-btn" type="button" onclick={() => (projectToDelete = project)}>
-            Delete
-          </button>
+          <ProjectPaperStackCard
+            {project}
+            onmenu={(selectedProject, trigger, x, y, focusFirst) =>
+              void showContextMenu({
+                project: selectedProject,
+                trigger,
+                x,
+                y,
+                focusFirst,
+              })}
+          />
         </li>
       {/each}
+      <li>
+        <NewProjectPaperStackCard
+          oncreate={() => (projectNamePrompt = { mode: "create" })}
+        />
+      </li>
     </ul>
-  {:else}
-    <div class="empty">
-      <p>No projects yet.</p>
-      <button class="eink-btn" type="button" onclick={() => (projectNamePrompt = { mode: "create" })}>
-        New Project
-      </button>
-    </div>
   {/if}
 
   <NamePrompt
@@ -148,15 +231,59 @@
   />
 </main>
 
+{#if contextMenu}
+  <div
+    class="context-menu"
+    role="menu"
+    tabindex="-1"
+    aria-label={`Actions for ${contextMenu.project.name}`}
+    bind:this={contextMenuElement}
+    style:left={`${contextMenu.x}px`}
+    style:top={`${contextMenu.y}px`}
+    onkeydown={handleMenuKeydown}
+    oncontextmenu={(event) => event.preventDefault()}
+  >
+    <div class="menu-group" role="group">
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runContextAction((menu) => {
+            projectNamePrompt = { mode: "rename", project: menu.project };
+          })}
+      >
+        <Pencil size={16} strokeWidth={1.8} aria-hidden="true" />
+        <span>Rename project</span>
+      </button>
+    </div>
+    <hr />
+    <div class="menu-group" role="group">
+      <button
+        class="context-menu-danger"
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runContextAction((menu) => {
+            projectToDelete = menu.project;
+          })}
+      >
+        <Trash2 size={16} strokeWidth={1.8} aria-hidden="true" />
+        <span>Delete project</span>
+      </button>
+    </div>
+  </div>
+{/if}
+
 <style>
   main {
     display: grid;
-    gap: 14px;
-    padding: 18px;
+    gap: 22px;
+    width: min(1320px, 100%);
+    margin: 0 auto;
+    padding: 24px clamp(18px, 4vw, 48px) 48px;
   }
 
-  header,
-  li {
+  header {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -169,36 +296,38 @@
 
   h1 {
     margin-right: auto;
+    font-size: var(--fs-title);
   }
 
-  ul {
+  .project-grid {
     display: grid;
-    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    align-items: start;
+    gap: 34px 24px;
     margin: 0;
-    padding: 0;
+    padding: 8px 0 0;
     list-style: none;
   }
 
-  li {
-    justify-content: start;
-  }
-
-  a {
-    min-width: 220px;
+  .project-grid li {
+    display: grid;
+    min-width: 0;
+    place-items: center;
   }
 
   .error {
     color: var(--danger);
   }
 
-  .count {
-    color: var(--ink-2);
-    font-size: var(--fs-body);
-  }
+  @media (max-width: 480px) {
+    main {
+      padding-right: 14px;
+      padding-left: 14px;
+    }
 
-  .empty {
-    display: grid;
-    justify-items: start;
-    gap: 8px;
+    .project-grid {
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      column-gap: 12px;
+    }
   }
 </style>

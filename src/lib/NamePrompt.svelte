@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Check from "@lucide/svelte/icons/check";
+  import X from "@lucide/svelte/icons/x";
   import Modal from "./Modal.svelte";
 
   let {
@@ -40,9 +42,15 @@
       Name
       <input bind:this={input} bind:value required />
     </label>
-    <div>
-      <button class="eink-btn" type="button" onclick={oncancel}>Cancel</button>
-      <button class="eink-btn" type="submit">{confirmLabel}</button>
+    <div class="actions">
+      <button class="paper-btn" type="button" onclick={oncancel}>
+        <X size={15} strokeWidth={1.8} aria-hidden="true" />
+        <span>Cancel</span>
+      </button>
+      <button class="paper-btn paper-btn--primary" type="submit">
+        <Check size={15} strokeWidth={1.8} aria-hidden="true" />
+        <span>{confirmLabel}</span>
+      </button>
     </div>
   </form>
 </Modal>
@@ -60,5 +68,11 @@
   label {
     display: grid;
     gap: 4px;
+  }
+
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 2px;
   }
 </style>

@@ -1,4 +1,9 @@
 <script lang="ts">
+  import Eye from "@lucide/svelte/icons/eye";
+  import Link2 from "@lucide/svelte/icons/link-2";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import X from "@lucide/svelte/icons/x";
   import Modal from "./Modal.svelte";
   import { errorMessage } from "./errorMessage";
   import type { BibtexPreview } from "./types";
@@ -96,15 +101,31 @@
     {/if}
 
     <div class="actions">
-      <button class="eink-btn" type="button" onclick={oncancel} disabled={busy}>Cancel</button>
+      <button class="paper-btn" type="button" onclick={oncancel} disabled={busy}>
+        <X size={15} strokeWidth={1.8} aria-hidden="true" />
+        <span>Cancel</span>
+      </button>
       {#if preview}
-        <button class="eink-btn" type="button" onclick={editEntry} disabled={busy}>Edit</button>
-        <button class="eink-btn" type="submit" disabled={busy}>
-          {busy ? "Linking…" : "Link document"}
+        <button class="paper-btn" type="button" onclick={editEntry} disabled={busy}>
+          <Pencil size={15} strokeWidth={1.8} aria-hidden="true" />
+          <span>Edit</span>
+        </button>
+        <button class="paper-btn paper-btn--primary" type="submit" disabled={busy}>
+          {#if busy}
+            <LoaderCircle class="spin-icon" size={15} strokeWidth={1.8} aria-hidden="true" />
+          {:else}
+            <Link2 size={15} strokeWidth={1.8} aria-hidden="true" />
+          {/if}
+          <span>{busy ? "Linking…" : "Link document"}</span>
         </button>
       {:else}
-        <button class="eink-btn" type="submit" disabled={busy || !value.trim()}>
-          {busy ? "Reviewing…" : "Review"}
+        <button class="paper-btn paper-btn--primary" type="submit" disabled={busy || !value.trim()}>
+          {#if busy}
+            <LoaderCircle class="spin-icon" size={15} strokeWidth={1.8} aria-hidden="true" />
+          {:else}
+            <Eye size={15} strokeWidth={1.8} aria-hidden="true" />
+          {/if}
+          <span>{busy ? "Reviewing…" : "Review"}</span>
         </button>
       {/if}
     </div>
@@ -147,6 +168,6 @@
   .actions {
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
+    gap: 2px;
   }
 </style>

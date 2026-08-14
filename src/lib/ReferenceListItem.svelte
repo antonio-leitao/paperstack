@@ -1,5 +1,9 @@
 <script lang="ts">
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import type { LibraryDocument, Reference } from "./types";
+  import { authorByline } from "./authorByline";
   import CopyBibtexButton from "./CopyBibtexButton.svelte";
   import CopyCitationKeyButton from "./CopyCitationKeyButton.svelte";
   import { openExternal } from "./openExternal";
@@ -20,6 +24,7 @@
   } = $props();
 
   const label = $derived(reference.title ?? reference.rawCitation ?? `Reference ${reference.id}`);
+  const byline = $derived(authorByline(reference.authors, reference.year));
 
   function openLinkedDocument(event: MouseEvent) {
     event.stopPropagation();
@@ -36,44 +41,112 @@
       rel="noreferrer"
       onclick={(event) => void openExternal(event, reference.link!)}
     >
-      {label}
+      <span>{label}</span>
+      <ExternalLink size={12} strokeWidth={1.8} aria-hidden="true" />
     </a>
   {:else}
     <strong class="title">{label}</strong>
   {/if}
 
-  {#if reference.authors.length}
-    <small>{reference.authors.join(", ")}</small>
-  {/if}
+  <div class="reference-details">
+    {#if byline}
+      <small class="byline">{byline}</small>
+    {/if}
+    {#if reference.venue}
+      <small class="publisher">{reference.venue}</small>
+    {/if}
+    {#if resolving}
+      <small class="resolving">
+        <LoaderCircle class="spin-icon" size={13} strokeWidth={1.8} aria-hidden="true" />
+        Resolving metadata…
+      </small>
+    {/if}
+  </div>
 
-  {#if resolving}
-    <small>Resolving metadata…</small>
-  {/if}
+  {#if linkedDoc || (hasTrustedBibtex(reference) && !resolving)}
+    <div class="reference-actions">
+      {#if linkedDoc}
+        <button class="paper-btn" type="button" onclick={openLinkedDocument}>
+          <FileText size={15} strokeWidth={1.8} aria-hidden="true" />
+          <span>Open document</span>
+        </button>
+      {/if}
 
-  <small>{reference.calloutBoxes.length} callout(s)</small>
-
-  {#if linkedDoc}
-    <button class="eink-btn" type="button" onclick={openLinkedDocument}>Open document</button>
-  {/if}
-
-  {#if hasTrustedBibtex(reference) && !resolving}
-    <CopyBibtexButton bibtex={reference.bibtex} ariaLabel={`Copy BibTeX for ${label}`} />
-    <CopyCitationKeyButton
-      bibtex={reference.bibtex}
-      ariaLabel={`Copy citation key for ${label}`}
-    />
+      {#if hasTrustedBibtex(reference) && !resolving}
+        <CopyBibtexButton
+          bibtex={reference.bibtex}
+          label="BibTeX"
+          ariaLabel={`Copy BibTeX for ${label}`}
+        />
+        <CopyCitationKeyButton
+          bibtex={reference.bibtex}
+          label="Citation key"
+          ariaLabel={`Copy citation key for ${label}`}
+        />
+      {/if}
+    </div>
   {/if}
 </div>
 
 <style>
   .reference-item {
-    display: flex;
+    display: grid;
     min-width: 0;
-    flex-direction: column;
-    gap: 2px;
+    gap: 5px;
+  }
+
+  .title {
+    min-width: 0;
+    font-size: var(--fs-card);
+    font-weight: 600;
+    line-height: 1.3;
   }
 
   a.title {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
     color: var(--accent-link);
+    text-decoration: none;
   }
+
+  a.title:hover,
+  a.title:focus-visible {
+    text-decoration: underline;
+  }
+
+  a.title :global(svg) {
+    flex: 0 0 auto;
+  }
+
+  .reference-details {
+    display: grid;
+    gap: 3px;
+  }
+
+  .byline,
+  .publisher {
+    overflow: hidden;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .resolving,
+  .reference-actions {
+    display: flex;
+    align-items: center;
+  }
+
+  .resolving {
+    gap: 5px;
+    color: var(--accent);
+  }
+
+  .reference-actions {
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 2px;
+  }
+
 </style>

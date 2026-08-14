@@ -3,6 +3,12 @@
   import { listen } from "@tauri-apps/api/event";
   import { readFile } from "@tauri-apps/plugin-fs";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+  import BookOpenText from "@lucide/svelte/icons/book-open-text";
+  import Link2 from "@lucide/svelte/icons/link-2";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+  import PanelRightClose from "@lucide/svelte/icons/panel-right-close";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import X from "@lucide/svelte/icons/x";
   import { onMount } from "svelte";
   import AnalysisProgressBar from "$lib/AnalysisProgressBar.svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
@@ -272,15 +278,17 @@
         {#if sourceMatch.authors.length} by {sourceMatch.authors.join(", ")}{/if}
         {#if sourceMatch.doi} (DOI {sourceMatch.doi}){/if}.
       </span>
-      <button class="eink-btn" type="button" onclick={() => void linkSourceReference()}>
-        Link PDF
+      <button class="paper-btn paper-btn--primary" type="button" onclick={() => void linkSourceReference()}>
+        <Link2 size={15} strokeWidth={1.8} aria-hidden="true" />
+        <span>Link PDF</span>
       </button>
       <button
-        class="eink-btn"
+        class="paper-btn"
         type="button"
         onclick={() => (dismissedSourceId = sourceMatch.sharedId)}
       >
-        Not now
+        <X size={15} strokeWidth={1.8} aria-hidden="true" />
+        <span>Not now</span>
       </button>
     </div>
   {/if}
@@ -293,11 +301,12 @@
       />
       {#if !rightSidebarOpen}
         <button
-          class="show-references eink-btn"
+          class="show-references paper-btn"
           type="button"
           onclick={() => (rightSidebarOpen = true)}
         >
-          Show references
+          <BookOpenText size={16} strokeWidth={1.8} aria-hidden="true" />
+          <span>Show references</span>
         </button>
       {/if}
       {#if pdfBuffer && libraryDocument}
@@ -319,18 +328,48 @@
     {#if rightSidebarOpen}
       <aside class="references" aria-label="Extracted references">
         <header class="references-header">
-          <h2>References</h2>
+          <div class="references-title">
+            <h2>References</h2>
+            {#if analysis?.references.length}
+              <span class="references-count">{analysis.references.length}</span>
+            {/if}
+          </div>
           <div class="references-actions">
             <button
-              class="eink-btn"
+              class="quiet-btn quiet-btn--icon"
               type="button"
+              aria-label={analyzing
+                ? "Analyzing references"
+                : analysisError
+                  ? "Retry reference analysis"
+                  : "Analyze references again"}
+              title={analyzing
+                ? "Analyzing…"
+                : analysisError
+                  ? "Retry analysis"
+                  : "Analyze again"}
               onclick={() => void reanalyze()}
               disabled={analyzing || !documentId}
             >
-              {analyzing ? "Analyzing…" : analysisError ? "Retry analysis" : "Analyze again"}
+              {#if analyzing}
+                <LoaderCircle
+                  class="spin-icon"
+                  size={16}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />
+              {:else}
+                <RefreshCw size={16} strokeWidth={1.8} aria-hidden="true" />
+              {/if}
             </button>
-            <button class="eink-btn" type="button" onclick={() => (rightSidebarOpen = false)}>
-              Hide
+            <button
+              class="quiet-btn quiet-btn--icon"
+              type="button"
+              aria-label="Hide references"
+              title="Hide references"
+              onclick={() => (rightSidebarOpen = false)}
+            >
+              <PanelRightClose size={16} strokeWidth={1.8} aria-hidden="true" />
             </button>
           </div>
         </header>
@@ -386,6 +425,13 @@
     color: var(--danger);
   }
 
+  /* When a status banner occupies the native titlebar overlay, keep its copy
+     clear of the floating macOS traffic lights and adjacent drag target. */
+  :global(html.macos-titlebar-overlay.viewer-window-edge-to-edge) .notice,
+  :global(html.macos-titlebar-overlay.viewer-window-edge-to-edge) .match-prompt {
+    padding-left: 172px;
+  }
+
   .match-prompt span {
     margin-right: auto;
   }
@@ -412,49 +458,82 @@
     z-index: 4;
     top: 8px;
     right: 8px;
+    border: var(--bw) solid var(--line-2);
+    background: var(--card);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
   }
 
   .references {
     min-width: 0;
     min-height: 0;
     overflow: auto;
-    padding: 10px;
     border-left: 1px solid var(--line-2);
-    background: var(--paper-2);
+    background: var(--paper);
   }
 
   .references-header,
+  .references-title,
   .references-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
   }
 
   .references-header {
+    position: sticky;
+    z-index: 2;
+    top: 0;
     justify-content: space-between;
+    min-height: 43px;
+    padding: 7px 8px 7px 12px;
+    border-bottom: var(--bw) solid var(--line-2);
+    background: color-mix(in oklab, var(--paper) 94%, transparent);
+    backdrop-filter: blur(6px);
   }
 
   .references-header h2 {
     margin: 0;
+    font-size: var(--fs-card);
+    font-weight: 600;
   }
 
   .references-actions {
-    flex-wrap: wrap;
     justify-content: end;
+    gap: 1px;
+  }
+
+  .references-count {
+    color: var(--ink-3);
+    font-size: var(--fs-meta);
+    font-variant-numeric: tabular-nums;
   }
 
   .references ol {
     margin: 0;
-    padding-left: 24px;
+    padding: 2px 12px 12px 31px;
   }
 
   .references li {
-    margin-bottom: 13px;
+    margin: 0;
+    padding: 10px 0 11px 2px;
+    border-bottom: var(--bw) solid var(--line);
     font-size: var(--fs-body);
+  }
+
+  .references li::marker {
+    color: var(--ink-3);
+    font-size: var(--fs-meta);
+    font-variant-numeric: tabular-nums;
   }
 
   .references li.is-busy {
     opacity: 0.55;
+  }
+
+  .references > p {
+    margin: 0;
+    padding: 12px;
+    color: var(--ink-2);
   }
 
   .empty {

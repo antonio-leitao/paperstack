@@ -9,10 +9,12 @@
 
   let {
     bibtex,
+    label = "Copy citation key",
     ariaLabel = undefined,
     menuItem = false,
   }: {
     bibtex: string;
+    label?: string;
     ariaLabel?: string;
     menuItem?: boolean;
   } = $props();
@@ -37,23 +39,21 @@
 </script>
 
 <button
-  class:eink-btn={!menuItem}
+  class:paper-btn={!menuItem}
   type="button"
   role={menuItem ? "menuitem" : undefined}
   aria-label={ariaLabel}
   onclick={copy}
   disabled={status === "copying"}
 >
-  {#if menuItem}
-    {#if status === "copying"}
-      <LoaderCircle class="menu-icon--spin" size={16} strokeWidth={1.8} aria-hidden="true" />
-    {:else if status === "failed"}
-      <TriangleAlert size={16} strokeWidth={1.8} aria-hidden="true" />
-    {:else if status === "copied"}
-      <Check size={16} strokeWidth={1.8} aria-hidden="true" />
-    {:else}
-      <KeyRound size={16} strokeWidth={1.8} aria-hidden="true" />
-    {/if}
+  {#if status === "copying"}
+    <LoaderCircle class="spin-icon" size={16} strokeWidth={1.8} aria-hidden="true" />
+  {:else if status === "failed"}
+    <TriangleAlert size={16} strokeWidth={1.8} aria-hidden="true" />
+  {:else if status === "copied"}
+    <Check size={16} strokeWidth={1.8} aria-hidden="true" />
+  {:else}
+    <KeyRound size={16} strokeWidth={1.8} aria-hidden="true" />
   {/if}
   <span>
     {status === "copying"
@@ -62,6 +62,6 @@
         ? "Copy failed"
         : status === "copied"
           ? "Copied"
-          : "Copy citation key"}
+          : label}
   </span>
 </button>

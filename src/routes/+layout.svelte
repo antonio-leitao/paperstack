@@ -10,12 +10,18 @@
   onMount(() => {
     const usesMacOSOverlay =
       isTauri() && /Macintosh|Mac OS X/.test(navigator.userAgent);
+    const isViewerWindow = /^\/viewer\/?$/.test(window.location.pathname);
     document.documentElement.classList.toggle(
       "macos-titlebar-overlay",
       usesMacOSOverlay,
     );
+    document.documentElement.classList.toggle(
+      "viewer-window-edge-to-edge",
+      usesMacOSOverlay && isViewerWindow,
+    );
     return () => {
       document.documentElement.classList.remove("macos-titlebar-overlay");
+      document.documentElement.classList.remove("viewer-window-edge-to-edge");
     };
   });
 </script>

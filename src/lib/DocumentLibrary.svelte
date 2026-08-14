@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Check from "@lucide/svelte/icons/check";
+  import ListFilter from "@lucide/svelte/icons/list-filter";
+  import Search from "@lucide/svelte/icons/search";
   import { dndzone, TRIGGERS, type DndEvent } from "svelte-dnd-action";
   import { tick } from "svelte";
   import DocumentMenuItems from "./DocumentMenuItems.svelte";
@@ -73,6 +76,11 @@
       ),
       query,
     ),
+  );
+  const resultCount = $derived(
+    filteredDocuments.length === documents.length
+      ? `${documents.length} ${documents.length === 1 ? "paper" : "papers"}`
+      : `${filteredDocuments.length} of ${documents.length} papers`,
   );
   type LibraryContextMenu = {
     document: LibraryDocument;
@@ -255,38 +263,55 @@
 />
 
 <section class="document-library" aria-label="Library">
-  <header>
-    <strong class="eink-label">Library</strong>
-  </header>
+  <div class="library-controls">
+    <header class="library-heading">
+      <strong class="eink-label">Library</strong>
+      <span class="library-count">{resultCount}</span>
+    </header>
 
-  <label>
-    Search documents
-    <input
-      value={query}
-      placeholder="Title or filename"
-      oninput={(event) => onquery(event.currentTarget.value)}
-    />
-  </label>
+    <label class="library-search">
+      <Search size={15} strokeWidth={1.8} aria-hidden="true" />
+      <input
+        aria-label="Search documents"
+        value={query}
+        placeholder="Search title or filename"
+        oninput={(event) => onquery(event.currentTarget.value)}
+      />
+    </label>
 
-  <fieldset>
-    <legend>Filter</legend>
-    <label>
-      <input
-        type="checkbox"
-        checked={unlinkedOnly}
-        onchange={(event) => onunlinkedfilterchange(event.currentTarget.checked)}
-      />
-      Unlinked
-    </label>
-    <label>
-      <input
-        type="checkbox"
-        checked={notInProjectOnly}
-        onchange={(event) => onnotinprojectfilterchange(event.currentTarget.checked)}
-      />
-      Unfiled
-    </label>
-  </fieldset>
+    <div class="library-filters" role="group" aria-label="Filter library">
+      <span class="filter-caption" aria-hidden="true">
+        <ListFilter size={13} strokeWidth={1.8} />
+        <span>Filter</span>
+      </span>
+      <label class:active={unlinkedOnly} class="filter-chip">
+        <input
+          type="checkbox"
+          checked={unlinkedOnly}
+          onchange={(event) => onunlinkedfilterchange(event.currentTarget.checked)}
+        />
+        <span class="filter-check" aria-hidden="true">
+          {#if unlinkedOnly}
+            <Check size={10} strokeWidth={2.2} />
+          {/if}
+        </span>
+        <span>Unlinked</span>
+      </label>
+      <label class:active={notInProjectOnly} class="filter-chip">
+        <input
+          type="checkbox"
+          checked={notInProjectOnly}
+          onchange={(event) => onnotinprojectfilterchange(event.currentTarget.checked)}
+        />
+        <span class="filter-check" aria-hidden="true">
+          {#if notInProjectOnly}
+            <Check size={10} strokeWidth={2.2} />
+          {/if}
+        </span>
+        <span>Unfiled</span>
+      </label>
+    </div>
+  </div>
 
   {#if filteredDocuments.length}
     <ul
@@ -382,33 +407,159 @@
 <style>
   .document-library {
     display: grid;
-    gap: 10px;
+    gap: 8px;
   }
 
-  header {
+  .library-controls {
+    display: grid;
+    gap: 9px;
+    margin: -10px -10px 2px;
+    padding: 12px 10px 11px;
+    border-bottom: var(--bw) solid var(--line-2);
+    background: color-mix(in oklab, var(--paper-2) 94%, var(--card));
+  }
+
+  .library-heading {
     display: flex;
     align-items: center;
     gap: 8px;
   }
 
-  label {
+  .library-heading::before {
+    width: 3px;
+    height: 13px;
+    flex: 0 0 auto;
+    border-radius: var(--radius-chip);
+    background: var(--accent);
+    content: "";
+  }
+
+  .library-count {
+    margin-left: auto;
+    color: var(--ink-3);
+    font-size: var(--fs-meta);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .library-search {
     display: grid;
-    gap: 4px;
-  }
-
-  fieldset {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  fieldset label {
-    display: inline-flex;
+    grid-template-columns: 15px minmax(0, 1fr);
     align-items: center;
+    gap: 7px;
+    min-height: 32px;
+    padding: 0 9px;
+    border: var(--bw) solid var(--line-2);
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    color: var(--ink-3);
+    transition:
+      border-color var(--ease),
+      box-shadow var(--ease);
+  }
+
+  .library-search:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-outline);
+  }
+
+  .library-search input {
+    width: 100%;
+    min-width: 0;
+    padding: 7px 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--ink);
+    font-size: var(--fs-body);
+  }
+
+  .library-search input::placeholder {
+    color: var(--ink-3);
+  }
+
+  .library-filters {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .filter-caption {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+    margin-right: 1px;
+    color: var(--ink-3);
+    font-size: var(--fs-meta);
+    font-weight: 500;
+  }
+
+  .filter-chip {
+    position: relative;
+    display: inline-flex;
+    min-height: 25px;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 7px 3px 5px;
+    border: var(--bw) solid var(--line-2);
+    border-radius: var(--radius);
+    background: var(--card);
+    color: var(--ink-2);
+    font-size: var(--fs-meta);
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      border-color var(--ease),
+      background var(--ease),
+      color var(--ease);
+  }
+
+  .filter-chip:hover {
+    border-color: var(--line-3);
+    color: var(--ink);
+  }
+
+  .filter-chip:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-outline);
+  }
+
+  .filter-chip.active {
+    border-color: color-mix(in oklab, var(--accent) 62%, var(--line-2));
+    background: var(--accent-soft-bg);
+    color: var(--accent-strong);
+  }
+
+  .filter-chip input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .filter-check {
+    display: grid;
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: var(--bw) solid var(--line-3);
+    border-radius: 3px;
+    background: var(--paper);
+    color: var(--card);
+  }
+
+  .filter-chip.active .filter-check {
+    border-color: var(--accent);
+    background: var(--accent);
   }
 
   .document-list {
-    margin: 5px 0;
+    margin: 2px 0 5px;
     padding: 0;
     list-style: none;
   }

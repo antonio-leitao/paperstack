@@ -36,20 +36,18 @@
 </script>
 
 <button
-  class:eink-btn={!menuItem}
+  class:paper-btn={!menuItem}
   type="button"
   role={menuItem ? "menuitem" : undefined}
   aria-label={ariaLabel}
   onclick={copy}
 >
-  {#if menuItem}
-    {#if status === "failed"}
-      <TriangleAlert size={16} strokeWidth={1.8} aria-hidden="true" />
-    {:else if status === "copied"}
-      <Check size={16} strokeWidth={1.8} aria-hidden="true" />
-    {:else}
-      <Copy size={16} strokeWidth={1.8} aria-hidden="true" />
-    {/if}
+  {#if status === "failed"}
+    <TriangleAlert size={16} strokeWidth={1.8} aria-hidden="true" />
+  {:else if status === "copied"}
+    <Check size={16} strokeWidth={1.8} aria-hidden="true" />
+  {:else}
+    <Copy size={16} strokeWidth={1.8} aria-hidden="true" />
   {/if}
   <span>{status === "failed" ? "Copy failed" : status === "copied" ? "Copied" : label}</span>
 </button>

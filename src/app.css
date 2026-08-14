@@ -193,7 +193,8 @@ html {
 }
 
 body {
-  min-height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--paper);
   color: var(--ink);
   font-size: var(--fs-body);
@@ -221,6 +222,25 @@ html.macos-titlebar-overlay .window-titlebar-drag-region {
   height: var(--window-titlebar-height);
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Standalone PDF windows render edge-to-edge beneath the native overlay. The
+   traffic lights remain native and visible; only a compact transparent patch
+   beside them is reserved for dragging, rather than blocking the entire top
+   row of viewer controls. */
+html.macos-titlebar-overlay.viewer-window-edge-to-edge {
+  --window-titlebar-height: 0px;
+}
+
+html.macos-titlebar-overlay.viewer-window-edge-to-edge body {
+  padding-top: 0;
+}
+
+html.macos-titlebar-overlay.viewer-window-edge-to-edge .window-titlebar-drag-region {
+  right: auto;
+  left: 76px;
+  width: 88px;
+  height: 36px;
 }
 
 button,
@@ -285,6 +305,8 @@ small {
   box-shadow: 0 0.4px 2px rgba(0, 0, 0, 0.25);
 }
 
+/* Kept for the Kanban board's established inline control. The rest of the app
+   uses the newer paper and quiet button variants below. */
 .eink-btn {
   padding: 5px 10px;
   border: var(--bw) solid var(--line-3);
@@ -327,6 +349,190 @@ small {
   background: var(--accent-strong);
 }
 
+/* Paper buttons are the default for actions that sit in page content, cards or
+   dialogs. Their soft border and shallow shadow match the card surfaces without
+   bringing back the old offset-shadow treatment. */
+.paper-btn {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: var(--bw) solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  color: var(--ink-2);
+  font: inherit;
+  line-height: 1.2;
+  text-decoration: none;
+  transition:
+    border-color var(--ease),
+    background var(--ease),
+    box-shadow var(--ease),
+    color var(--ease);
+}
+
+.paper-btn svg {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  transition: color var(--ease);
+}
+
+.paper-btn:hover:not(:disabled),
+.paper-btn:focus-visible:not(:disabled) {
+  border-color: var(--line-3);
+  background: var(--card-2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+  color: var(--ink);
+  outline: none;
+}
+
+.paper-btn:hover:not(:disabled) svg,
+.paper-btn:focus-visible:not(:disabled) svg {
+  color: var(--ink-2);
+}
+
+.paper-btn:focus-visible:not(:disabled) {
+  box-shadow:
+    0 0 0 2px var(--accent-outline),
+    0 1px 3px rgba(0, 0, 0, 0.16);
+}
+
+.paper-btn:active:not(:disabled) {
+  background: var(--paper-3);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.paper-btn--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--card);
+}
+
+.paper-btn--primary svg {
+  color: currentColor;
+}
+
+.paper-btn--primary:hover:not(:disabled),
+.paper-btn--primary:focus-visible:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: var(--card);
+}
+
+.paper-btn--primary:hover:not(:disabled) svg,
+.paper-btn--primary:focus-visible:not(:disabled) svg {
+  color: currentColor;
+}
+
+.paper-btn--danger {
+  border-color: var(--danger-border);
+  color: var(--danger-menu-text);
+}
+
+.paper-btn--danger svg {
+  color: var(--danger);
+}
+
+.paper-btn--danger:hover:not(:disabled),
+.paper-btn--danger:focus-visible:not(:disabled) {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger-strong);
+}
+
+.paper-btn--danger:hover:not(:disabled) svg,
+.paper-btn--danger:focus-visible:not(:disabled) svg {
+  color: var(--danger-strong);
+}
+
+.paper-btn--danger:focus-visible:not(:disabled),
+.paper-btn--danger-primary:focus-visible:not(:disabled) {
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--danger) 32%, transparent),
+    0 1px 3px rgba(0, 0, 0, 0.16);
+}
+
+.paper-btn--danger-primary {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--card);
+}
+
+.paper-btn--danger-primary svg {
+  color: currentColor;
+}
+
+.paper-btn--danger-primary:hover:not(:disabled),
+.paper-btn--danger-primary:focus-visible:not(:disabled) {
+  border-color: var(--danger-strong);
+  background: var(--danger-strong);
+  color: var(--card);
+}
+
+.paper-btn--danger-primary:hover:not(:disabled) svg,
+.paper-btn--danger-primary:focus-visible:not(:disabled) svg {
+  color: currentColor;
+}
+
+/* Quiet icon-led actions are reserved for compact toolbars and other controls
+   whose surrounding surface already provides a clear boundary. */
+.quiet-btn {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-2);
+  font: inherit;
+  line-height: 1.2;
+  text-decoration: none;
+  transition:
+    background var(--ease),
+    color var(--ease);
+}
+
+.quiet-btn svg {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  transition: color var(--ease);
+}
+
+.quiet-btn:hover:not(:disabled),
+.quiet-btn:focus-visible:not(:disabled) {
+  background: var(--paper-3);
+  box-shadow: none;
+  color: var(--ink);
+  outline: none;
+  transform: none;
+}
+
+.quiet-btn:hover:not(:disabled) svg,
+.quiet-btn:focus-visible:not(:disabled) svg {
+  color: var(--ink-2);
+}
+
+.quiet-btn:focus-visible:not(:disabled) {
+  box-shadow: inset 0 0 0 var(--bw) var(--line-2);
+}
+
+.quiet-btn:active:not(:disabled) {
+  background: var(--line);
+}
+
+.quiet-btn--icon {
+  width: 28px;
+  flex: 0 0 auto;
+  padding: 0;
+}
+
 .eink-chip {
   padding: 1px 6px;
   border: var(--bw) solid var(--line-2);
@@ -345,7 +551,11 @@ small {
 
 @media (prefers-reduced-motion: reduce) {
   .eink-card,
-  .eink-btn {
+  .eink-btn,
+  .paper-btn,
+  .paper-btn svg,
+  .quiet-btn,
+  .quiet-btn svg {
     transition: none;
   }
 }
@@ -407,20 +617,22 @@ small {
 .context-menu button:hover:not(:disabled),
 .context-menu button:focus-visible:not(:disabled) {
   outline: 0;
-  background: var(--paper-2);
+  background: var(--accent-soft-bg);
+  color: var(--accent-strong);
 }
 
 .context-menu button:hover:not(:disabled) svg,
 .context-menu button:focus-visible:not(:disabled) svg {
-  color: var(--ink-2);
+  color: var(--accent);
 }
 
 .context-menu button:focus-visible:not(:disabled) {
-  box-shadow: inset 0 0 0 var(--bw) var(--line-2);
+  box-shadow: inset 0 0 0 var(--bw) var(--accent-outline);
 }
 
 .context-menu button:active:not(:disabled) {
-  background: var(--paper-3);
+  background: color-mix(in oklab, var(--accent) 16%, var(--paper));
+  color: var(--accent-strong);
 }
 
 .context-menu button.context-menu-danger:hover:not(:disabled),
@@ -440,6 +652,7 @@ small {
 
 .context-menu button.context-menu-danger:active:not(:disabled) {
   background: color-mix(in oklab, var(--brick) 17%, var(--paper));
+  color: var(--danger-menu-text);
 }
 
 .context-menu button > span {
@@ -471,5 +684,15 @@ small {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+.spin-icon {
+  animation: spin 0.85s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin-icon {
+    animation: none;
   }
 }

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+  import Save from "@lucide/svelte/icons/save";
+  import X from "@lucide/svelte/icons/x";
   import { errorMessage } from "./errorMessage";
   import Modal from "./Modal.svelte";
 
@@ -68,11 +71,17 @@
       <div class="validation-error" role="alert">{validationError}</div>
     {/if}
     <div class="actions">
-      <button class="eink-btn" type="button" disabled={saving} onclick={cancel}>
-        Cancel
+      <button class="paper-btn" type="button" disabled={saving} onclick={cancel}>
+        <X size={15} strokeWidth={1.8} aria-hidden="true" />
+        <span>Cancel</span>
       </button>
-      <button class="eink-btn" type="submit" disabled={saving}>
-        {saving ? "Saving…" : "Save"}
+      <button class="paper-btn paper-btn--primary" type="submit" disabled={saving}>
+        {#if saving}
+          <LoaderCircle class="spin-icon" size={15} strokeWidth={1.8} aria-hidden="true" />
+        {:else}
+          <Save size={15} strokeWidth={1.8} aria-hidden="true" />
+        {/if}
+        <span>{saving ? "Saving…" : "Save"}</span>
       </button>
     </div>
   </form>
@@ -114,6 +123,6 @@
   .actions {
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
+    gap: 2px;
   }
 </style>
