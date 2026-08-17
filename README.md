@@ -1,64 +1,149 @@
-# PaperStack
+<p align="center">
+  <img src='design_system/paperstack-mark-light-bold.svg' width='200px' align="center"></img>
+</p>
 
-A desktop research workspace for organizing scholarly PDFs into projects and stacks, reading and annotating papers, extracting bibliographies and in-text citation coordinates with GROBID, and resolving references through scholarly metadata providers.
+<div align="center">
+<h3 max-width='200px' align="center">PaperStack</h3>
+  <p><i>A desktop workspace for scholarly PDFs<br/>
+  Organise into projects, read, annotate, extract bibliographies<br/>
+  Built with Tauri and Rust</i><br/></p>
+  <p>
+    <img alt="macOS" src="https://img.shields.io/badge/macOS-black?style=for-the-badge&logo=apple&logoColor=white">
+    <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge">
+  </p>
+</div>
 
-## Run
+#
 
-Requirements: Node.js, Rust, Docker, and the platform dependencies required by Tauri 2.
+### Contents
 
-For private and fastest processing, start the local citation service:
+- [Install](#install)
+  - [Build from source](#build-from-source)
+- [The citation service](#the-citation-service)
+- [Provider keys](#provider-keys)
+- [How it works](#how-it-works)
+- [Limitations](#limitations)
+
+PaperStack keeps a library of papers on your own machine and lets you arrange
+them the way you actually think about them — into projects, into columns, into
+piles you can name. Open one and it renders immediately. In the background it
+pulls the bibliography apart, resolves each reference against scholarly metadata
+providers, and links in-text citations to their entries, so hovering a `[12]`
+shows you what it is and where to get it.
+
+Everything is local: your PDFs, your highlights, your notes and the reference
+database all live in a single folder on your machine.
+
+## Install
+
+Download the latest `.dmg` from
+[Releases](https://github.com/Antonio-Leitao/paperstack/releases/latest) and drag
+PaperStack into Applications. It is a universal build — Apple Silicon and Intel.
+
+**The app is not code-signed**, so macOS will refuse it the first time with
+*"PaperStack is damaged and can't be opened."* It is not damaged; that is simply
+what Gatekeeper says about an app from a developer who has not paid Apple's
+$99/year. To open it:
+
+1. Move PaperStack to Applications and double-click it once — let it fail.
+2. Open **System Settings → Privacy & Security**, scroll to Security.
+3. Next to the message about PaperStack, click **Open Anyway**.
+
+You only do this once.
+
+If you would rather not run an unsigned binary from a stranger, don't — build it
+yourself instead. It is the same code and takes about three minutes.
+
+### Build from source
+
+Requires [Node](https://nodejs.org), [Rust](https://rustup.rs) and the Xcode
+command line tools.
+
+```sh
+git clone https://github.com/Antonio-Leitao/paperstack.git
+cd paperstack
+npm install
+npm run install:local
+```
+
+That builds a release binary and installs it straight into `/Applications`. Use
+`npm run tauri dev` instead if you want a development build with hot reload.
+
+## The citation service
+
+Pulling a bibliography out of a PDF is done by [GROBID](https://github.com/kermitt2/grobid),
+which PaperStack does not bundle. You have two options, and the difference
+matters for privacy.
+
+**Run it locally** — private, faster, and the recommended setup. Requires Docker:
 
 ```sh
 docker compose up -d
 ```
 
-The first start downloads the roughly 500 MB CRF image. Wait until GROBID responds before opening a PDF:
+The first start downloads a ~500 MB image. Wait until it answers before opening
+a PDF:
 
 ```sh
 curl http://127.0.0.1:8070/api/isalive
 ```
 
-Install dependencies and start the desktop app:
+**Or let it fall back.** If nothing is listening on `127.0.0.1:8070`, PaperStack
+uses the public hosted GROBID service instead — which means **your PDF is
+uploaded to a third-party server**. That is fine for published papers and a bad
+idea for anything unpublished or confidential. Availability and quotas there are
+outside our control.
 
-```sh
-npm install
-npm run tauri dev
-```
+PaperStack checks the local service first, every time, and never contacts the
+hosted one while a local instance is healthy.
 
-## Provider configuration
+## Provider keys
 
-OpenAlex and Semantic Scholar can be used anonymously, but keys provide more predictable quotas and avoid shared anonymous throttling. Get a free OpenAlex key from [OpenAlex settings](https://openalex.org/settings/api) and request a Semantic Scholar key from the [Semantic Scholar API page](https://www.semanticscholar.org/product/api). Optional keys can be entered in PaperStack's Settings dialog, placed in a `.env` file (see `.env.example`), or provided by the environment that launches the app:
+References are resolved against Crossref, OpenAlex, Semantic Scholar and arXiv.
+All of them work anonymously, so PaperStack needs no configuration to run.
 
-```sh
-OPENALEX_API_KEY=your_openalex_key
-SEMANTIC_SCHOLAR_API_KEY=your_semantic_scholar_key
-CROSSREF_MAILTO=you@example.com
-```
+Keys only buy you higher, more predictable rate limits, and are worth adding if
+you analyse a lot of papers at once:
 
-Use one `NAME=value` entry per line with no spaces around `=`. Quotes are optional for these values, so both `CROSSREF_MAILTO=you@example.com` and `CROSSREF_MAILTO="you@example.com"` work. Enter the address itself, without `mailto:` or angle brackets, and restart the app after changing `.env`.
+| Setting | Get one from | Effect |
+| --- | --- | --- |
+| OpenAlex key | [OpenAlex settings](https://openalex.org/settings/api) | Avoids the shared anonymous pool |
+| Semantic Scholar key | [Semantic Scholar API](https://www.semanticscholar.org/product/api) | Higher rate limit |
+| Crossref email | — | Enters Crossref's faster "polite pool" |
 
-An installed app is started by the desktop shell, so it inherits neither your shell environment nor a useful working directory. It therefore reads `.env` from its application data directory — the same folder as `paperstack.sqlite3` — which is the only `.env` a release build looks at. Development builds additionally read a `.env` from the repository root, which is what `npm run tauri dev` picks up. If you are not running from source, prefer the Settings dialog. Real environment variables take precedence over `.env`, and the `.env` file is ignored by Git. A value saved in Settings is tried first; if a saved API key is rejected, PaperStack retries with the environment value and then uses the provider's anonymous tier when available. Environment values are detected but never revealed in the Settings dialog. When `CROSSREF_MAILTO` is set, its value is added as `mailto` to every Crossref request, activating Crossref's polite pool.
+Add them in **Settings** (the gear, top right). They are stored in your
+application data folder, readable only by you, and never leave your machine
+except as request headers to the provider they belong to.
 
-Opening a PDF immediately renders it. The app checks `http://127.0.0.1:8070` first and uses it without contacting a hosted GROBID when healthy. Otherwise it wakes and waits up to three minutes for the official full GROBID Space at `https://grobidorg-grobid-full.hf.space` or its official `full2` mirror. In that fallback case, the PDF is uploaded to the public hosted service.
+## How it works
 
-Application data is stored in `paperstack.sqlite3` under the platform app-data directory. `pdf_cache` contains disposable analysis data keyed by the PDF SHA-256 and extraction version, while `references` contains shared canonical records with stable UUIDs. The same database also contains durable `documents`, `stacks`, document-stack associations, and optional one-to-one document-reference links. Imported PDFs are deduplicated by SHA-256 and copied into the app-owned `documents` directory. PDF-local citation text and coordinates remain in the cached extraction, while current metadata is joined from the shared reference row whenever the PDF is opened. Resolver-version changes reuse that raw extraction and rerun only reference matching, so matcher improvements do not require another GROBID upload.
+- **Extraction.** GROBID returns the bibliography plus coordinates for every
+  reference and every in-text citation, which is what makes citation hovering
+  possible.
+- **Resolution.** Each reference is matched against Crossref first, then
+  OpenAlex, then arXiv, then Semantic Scholar — stopping as soon as one is
+  confident. Ambiguous matches keep the original extracted metadata rather than
+  guessing.
+- **Sharing.** Resolved references are stored once and shared across papers, so
+  a reference cited by five of your PDFs is looked up once and improves for all
+  five when a better record is found.
+- **Caching.** Results are keyed by the PDF's SHA-256, so re-importing the same
+  paper costs nothing, and improving the matcher re-runs matching without
+  re-uploading anything.
 
-GROBID's `biblStruct` under `sourceDesc` is parsed as the opened PDF's own identity. It is returned separately as `sourceReference`, but uses the same shared-reference lookup, provider resolution, and merge machinery as bibliography entries. A resolved source exposes the shared reference UUID needed for an explicit document-PDF link; analysis never creates that user-owned link automatically.
-
-Newly extracted references consult the shared database before any metadata provider. Exact DOI, arXiv, PMID, or OpenAlex identifiers are checked first, followed by the conservative title/first-author/year matcher. Only previously resolved, high-confidence records bypass network resolution. Higher-confidence results fill or replace weaker shared metadata. When a later record proves that two shared references are identical, the weaker UUID redirects through `merged_into`; cached PDFs using either UUID immediately read the same improved record.
-
-References first receive deterministic document-scoped IDs and valid locally rendered BibTeX. DOI-bearing references are validated directly with Crossref; remaining references are searched using Crossref's bibliographic metadata search and are accepted only when title agreement, corroborating metadata, and the lead over the next candidate pass strict thresholds. Citation author lists are treated as partial observations: `et al.` placeholders are discarded and unobserved provider coauthors never reduce a match score. Ambiguous or failed lookups keep the original GROBID metadata instead of guessing.
-
-Repeated citations are resolved once, and independent references are processed with bounded concurrency. Explicit DOI fallbacks are collected into OpenAlex OR batches of up to 100, and explicit arXiv IDs are collected into comma-delimited API batches. References that do not resolve to a published Crossref record validate any explicit arXiv ID, then use OpenAlex's fast works search, and only unresolved items enter the slower direct arXiv title-search queue. OpenAlex matches use the same strict title plus author/year checks and can supply a DOI or arXiv identity, bibliographic metadata, an abstract, and an open-access PDF. The API key is attached when configured; otherwise OpenAlex is queried anonymously.
-
-Direct arXiv matches return a stable `arxiv:` identifier, locally rendered BibTeX, and an arXiv abstract link. arXiv API calls retain the recommended process-wide three-second spacing.
-
-Semantic Scholar is the final resolver. All references complete the Crossref, OpenAlex, and arXiv stages first. Only the remaining references enter a batched Semantic Scholar DOI, arXiv, and PMID lookup, followed by conservative title search where needed. There is no separate Semantic Scholar enrichment pass for work already resolved by another provider. Crossref, OpenAlex, and Semantic Scholar use provider-wide concurrency gates, cooldowns, jittered retries, and short request timeouts. The Semantic Scholar key is attached when configured; otherwise requests use its anonymous tier.
-
-Fresh PDF cache hits return their stored extraction and resolution state immediately without retrying unresolved references. A new extraction, a resolver-version change, or the explicit Analyze again action emits the bibliography as soon as extraction is available, then emits updates as individual references finish resolution. References currently resolving remain visible for citation hover but external actions are disabled until their attempt completes.
+Your library lives in `~/Library/Application Support/com.antonio.paperstack/` —
+the PDFs, their thumbnails, and a single `paperstack.sqlite3` holding projects,
+notes, highlights and the reference database.
 
 ## Limitations
 
-- Hosted GROBID availability and quotas are controlled by Hugging Face. Running the local container avoids both limits and external PDF upload.
-- Citation overlays currently assume unrotated pages.
-- The browser-only Vite app can render PDFs, but filesystem-path analysis is available only in Tauri.
+- macOS only for now. Nothing in the codebase is macOS-specific beyond the
+  packaging, but no other platform has been built or tested.
+- Citation overlays assume unrotated pages.
+- Hosted GROBID availability and quotas are controlled by a third party. Running
+  the local container avoids both that and the upload.
+
+## License
+
+MIT. The mark and icons are part of this repository and covered by the same
+license; see [`design_system/`](design_system/) for how they are built.

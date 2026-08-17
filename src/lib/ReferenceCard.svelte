@@ -275,31 +275,31 @@
   .reference-card {
     display: grid;
     min-width: 0;
-    gap: 6px;
+    gap: var(--space-1);
     text-align: left;
   }
 
+  /* Matches a board card exactly, and for the same reason: a title is separated
+     from its metadata by three signals at once — size, weight and colour. This
+     card previously used only colour, with the title at weight 400 and the
+     byline half a pixel smaller, which read as no hierarchy at all. */
   .title {
     font-size: var(--fs-card);
-    line-height: 1.3;
+    font-weight: 600;
+    line-height: 1.25;
   }
 
   .byline,
-  .publisher,
-  .resolving {
-    color: var(--ink-2);
+  .publisher {
+    color: var(--ink-3);
+    font-size: var(--fs-meta);
+    line-height: 1.35;
   }
 
   .byline {
     overflow: hidden;
-    line-height: 1.35;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .publisher {
-    font-size: var(--fs-meta);
-    line-height: 1.35;
   }
 
   .abstract {
@@ -308,35 +308,33 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
     line-clamp: 3;
-    margin-top: 2px;
-    padding-top: 7px;
+    margin-top: var(--space-1);
+    padding-top: var(--space-3);
     border-top: var(--bw) solid var(--line);
     color: var(--ink-2);
     line-height: 1.4;
   }
 
+  /* Was two separate rules with the same selector. */
   .resolving {
     display: flex;
     align-items: center;
-  }
-
-  .resolving {
-    gap: 5px;
+    gap: var(--space-2);
     color: var(--accent);
   }
 
   .reference-actions {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-    margin-top: 2px;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
   }
 
   .reference-actions > :global(.paper-btn) {
     min-width: 0;
     width: 100%;
-    padding-right: 6px;
-    padding-left: 6px;
+    padding-right: var(--space-2);
+    padding-left: var(--space-2);
   }
 
   .reference-actions :global(.paper-btn span) {
@@ -371,8 +369,10 @@
     flex: 1;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 5px 8px;
+    gap: var(--space-2);
+    /* 5px vertical, not a scale step: it is what centres 12.5px text in
+       the split control's 30px min-height. */
+    padding: 5px var(--space-3);
     border: 0;
     border-radius: calc(var(--radius) - 1px);
     background: transparent;
@@ -429,7 +429,7 @@
     bottom: calc(100% + 5px);
     display: grid;
     min-width: 178px;
-    padding: 4px;
+    padding: var(--space-1);
     border: var(--bw) solid var(--line);
     border-radius: calc(var(--radius) + 3px);
     background: var(--card);
@@ -448,7 +448,7 @@
     min-height: 28px;
     grid-template-columns: 16px minmax(0, 1fr);
     align-items: center;
-    gap: 8px;
+    gap: var(--space-3);
     width: 100%;
     padding: 5px 7px;
     border: 0;

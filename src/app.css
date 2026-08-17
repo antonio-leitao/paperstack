@@ -54,50 +54,93 @@
   --line-2: #d5d3cd;
   --line-3: #b3b1a9;
 
-  /* Accents */
-  --accent: #1f6b52;
+  /* Accents. The accent is phthalocyanine blue — the icon's hue, but not the
+     icon's colour. See --phthalo below for why those are two different values. */
+  --accent: #1d628c;
   --amber: #9a7526;
   --brick: #94402f;
 
   /* Brand. The app icon's tile colour: phthalocyanine blue's hue at a
      lightness that keeps the mark's near-white paper faces reading on it —
-     oklch(0.63 0.115 240). Recorded here so there is one place the value
-     lives, and because it is the standing candidate for the product accent.
+     oklch(0.63 0.115 240). Recorded here so there is one place the value lives.
 
-     Nothing uses it yet. --accent is still the green above, and swapping the
-     two is not a find-and-replace: --accent is mixed into --accent-soft-bg,
-     --accent-outline, --accent-fill and --shadow-btn, and it also carries
-     meaning (a project's own colour, the primary action). Changing it means
-     re-checking contrast on each of those, not just the hex.
+     This is deliberately NOT --accent, and the two must not be collapsed. The
+     tile is light (L 0.63) because the mark drawn on it is near-white; an
+     accent has the opposite job, carrying text and borders on near-white
+     paper. Used as the accent it fails WCAG AA everywhere it matters: 3.26:1
+     as text on --paper, 3.46:1 under a white button label, and 2.98:1 for a
+     border on --desk. The accent above is the same hue taken to the lightness
+     the old green held (L 0.475), which clears every one of those.
 
      Mirrored in scripts/make-icons.py as TILE. Change it in both or neither. */
   --phthalo: #3c91c7;
 
   /* Typography. Public Sans ships weights 400, 500, 600 and 700, so the medium
-     (500) and semibold (600) recipe tiers render at their intended weight. */
+     (500) and semibold (600) recipe tiers render at their intended weight.
+
+     --fs-dialog and --fs-section were added because both sizes already existed,
+     hardcoded in components. The ramp had nothing between 20px and 13px, and
+     those literals were the gap showing through.
+
+     --fs-card and --fs-body sit half a pixel apart, which is not a perceptible
+     step. Treat them as two roles, not two tiers: --fs-card labels a thing that
+     has a name (card and row titles, always at weight 600), --fs-body is what
+     running text and controls inherit. Never use one against the other to build
+     a hierarchy — half a pixel reads as flat, which is exactly how the reference
+     card went wrong. Separate a title from its metadata with weight and colour,
+     and put the metadata on --fs-meta.
+
+     --fs-body is deliberately not merged into --fs-card: it is the value body
+     inherits, and several board classes (.stack__heading, .drag-hint,
+     .analysis-status-content, three <strong>) take their size from it. */
   --font-sans: "Public Sans", system-ui, sans-serif;
-  --fs-title: 20px;
-  --fs-card: 13px;
-  --fs-body: 12.5px;
-  --fs-meta: 11px;
-  --fs-label: 10.5px;
+  --fs-title: 20px; /* page heading */
+  --fs-dialog: 18px; /* dialog heading */
+  --fs-section: 15px; /* project name, section heading */
+  --fs-card: 13px; /* card and row titles, at weight 600 */
+  --fs-body: 12.5px; /* inherited default: running text, controls */
+  --fs-meta: 11px; /* metadata, bylines, counts */
+  --fs-label: 10.5px; /* smallest tier: uppercase labels, dense counts */
   --tracking-label: 0.14em;
+
+  /* Spacing. Fitted to the design rather than imposed on it, so it steps by 2px
+     at the low end where dense card interiors live, then 4px, then 8px.
+
+     Before this there was no scale at all: eighteen literal values, essentially
+     every integer from 1 to 10. The 4/5/6/7 cluster alone was over half of all
+     spacing in the app, expressing one relationship — the vertical stack inside
+     a card — three different ways. Those round into the steps below.
+
+     The board keeps a 10px thumbnail gutter as a literal in PaperPile.svelte.
+     That is deliberate, not an omission: it is tuned to the thumbnail width. */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
 
   /* Borders */
   --bw: 1px;
-  --bw-2: 1.5px;
+  /* Integer on purpose. This is the pile's side border, and at 1.5px it lands on
+     a half-pixel on any display that renders at 1x, where the browser splits it
+     across two rows at half intensity — which reads as a border that is thinner
+     in places or missing entirely, shifting as the column scrolls. It looked
+     fine on a 2x screen (1.5px = exactly 3 device pixels) and broken on a 1x one.
+     2px also keeps the pile members' content inset at a whole 9px, because
+     ProjectDocuments derives their padding as --card-pad - --bw-2 + --bw. */
+  --bw-2: 2px;
   --bw-accent: 4px;
   --radius: 5px;
   --radius-chip: 2px;
   --radius-pill: 50%;
 
-  /* Legacy offset shadows retained only for the older inline e-ink controls. */
-  --shadow-sm: 2px 2px 0 var(--line-3);
-  --shadow-btn: 3px 3px 0 var(--accent);
+  /* The hard offset shadow the drag ghost lifts off the board with. Its two
+     siblings (--shadow-sm, --shadow-btn) and --lift went with the e-ink button
+     recipes: nothing referenced them once those were removed. */
   --shadow-drag: 0px 5px 15px rgba(0, 0, 0, 0.25);
 
   /* Motion */
-  --lift: translate(-1px, -1px);
   --ease: 0.12s;
 
   /* Layout */
@@ -116,9 +159,13 @@
   /* Paper-grain overlay opacity (fixed fractal-noise layer, multiply blend). */
   --grain-op: 0.35;
 
-  /* Semantic variants retained for the PDF viewer and interaction states. */
-  --accent-strong: #0d4f3c;
-  --accent-link: #0f5f47;
+  /* Semantic variants retained for the PDF viewer and interaction states. Both
+     sit at the lightness their green predecessors held, so the tiers keep their
+     relative weight. --accent-strong carries slightly less chroma than the
+     other two (0.087, not 0.095) because oklch(0.383 0.095 240) falls outside
+     sRGB — that is a gamut limit, not an aesthetic choice. */
+  --accent-strong: #02486c;
+  --accent-link: #0b567f;
   --accent-soft-bg: color-mix(in oklab, var(--accent) 8%, var(--paper));
   --accent-outline: color-mix(in oklab, var(--accent) 45%, transparent);
   --accent-fill: color-mix(in oklab, var(--accent) 12%, transparent);
@@ -328,7 +375,7 @@ dialog {
 .dialog-title {
   margin: 0;
   color: var(--ink);
-  font-size: 18px;
+  font-size: var(--fs-dialog);
   line-height: 1.25;
 }
 
@@ -352,64 +399,6 @@ dialog {
 small {
   color: var(--ink-2);
   font-size: var(--fs-body);
-}
-
-/* Reusable e-ink recipes. */
-.eink-card {
-  border-radius: var(--radius);
-  background: var(--card);
-  box-shadow: var(--shadow-paper-card);
-  transition:
-    box-shadow var(--ease),
-    transform var(--ease);
-}
-
-.eink-card:hover {
-  box-shadow: 0 0.4px 2px rgba(0, 0, 0, 0.25);
-}
-
-/* Kept for the Kanban board's established inline control. The rest of the app
-   uses the newer paper and quiet button variants below. */
-.eink-btn {
-  padding: 5px 10px;
-  border: var(--bw) solid var(--line-3);
-  border-radius: var(--radius);
-  background: var(--paper-2);
-  color: var(--ink);
-  font: 400 var(--fs-body) / 1.2 var(--font-sans);
-  cursor: pointer;
-  transition:
-    background var(--ease),
-    box-shadow var(--ease),
-    transform var(--ease);
-}
-
-.eink-btn:hover:not(:disabled) {
-  background: var(--paper-3);
-  box-shadow: var(--shadow-sm);
-  transform: var(--lift);
-}
-
-.eink-btn--soft-accent {
-  border-color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 4%, var(--paper));
-  color: var(--accent);
-}
-
-.eink-btn--soft-accent:hover:not(:disabled) {
-  background: var(--accent-soft-bg);
-  box-shadow: 2px 2px 0 color-mix(in oklab, var(--accent) 45%, transparent);
-}
-
-.eink-btn--accent {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--paper);
-}
-
-.eink-btn--accent:hover:not(:disabled) {
-  box-shadow: var(--shadow-btn);
-  background: var(--accent-strong);
 }
 
 /* Paper buttons are the default for actions that sit in page content, cards or
@@ -609,25 +598,7 @@ small {
   padding: 0;
 }
 
-.eink-chip {
-  padding: 1px 6px;
-  border: var(--bw) solid var(--line-2);
-  border-radius: var(--radius-chip);
-  background: var(--card);
-  color: var(--ink-3);
-  font: 400 var(--fs-meta) var(--font-sans);
-}
-
-.eink-label {
-  color: var(--ink-3);
-  font: 600 var(--fs-label) var(--font-sans);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .eink-card,
-  .eink-btn,
   .paper-btn,
   .paper-btn svg,
   .quiet-btn,

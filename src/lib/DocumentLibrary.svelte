@@ -265,7 +265,7 @@
 <section class="document-library" aria-label="Library">
   <div class="library-controls">
     <header class="library-heading">
-      <strong class="eink-label">Library</strong>
+      <strong class="library-label">Library</strong>
       <span class="library-count">{resultCount}</span>
     </header>
 
@@ -407,14 +407,17 @@
 <style>
   .document-library {
     display: grid;
-    gap: 8px;
+    gap: var(--space-3);
   }
 
+  /* Full-bleed header: the negative inline margin cancels the library aside's
+     padding in ProjectWorkspace.svelte, then the padding here restores the
+     inset. All three come from --space-3, and must stay equal. */
   .library-controls {
     display: grid;
-    gap: 9px;
-    margin: -10px -10px 2px;
-    padding: 12px 10px 11px;
+    gap: var(--space-3);
+    margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-3)) var(--space-1);
+    padding: var(--space-4) var(--space-3);
     border-bottom: var(--bw) solid var(--line-2);
     background: color-mix(in oklab, var(--paper-2) 94%, var(--card));
   }
@@ -422,7 +425,18 @@
   .library-heading {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-3);
+  }
+
+  /* Was app.css's shared .eink-label, which this was the only caller of. Kept as
+     a local rule so the uppercase label tier — --fs-label plus --tracking-label —
+     still has a user rather than sitting in the tokens unreferenced. */
+  .library-label {
+    color: var(--ink-3);
+    font-size: var(--fs-label);
+    font-weight: 600;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
   }
 
   .library-heading::before {
@@ -434,11 +448,14 @@
     content: "";
   }
 
+  /* A count is metadata, so it takes the metadata tier — 400, not the 500 the
+     filter controls below use. Those are interactive and earn the extra weight;
+     this is just a number. */
   .library-count {
     margin-left: auto;
     color: var(--ink-3);
     font-size: var(--fs-meta);
-    font-weight: 500;
+    font-weight: 400;
     white-space: nowrap;
   }
 
@@ -446,9 +463,9 @@
     display: grid;
     grid-template-columns: 15px minmax(0, 1fr);
     align-items: center;
-    gap: 7px;
+    gap: var(--space-2);
     min-height: 32px;
-    padding: 0 9px;
+    padding: 0 var(--space-3);
     border: var(--bw) solid var(--line-2);
     border-radius: var(--radius);
     background: var(--card);
@@ -467,7 +484,7 @@
   .library-search input {
     width: 100%;
     min-width: 0;
-    padding: 7px 0;
+    padding: var(--space-2) 0;
     border: 0;
     outline: 0;
     background: transparent;
@@ -482,14 +499,14 @@
   .library-filters {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: var(--space-2);
   }
 
   .filter-caption {
     display: inline-flex;
     flex: 0 0 auto;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     margin-right: 1px;
     color: var(--ink-3);
     font-size: var(--fs-meta);
@@ -501,7 +518,10 @@
     display: inline-flex;
     min-height: 25px;
     align-items: center;
-    gap: 5px;
+    gap: var(--space-2);
+    /* Left inset is deliberately tighter than the right: the checkbox sits on
+       that side and its own bounding box already carries slack. Optical, so it
+       stays off the spacing scale on purpose. */
     padding: 3px 7px 3px 5px;
     border: var(--bw) solid var(--line-2);
     border-radius: var(--radius);
@@ -577,7 +597,7 @@
   .document-list-row {
     display: flex;
     align-items: start;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .document-list-row > button {
@@ -585,8 +605,8 @@
     width: 100%;
     min-width: 0;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-    padding: 6px;
+    gap: var(--space-3);
+    padding: var(--space-2);
     border: 0;
     background: transparent;
     text-align: left;

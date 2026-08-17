@@ -205,6 +205,10 @@
 
 <main>
   <header>
+    <div class="brand-heading">
+      <h1>PaperStack</h1>
+      <p class="diagnostics">{diagnosticSummary}</p>
+    </div>
     <button
       class="quiet-btn quiet-btn--icon settings-button"
       type="button"
@@ -215,10 +219,6 @@
     >
       <Settings size={17} strokeWidth={1.7} aria-hidden="true" />
     </button>
-    <div class="brand-heading">
-      <h1>PaperStack</h1>
-      <p class="diagnostics">{diagnosticSummary}</p>
-    </div>
   </header>
 
   {#if error}
@@ -319,16 +319,21 @@
 <style>
   main {
     display: grid;
-    gap: 22px;
+    gap: var(--space-6);
     width: min(1320px, 100%);
     margin: 0 auto;
-    padding: 24px clamp(18px, 4vw, 48px) 48px;
+    padding: var(--space-6) clamp(var(--space-5), 4vw, calc(2 * var(--space-6)))
+      calc(2 * var(--space-6));
   }
 
+  /* Settings sits at the far right, diagonally opposite the traffic lights.
+     The workspace toolbar puts it in the same place, so it holds one position
+     across the app. */
   header {
     display: flex;
     align-items: flex-start;
-    gap: 5px;
+    justify-content: space-between;
+    gap: var(--space-5);
   }
 
   h1,
@@ -336,19 +341,24 @@
     margin: 0;
   }
 
+  /* 700 is declared rather than left to the browser's default for h1, so the
+     heaviest weight in the app is a decision. Same value, stated. */
   h1 {
     font-size: var(--fs-title);
+    font-weight: 700;
     line-height: 1.15;
   }
 
   .brand-heading {
     display: grid;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
+  /* Pulled out by its own padding so the gear's edge, not the button box's,
+     lines up with the grid below. */
   .settings-button {
-    margin-top: -4px;
-    margin-left: -7px;
+    margin-top: -3px;
+    margin-right: -7px;
   }
 
   .diagnostics {
@@ -360,9 +370,11 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     align-items: start;
-    gap: 34px 24px;
+    /* Row gap stays off the scale: the tiles' stacked-paper artwork overhangs
+       its box, and 34px is what keeps two rows from touching. */
+    gap: 34px var(--space-6);
     margin: 0;
-    padding: 8px 0 0;
+    padding: var(--space-3) 0 0;
     list-style: none;
   }
 
@@ -378,13 +390,13 @@
 
   @media (max-width: 480px) {
     main {
-      padding-right: 14px;
-      padding-left: 14px;
+      padding-right: var(--space-4);
+      padding-left: var(--space-4);
     }
 
     .project-grid {
       grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      column-gap: 12px;
+      column-gap: var(--space-4);
     }
   }
 </style>

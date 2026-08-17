@@ -12,6 +12,7 @@
   import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
   import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
   import PanelLeftOpen from "@lucide/svelte/icons/panel-left-open";
+  import Settings from "@lucide/svelte/icons/settings";
   import { flushSync, onMount } from "svelte";
   import BibtexLinkPrompt from "./BibtexLinkPrompt.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -26,6 +27,7 @@
   import NamePrompt from "./NamePrompt.svelte";
   import NotePrompt from "./NotePrompt.svelte";
   import ProjectDocuments from "./ProjectDocuments.svelte";
+  import SettingsDialog from "./SettingsDialog.svelte";
   import { errorMessage } from "./errorMessage";
   import { openViewerWindow as openDocumentWindow } from "./viewerWindows";
   import type {
@@ -74,6 +76,7 @@
   let fileDropState = $state<"idle" | "ready" | "invalid">("idle");
   let importingPdfs = $state(false);
   let selectedProjectDocumentIds = $state<Set<string>>(new Set());
+  let settingsOpen = $state(false);
   // documentId -> live background-analysis status, for the per-card loaders.
   let analysisStates = $state<Record<string, AnalysisStatus>>({});
 
@@ -871,6 +874,15 @@
           </button>
         </div>
       {/if}
+      <button
+        class="toolbar-button"
+        type="button"
+        aria-label="Open settings"
+        title="Settings"
+        onclick={() => (settingsOpen = true)}
+      >
+        <Settings size={16} strokeWidth={1.8} aria-hidden="true" />
+      </button>
     </div>
   </header>
 
@@ -1046,6 +1058,7 @@
     onconfirm={confirmRemoveProjectDocument}
     oncancel={() => (projectDocumentToRemove = null)}
   />
+  <SettingsDialog open={settingsOpen} onclose={() => (settingsOpen = false)} />
 </main>
 
 <style>
@@ -1144,7 +1157,7 @@
   .project-identity strong {
     display: block;
     overflow: hidden;
-    font-size: 15px;
+    font-size: var(--fs-section);
     font-weight: 600;
     line-height: 1.2;
     text-overflow: ellipsis;
@@ -1267,11 +1280,13 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* DocumentLibrary's .library-controls cancels this inset with a negative
+     inline margin to get a full-bleed header, so the two must stay equal. */
   aside {
     min-width: 0;
     min-height: 0;
     overflow: auto;
-    padding: 10px;
+    padding: var(--space-3);
   }
 
   .library {

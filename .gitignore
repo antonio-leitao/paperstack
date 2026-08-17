@@ -10,8 +10,21 @@
 
 # Rust and Tauri build output
 /src-tauri/target/
+
+# Built installers. These live under src-tauri/target/ (already ignored above),
+# but the pattern is here too so a DMG copied anywhere for testing or upload can
+# never be committed by accident — they are release assets, not repo contents.
+*.dmg
 /src-tauri/gen/schemas/
 **/*.rs.bk
+
+# Generated DMG artwork, from scripts/make-dmg-background.py. Only the TIFF is
+# kept: tauri.conf.json reads it, so a fresh clone can bundle without first
+# installing rsvg-convert and fonttools — the same reason the generated icons
+# under src-tauri/icons/ are committed. Everything else there is an intermediate
+# (the SVG, and the two PNGs tiffutil combines) or a preview.
+/src-tauri/dmg/*
+!/src-tauri/dmg/background.tiff
 
 # Local application data and temporary files
 /tmp/

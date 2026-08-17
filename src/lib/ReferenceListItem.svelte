@@ -89,23 +89,25 @@
 </div>
 
 <style>
+  /* A denser row than the card, so it nests: 6px between the title, the details
+     block and the actions, 4px inside the details block itself. */
   .reference-item {
     display: grid;
     min-width: 0;
-    gap: 5px;
+    gap: var(--space-2);
   }
 
   .title {
     min-width: 0;
     font-size: var(--fs-card);
     font-weight: 600;
-    line-height: 1.3;
+    line-height: 1.25;
   }
 
   a.title {
     display: inline-flex;
     align-items: baseline;
-    gap: 4px;
+    gap: var(--space-1);
     color: var(--accent-link);
     text-decoration: none;
   }
@@ -121,12 +123,17 @@
 
   .reference-details {
     display: grid;
-    gap: 3px;
+    gap: var(--space-1);
   }
 
+  /* The metadata tier, same as a board card's byline. These previously inherited
+     --fs-body and --ink, leaving weight as the only thing separating them from
+     the title above. */
   .byline,
   .publisher {
     overflow: hidden;
+    color: var(--ink-3);
+    font-size: var(--fs-meta);
     line-height: 1.35;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -139,14 +146,14 @@
   }
 
   .resolving {
-    gap: 5px;
+    gap: var(--space-2);
     color: var(--accent);
   }
 
   .reference-actions {
     flex-wrap: wrap;
-    gap: 5px;
-    margin-top: 2px;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
   }
 
 </style>

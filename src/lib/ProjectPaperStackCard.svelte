@@ -256,7 +256,7 @@
     bottom: 10%;
     color: var(--ink-3);
     font-family: var(--font-sans);
-    font-size: 0.6rem;
+    font-size: var(--fs-label);
   }
 
 </style>

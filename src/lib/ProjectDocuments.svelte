@@ -1,6 +1,7 @@
 <script lang="ts">
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import ChevronUp from "@lucide/svelte/icons/chevron-up";
   import FolderMinus from "@lucide/svelte/icons/folder-minus";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import Pencil from "@lucide/svelte/icons/pencil";
@@ -1131,7 +1132,7 @@
                   ? activePileTransition.action
                   : null}
               <li
-                class="eink-card"
+                class="board-card"
                 animate:flip={{ duration: CARD_FLIP_DURATION_MS, easing: quintOut }}
                 in:pileEntrySlide={{
                   enabled: !shadowEntry && pileTransitionAction === "open",
@@ -1174,12 +1175,13 @@
                       {entry.pileName ?? "Untitled pile"}
                     </strong>
                     <button
-                      class="eink-btn"
+                      class="pile-collapse"
                       type="button"
+                      title="Collapse pile"
                       aria-label={`Collapse ${entry.pileName ?? "Untitled pile"}`}
                       onclick={() => entry.pileId && togglePile(entry.pileId)}
                     >
-                      Collapse
+                      <ChevronUp size={16} strokeWidth={1.8} aria-hidden="true" />
                     </button>
                   </div>
                 {:else}
@@ -1505,6 +1507,53 @@
     opacity: 0.72;
   }
 
+  /* The board card shell. This was app.css's shared .eink-card, the last
+     survivor of a component layer the paper-* recipes replaced; it only ever had
+     one caller, so it lives here now. --shadow-sm, --shadow-btn and --lift went
+     with it — nothing referenced them afterwards. */
+  .board-card {
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: var(--shadow-paper-card);
+    transition:
+      box-shadow var(--ease),
+      transform var(--ease);
+  }
+
+  .board-card:hover {
+    box-shadow: 0 0.4px 2px rgba(0, 0, 0, 0.25);
+  }
+
+  /* Was a text button in the retired e-ink style, which made it the loudest
+     thing in a pile header. It now matches the stack header's own icon controls
+     one row above: same 22px box, same quiet-until-hover treatment. */
+  .pile-collapse {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-chip);
+    background: transparent;
+    color: var(--ink-3);
+    cursor: pointer;
+    opacity: 0.62;
+    transition:
+      background var(--ease),
+      color var(--ease),
+      opacity var(--ease);
+  }
+
+  .pile-collapse:hover,
+  .pile-collapse:focus-visible {
+    background: color-mix(in oklab, var(--accent) 14%, transparent);
+    color: var(--accent-strong);
+    opacity: 1;
+    outline: none;
+  }
+
   .stack__move,
   .stack__menu {
     display: grid;
@@ -1556,10 +1605,26 @@
     height: 100%;
     flex-direction: column;
     gap: 0;
-    /* The column always owns a scrollbar lane. The cards keep the same width
-       because the lane occupies the space subtracted from the right padding. */
+    /* Horizontal padding is symmetric, and deliberately does NOT subtract
+       --scrollbar-size from the right.
+
+       It used to: `calc(14px - var(--scrollbar-size))`, on the assumption that a
+       scrollbar always occupies a 12px lane and so the cards would stay centred.
+       That holds only for classic scrollbars. macOS defaults "Show scroll bars"
+       to Automatic, which gives overlay scrollbars whenever a trackpad is
+       attached — and an overlay scrollbar takes no layout space at all. The
+       cards therefore ran 12px wider than intended and the thumb painted
+       straight over their right border, which looked like the border had been
+       trimmed. It only showed while the thumb was visible, and only beside the
+       thumb, so scrolled to the bottom it was the bottom card that lost its edge.
+       Styling ::-webkit-scrollbar with a width does not force the classic
+       behaviour back; the OS setting wins.
+
+       At 14px both sides the thumb overlays padding instead of a card. Users who
+       set "Always" get a real 12px lane and slightly more inset on the right —
+       cosmetic, and preferable to a clipped border for everyone else. */
     margin: 0 -6px;
-    padding: 2px calc(14px - var(--scrollbar-size)) 8px 14px;
+    padding: 2px 14px 8px;
     min-height: 0;
     overflow-x: hidden;
     overflow-y: scroll;
@@ -1617,8 +1682,11 @@
     border-radius: var(--radius) var(--radius) 0 0;
   }
 
+  /* Clips for the same reason .pile-first does: it owns rounded corners, so
+     without this its children paint square across them. */
   .cards li.pile-last {
     margin-bottom: 9px;
+    overflow: hidden;
     border-bottom-width: var(--bw-2);
     border-radius: 0 0 var(--radius) var(--radius);
   }

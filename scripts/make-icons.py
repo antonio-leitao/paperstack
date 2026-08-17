@@ -69,6 +69,10 @@ EXPONENT = 5.0
 # PaperStack blue — oklch(0.63 0.115 240). Phthalocyanine blue's hue at a
 # lightness that keeps the near-white paper faces reading against it. Mirrored
 # in src/app.css as --phthalo; change it in both places or neither.
+#
+# Not the same value as the UI accent (--accent, #1d628c). Same hue, but the
+# tile is a ground behind a near-white mark while the accent is figure on
+# near-white paper, so they need opposite lightnesses. See design_system/README.
 TILE = "#3c91c7"
 RIM = 0.13
 

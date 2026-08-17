@@ -55,8 +55,22 @@ faces legible on it. It lives in two places and must agree in both:
 - `src/app.css` as `--phthalo`
 - `scripts/make-icons.py` as `TILE`
 
-It is currently the icon tile only. See the note in `app.css` before promoting
-it to `--accent`.
+### The tile is not the accent
+
+The app's accent is the same hue, but a different colour: `#1d628c`,
+`oklch(0.475 0.095 240)`. The two are not interchangeable and the tile must
+never be substituted for the accent.
+
+They differ because they have opposite jobs. The tile is a *ground* — it sits
+behind a near-white mark, so it has to stay light enough for that mark to read.
+The accent is a *figure* — it draws text, borders and fills on near-white paper,
+so it has to be dark enough to read against them. At `L 0.63` the tile fails
+WCAG AA as an accent in every role that matters (3.26:1 as text on `--paper`,
+3.46:1 under a white button label, 2.98:1 as a border on `--desk`). Dropping the
+same hue to `L 0.475` — the lightness the previous green accent held — clears all
+three.
+
+So: one hue, two lightnesses, chosen for the two directions the contrast runs.
 
 ## Regenerating the icons
 
