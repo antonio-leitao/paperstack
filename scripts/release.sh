@@ -144,7 +144,14 @@ fi
 say "Committing and tagging"
 # Cargo.lock carries the version too; the build above regenerated it.
 git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
-git commit -m "release: $version"
+# Re-releasing the version already in the files — the common case for a first
+# release — stages nothing, and `git commit` treats that as an error. There is
+# genuinely nothing to record, so tag the commit that is already there.
+if git diff --cached --quiet; then
+  echo "  files already at $version — tagging HEAD, no bump commit needed"
+else
+  git commit -m "release: $version"
+fi
 git tag -a "$tag" -m "PaperStack $version"
 
 # ── Publish ────────────────────────────────────────────────────────────────
@@ -172,7 +179,11 @@ EOF
 fi
 
 say "Pushing"
-git push origin "$branch" --follow-tags
+# Branch and tag pushed separately rather than with --follow-tags: that only
+# carries tags along with commits it is actually pushing, so on a release where
+# the branch is already up to date the tag would silently stay local.
+git push origin "$branch"
+git push origin "$tag"
 
 say "Creating the release"
 # --generate-notes works out the previous release on its own, which is the
