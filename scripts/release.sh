@@ -92,10 +92,36 @@ PY
 fi
 
 # ── Build ──────────────────────────────────────────────────────────────────
-say "Building universal (this compiles the whole tree for both architectures)"
-npm run tauri build -- --target universal-apple-darwin
-
 dmg="src-tauri/target/universal-apple-darwin/release/bundle/dmg/PaperStack_${version}_universal.dmg"
+
+# A volume left mounted from an interrupted run makes bundle_dmg.sh fail, since
+# it mounts its own under the same name. Cheap to rule out.
+for vol in /Volumes/PaperStack*; do
+  [ -d "$vol" ] && { echo "  ejecting stale $vol"; hdiutil detach "$vol" -quiet || true; }
+done
+
+say "Building universal (this compiles the whole tree for both architectures)"
+# Tauri builds the DMG by driving Finder over AppleScript to place the icons and
+# set the background. That is inherently flaky — a Finder window in the wrong
+# state, or a volume still settling, and the step fails even though nothing is
+# wrong with the build. It succeeds on a retry, so treat one failure as noise
+# rather than making you start over after a three-minute compile.
+if ! npm run tauri build -- --target universal-apple-darwin; then
+  if [ -f "$dmg" ]; then
+    echo "  (tauri reported failure but produced the DMG — continuing)"
+  else
+    say "Bundling failed. Retrying once — this step drives Finder and is flaky"
+    for vol in /Volumes/PaperStack*; do
+      [ -d "$vol" ] && hdiutil detach "$vol" -quiet || true
+    done
+    sleep 2
+    npm run tauri build -- --target universal-apple-darwin --bundles dmg \
+      || die "DMG bundling failed twice. Close any Finder windows showing a
+  PaperStack volume, check that nothing is mounted under /Volumes, and re-run.
+  The compile is cached, so a retry only redoes the bundling."
+  fi
+fi
+
 [ -f "$dmg" ] || die "expected a DMG at $dmg"
 
 # Tauri hands the window geometry to Finder over AppleScript and Finder does not
