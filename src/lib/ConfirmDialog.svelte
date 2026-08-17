@@ -23,10 +23,11 @@
   const destructive = $derived(confirmLabel === "Delete" || confirmLabel === "Remove");
 </script>
 
-<Modal {open} onclose={oncancel}>
-  <h2>{title}</h2>
-  <p>{message}</p>
-  <div class="actions">
+<Modal {open} ariaLabel={title} onclose={oncancel}>
+  <div class="dialog-layout">
+    <h2 class="dialog-title">{title}</h2>
+    <p class="dialog-copy">{message}</p>
+    <div class="dialog-actions">
     <button class="paper-btn" type="button" onclick={oncancel}>
       <X size={15} strokeWidth={1.8} aria-hidden="true" />
       <span>Cancel</span>
@@ -45,17 +46,6 @@
       {/if}
       <span>{confirmLabel}</span>
     </button>
+    </div>
   </div>
 </Modal>
-
-<style>
-  h2 {
-    margin-top: 0;
-  }
-
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 2px;
-  }
-</style>

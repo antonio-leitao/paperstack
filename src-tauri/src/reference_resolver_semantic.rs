@@ -10,7 +10,7 @@ use tokio::{
 };
 
 const SEMANTIC_API: &str = "https://api.semanticscholar.org/graph/v1";
-const SEMANTIC_USER_AGENT: &str = "ResearchPDFRender/0.1 (reference-resolution prototype)";
+const SEMANTIC_USER_AGENT: &str = "PaperStack/0.1 (reference resolution)";
 const SEMANTIC_BATCH_SIZE: usize = 100;
 const SEMANTIC_RESULTS: &str = "5";
 const SEMANTIC_DELAY: Duration = Duration::from_millis(1100);
@@ -62,7 +62,9 @@ pub(crate) struct OpenAccessPdf {
 }
 
 pub(crate) fn is_configured() -> bool {
-    api_key().is_some()
+    crate::provider_settings::semantic_scholar_api_key_candidates()
+        .first()
+        .is_some_and(Option::is_some)
 }
 
 pub(crate) async fn lookup_many(
@@ -208,30 +210,27 @@ pub(crate) fn work_type(work: &SemanticWork) -> Option<String> {
         .and_then(|types| types.first().cloned())
 }
 
-fn api_key() -> Option<String> {
-    std::env::var("SEMANTIC_SCHOLAR_API_KEY")
-        .ok()
-        .map(|key| key.trim().to_owned())
-        .filter(|key| !key.is_empty())
-}
-
 fn semantic_request(request: RequestBuilder) -> RequestBuilder {
-    let request = request
+    request
         .timeout(SEMANTIC_TIMEOUT)
-        .header(USER_AGENT, SEMANTIC_USER_AGENT);
-    if let Some(api_key) = api_key() {
-        request.header("x-api-key", api_key)
-    } else {
-        request
-    }
+        .header(USER_AGENT, SEMANTIC_USER_AGENT)
 }
 
 async fn send_with_retries(request: RequestBuilder) -> Result<Response, String> {
+    let credentials = crate::provider_settings::semantic_scholar_api_key_candidates();
+    let mut credential_index = 0;
     let mut last_error = None;
-    for attempt in 0..MAX_ATTEMPTS {
-        let request = request
+    let mut attempt = 0;
+    while attempt < MAX_ATTEMPTS {
+        let mut request = request
             .try_clone()
             .ok_or_else(|| "Could not clone Semantic Scholar request".to_owned())?;
+        if let Some(api_key) = credentials
+            .get(credential_index)
+            .and_then(|credential| credential.as_deref())
+        {
+            request = request.header("x-api-key", api_key);
+        }
         let response = {
             let _permit = request_gate()
                 .acquire()
@@ -242,6 +241,17 @@ async fn send_with_retries(request: RequestBuilder) -> Result<Response, String> 
             request.send().await
         };
         match response {
+            Ok(response)
+                if matches!(
+                    response.status(),
+                    StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+                ) && credential_index + 1 < credentials.len() =>
+            {
+                credential_index += 1;
+                eprintln!(
+                    "[resolver] provider=semantic-scholar authentication_failed=true fallback=true"
+                );
+            }
             Ok(response)
                 if response.status() == StatusCode::TOO_MANY_REQUESTS
                     || response.status().is_server_error() =>
@@ -256,15 +266,18 @@ async fn send_with_retries(request: RequestBuilder) -> Result<Response, String> 
                     );
                     extend_cooldown(cooldown).await;
                 }
-                if attempt + 1 < MAX_ATTEMPTS {
+                attempt += 1;
+                if attempt < MAX_ATTEMPTS {
                     tokio::time::sleep(delay).await;
                 }
             }
             Ok(response) => return Ok(response),
             Err(error) => {
                 last_error = Some(format!("Could not reach Semantic Scholar: {error}"));
-                if attempt + 1 < MAX_ATTEMPTS {
-                    tokio::time::sleep(Duration::from_secs(1 << attempt)).await;
+                let delay = Duration::from_secs(1 << attempt);
+                attempt += 1;
+                if attempt < MAX_ATTEMPTS {
+                    tokio::time::sleep(delay).await;
                 }
             }
         }

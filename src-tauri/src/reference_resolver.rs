@@ -33,7 +33,7 @@ use openalex::OpenAlexWork;
 use semantic::SemanticWork;
 
 const CROSSREF_API: &str = "https://api.crossref.org/v1";
-const CROSSREF_USER_AGENT: &str = "ResearchPDFRender/0.1 (reference-resolution prototype)";
+const CROSSREF_USER_AGENT: &str = "PaperStack/0.1 (reference resolution)";
 const SEARCH_ROWS: &str = "5";
 const MAX_CONCURRENCY: usize = 8;
 const MAX_ATTEMPTS: usize = 3;
@@ -1074,7 +1074,7 @@ async fn send_with_retries(request: RequestBuilder) -> Result<Response, String> 
         };
         let response = match response {
             Ok(response) => response,
-            Err(error) if attempt + 1 < MAX_ATTEMPTS => {
+            Err(_error) if attempt + 1 < MAX_ATTEMPTS => {
                 tokio::time::sleep(retry_delay(attempt) + retry_jitter()).await;
                 continue;
             }
@@ -1170,15 +1170,7 @@ fn crossref_gate() -> &'static CrossrefGate {
 }
 
 fn crossref_mailto() -> Option<String> {
-    static MAILTO: OnceLock<Option<String>> = OnceLock::new();
-    MAILTO
-        .get_or_init(|| {
-            std::env::var("CROSSREF_MAILTO")
-                .ok()
-                .map(|mailto| mailto.trim().to_owned())
-                .filter(|mailto| !mailto.is_empty())
-        })
-        .clone()
+    crate::provider_settings::crossref_mailto()
 }
 
 fn retry_jitter() -> Duration {

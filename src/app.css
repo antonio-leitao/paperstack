@@ -59,6 +59,20 @@
   --amber: #9a7526;
   --brick: #94402f;
 
+  /* Brand. The app icon's tile colour: phthalocyanine blue's hue at a
+     lightness that keeps the mark's near-white paper faces reading on it —
+     oklch(0.63 0.115 240). Recorded here so there is one place the value
+     lives, and because it is the standing candidate for the product accent.
+
+     Nothing uses it yet. --accent is still the green above, and swapping the
+     two is not a find-and-replace: --accent is mixed into --accent-soft-bg,
+     --accent-outline, --accent-fill and --shadow-btn, and it also carries
+     meaning (a project's own colour, the primary action). Changing it means
+     re-checking contrast on each of those, not just the hex.
+
+     Mirrored in scripts/make-icons.py as TILE. Change it in both or neither. */
+  --phthalo: #3c91c7;
+
   /* Typography. Public Sans ships weights 400, 500, 600 and 700, so the medium
      (500) and semibold (600) recipe tiers render at their intended weight. */
   --font-sans: "Public Sans", system-ui, sans-serif;
@@ -77,7 +91,7 @@
   --radius-chip: 2px;
   --radius-pill: 50%;
 
-  /* Hard e-ink shadows */
+  /* Legacy offset shadows retained only for the older inline e-ink controls. */
   --shadow-sm: 2px 2px 0 var(--line-3);
   --shadow-btn: 3px 3px 0 var(--accent);
   --shadow-drag: 0px 5px 15px rgba(0, 0, 0, 0.25);
@@ -96,6 +110,7 @@
   );
   --col-w: 270px;
   --sidebar-w: 302px;
+  --project-toolbar-height: 52px;
   --window-titlebar-height: 0px;
 
   /* Paper-grain overlay opacity (fixed fractal-noise layer, multiply blend). */
@@ -131,6 +146,13 @@
   --highlight-status-bg: #fff6cf;
   --highlight-status-border: #c6b56c;
   --highlight-status-text: #4d4211;
+
+  /* Paper surfaces use close, diffuse shadows like the low sheets in a stack. */
+  --shadow-paper-control: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --shadow-paper-card: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-paper-dialog:
+    0 1px 2px rgba(0, 0, 0, 0.22),
+    0 7px 18px rgba(0, 0, 0, 0.08);
 
   /* Specialized non-card shadows retained for pages, menus and popovers. */
   --shadow-page: 0 1px 4px rgba(0, 0, 0, 0.28);
@@ -203,7 +225,7 @@ body {
 }
 
 html.macos-titlebar-overlay {
-  --window-titlebar-height: 44px;
+  --window-titlebar-height: var(--project-toolbar-height);
 }
 
 html.macos-titlebar-overlay body {
@@ -274,6 +296,16 @@ textarea {
   color: var(--ink);
 }
 
+input:not([type="checkbox"]):not([type="range"]):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: color-mix(in oklab, var(--accent) 56%, var(--line-2));
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--accent) 24%, transparent),
+    var(--shadow-paper-control);
+}
+
 fieldset {
   border: var(--bw) solid var(--line-2);
 }
@@ -282,8 +314,37 @@ dialog {
   border: var(--bw) solid var(--line-2);
   border-radius: var(--radius);
   background: var(--card);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-paper-dialog);
   color: var(--ink);
+}
+
+.dialog-layout,
+.dialog-form {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+
+.dialog-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.dialog-copy {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
 }
 
 /* Muted secondary text. Every <small> in the app shares one colour + size;
@@ -297,7 +358,7 @@ small {
 .eink-card {
   border-radius: var(--radius);
   background: var(--card);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-paper-card);
   transition:
     box-shadow var(--ease),
     transform var(--ease);
@@ -364,7 +425,7 @@ small {
   border: var(--bw) solid var(--line-2);
   border-radius: var(--radius);
   background: var(--card);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-paper-control);
   color: var(--ink-2);
   font: inherit;
   line-height: 1.2;
@@ -398,7 +459,7 @@ small {
 
 .paper-btn:focus-visible:not(:disabled) {
   box-shadow:
-    0 0 0 2px var(--accent-outline),
+    inset 0 0 0 1px var(--accent-outline),
     0 1px 3px rgba(0, 0, 0, 0.16);
 }
 
@@ -429,6 +490,12 @@ small {
   color: currentColor;
 }
 
+.paper-btn--primary:focus-visible:not(:disabled) {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--card) 64%, transparent),
+    0 1px 3px rgba(0, 0, 0, 0.16);
+}
+
 .paper-btn--danger {
   border-color: var(--danger-border);
   color: var(--danger-menu-text);
@@ -453,7 +520,7 @@ small {
 .paper-btn--danger:focus-visible:not(:disabled),
 .paper-btn--danger-primary:focus-visible:not(:disabled) {
   box-shadow:
-    0 0 0 2px color-mix(in oklab, var(--danger) 32%, transparent),
+    inset 0 0 0 1px color-mix(in oklab, var(--danger) 38%, transparent),
     0 1px 3px rgba(0, 0, 0, 0.16);
 }
 
@@ -477,6 +544,12 @@ small {
 .paper-btn--danger-primary:hover:not(:disabled) svg,
 .paper-btn--danger-primary:focus-visible:not(:disabled) svg {
   color: currentColor;
+}
+
+.paper-btn--danger-primary:focus-visible:not(:disabled) {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--card) 62%, transparent),
+    0 1px 3px rgba(0, 0, 0, 0.16);
 }
 
 /* Quiet icon-led actions are reserved for compact toolbars and other controls
@@ -522,7 +595,8 @@ small {
 }
 
 .quiet-btn:focus-visible:not(:disabled) {
-  box-shadow: inset 0 0 0 var(--bw) var(--line-2);
+  background: var(--accent-soft-bg);
+  box-shadow: inset 0 0 0 var(--bw) var(--accent-outline);
 }
 
 .quiet-btn:active:not(:disabled) {

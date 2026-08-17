@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-  <title>Research PDF</title>
+  <title>PaperStack</title>
 </svelte:head>
 
 <ProjectWorkspace projectId={data.projectId} />

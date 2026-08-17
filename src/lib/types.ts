@@ -109,6 +109,24 @@ export type LibraryDocument = {
   lastViewedAt: number;
 };
 
+export type LibraryStatistics = {
+  projectCount: number;
+  paperCount: number;
+  referenceCount: number;
+};
+
+export type ProviderSettingStatus = {
+  hasOverride: boolean;
+  hasEnvironmentValue: boolean;
+  environmentVariable: string;
+};
+
+export type ProviderSettingsStatus = {
+  openalex: ProviderSettingStatus;
+  semanticScholar: ProviderSettingStatus;
+  crossref: ProviderSettingStatus;
+};
+
 export type BibtexPreview = {
   citationKey: string;
   entryType: string;

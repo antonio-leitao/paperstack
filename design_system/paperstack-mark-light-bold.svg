@@ -1,0 +1,83 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 1000 1000"
+  role="img"
+  aria-labelledby="title description"
+  shape-rendering="geometricPrecision"
+>
+  <title id="title">PaperStack light mark with bold linework</title>
+  <desc id="description">
+    Three stacks of paper at different heights, rendered in warm white shades
+    with confident black outlines and sparse paper-edge details.
+  </desc>
+
+  <style>
+    .front-face { fill: #e8e6e0; }
+    .right-face { fill: #f5f4f1; }
+    .top-sheet { fill: #ffffff; }
+    .curl-underside { fill: #efeee9; }
+    /* The sheet under the curled corner. Drawn as the whole flat top
+       face and then covered by .top-sheet, so the only part that shows
+       is the wedge the curl lifts away from. */
+    .sheet-below { fill: #e8e6e0; }
+    .structure {
+      fill: none;
+      stroke: #20201e;
+      stroke-width: 4.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .paper-detail {
+      fill: none;
+      stroke: #20201e;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+  </style>
+
+  <!-- Tall center stack, drawn first so the shorter stacks sit in front. -->
+  <g aria-label="Tall center paper stack">
+    <path class="front-face" d="M400 275 580 319 580 800 400 750Z" />
+    <path class="right-face" d="M580 319 718 250 718 731 580 800Z" />
+    <path class="sheet-below" d="M400 275 538 206 718 250 580 319Z" />
+    <path class="top-sheet" d="M400 275 545 192C601 204 661 211 718 183 690 234 635 283 580 319Z" />
+    <path class="curl-underside" d="M651 205C678 202 700 194 718 183 690 234 635 283 580 319 624 277 648 235 651 205Z" />
+
+    <path class="structure" d="M400 275 580 319 718 250M400 275 545 192C601 204 661 211 718 183M400 275V750L580 800 718 731V250M580 319V800" />
+    <path class="structure" d="M718 183C690 234 635 283 580 319M651 205C648 244 621 284 580 319M718 250 676 240" />
+
+    <path class="paper-detail" d="M425 381 484 396M641 376 692 351M442 522 497 536M622 493 674 468" />
+    <path class="paper-detail" d="M516 628 580 646 610 631" />
+  </g>
+
+  <!-- Medium left stack. -->
+  <g aria-label="Medium left paper stack">
+    <path class="front-face" d="M120 430 290 475 290 810 120 760Z" />
+    <path class="right-face" d="M290 475 420 410 420 750 290 810Z" />
+    <path class="sheet-below" d="M120 430 250 365 420 410 290 475Z" />
+    <path class="top-sheet" d="M120 430 260 355C310 370 365 377 420 350 393 401 341 445 290 475Z" />
+    <path class="curl-underside" d="M359 371C382 369 403 361 420 350 393 401 341 445 290 475 329 437 354 399 359 371Z" />
+
+    <path class="structure" d="M120 430 290 475 420 410M120 430 260 355C310 370 365 377 420 350M120 430V760L290 810 420 750V410M290 475V810" />
+    <path class="structure" d="M420 350C393 401 341 445 290 475M359 371C355 405 330 443 290 475M420 410 384 400" />
+
+    <path class="paper-detail" d="M143 551 201 566M333 548 384 523M177 663 231 677" />
+    <path class="paper-detail" d="M246 720 290 733 322 718" />
+  </g>
+
+  <!-- Short right stack. -->
+  <g aria-label="Short right paper stack">
+    <path class="front-face" d="M620 560 765 600 765 835 620 795Z" />
+    <path class="right-face" d="M765 600 880 545 880 785 765 835Z" />
+    <path class="sheet-below" d="M620 560 735 505 880 545 765 600Z" />
+    <path class="top-sheet" d="M620 560 740 500C785 513 834 515 880 490 855 537 812 574 765 600Z" />
+    <path class="curl-underside" d="M829 508C848 506 866 499 880 490 855 537 812 574 765 600 800 568 824 536 829 508Z" />
+
+    <path class="structure" d="M620 560 765 600 880 545M620 560 740 500C785 513 834 515 880 490M620 560V795L765 835 880 785V545M765 600V835" />
+    <path class="structure" d="M880 490C855 537 812 574 765 600M829 508C825 538 802 569 765 600M880 545 847 536" />
+
+    <path class="paper-detail" d="M645 688 698 702M808 675 851 654M654 758 703 772" />
+    <path class="paper-detail" d="M728 743 765 754 792 741" />
+  </g>
+</svg>

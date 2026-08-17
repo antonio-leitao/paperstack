@@ -10,7 +10,6 @@
   } from "@tauri-apps/api/webviewWindow";
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
-  import FolderKanban from "@lucide/svelte/icons/folder-kanban";
   import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
   import PanelLeftOpen from "@lucide/svelte/icons/panel-left-open";
   import { flushSync, onMount } from "svelte";
@@ -812,7 +811,6 @@
         <ArrowLeft size={16} strokeWidth={1.8} aria-hidden="true" />
       </a>
       <div class="project-identity" title={project?.name ?? "Project"}>
-        <FolderKanban size={17} strokeWidth={1.8} aria-hidden="true" />
         <strong>{project?.name ?? "Project"}</strong>
       </div>
       <span class="toolbar-spacer" aria-hidden="true"></span>
@@ -1038,8 +1036,8 @@
     position: relative;
     z-index: 80;
     display: grid;
-    height: 44px;
-    flex: 0 0 44px;
+    height: var(--project-toolbar-height);
+    flex: 0 0 var(--project-toolbar-height);
     grid-template-columns: max-content minmax(0, 1fr);
     border-bottom: var(--bw) solid var(--line-2);
     background: var(--paper);
@@ -1075,8 +1073,8 @@
 
   .toolbar-button {
     display: grid;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     flex: 0 0 auto;
     place-items: center;
     padding: 0;
@@ -1100,25 +1098,29 @@
   }
 
   .project-identity {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 6px;
-    margin-left: 2px;
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    left: 50%;
+    width: max-content;
+    max-width: min(52vw, 620px);
+    transform: translate(-50%, -50%);
     color: var(--ink);
-  }
-
-  .project-identity :global(svg) {
-    flex: 0 0 auto;
-    color: var(--accent);
+    pointer-events: none;
   }
 
   .project-identity strong {
+    display: block;
     overflow: hidden;
-    font-size: var(--fs-card);
+    font-size: 15px;
     font-weight: 600;
+    line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .project-toolbar:has(.toolbar-selection) .project-identity {
+    max-width: min(32vw, 360px);
   }
 
   .toolbar-spacer {
@@ -1142,7 +1144,7 @@
   }
 
   .toolbar-action {
-    height: 28px;
+    height: 30px;
     padding: 0 9px;
     border: var(--bw) solid var(--line-2);
     border-radius: 4px;

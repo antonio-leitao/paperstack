@@ -63,10 +63,10 @@
   }
 </script>
 
-<Modal {open} onopen={handleOpen} onclose={oncancel}>
-  <form onsubmit={submit}>
-    <h2>Link from BibTeX</h2>
-    <p>Link “{documentTitle}” to one BibTeX or BibLaTeX entry.</p>
+<Modal {open} ariaLabel="Link from BibTeX" size="wide" onopen={handleOpen} onclose={oncancel}>
+  <form class="dialog-form" onsubmit={submit}>
+    <h2 class="dialog-title">Link from BibTeX</h2>
+    <p class="dialog-copy">Link “{documentTitle}” to one BibTeX or BibLaTeX entry.</p>
 
     {#if preview}
       <section aria-label="Parsed reference">
@@ -100,7 +100,7 @@
       <p role="alert">{error}</p>
     {/if}
 
-    <div class="actions">
+    <div class="dialog-actions">
       <button class="paper-btn" type="button" onclick={oncancel} disabled={busy}>
         <X size={15} strokeWidth={1.8} aria-hidden="true" />
         <span>Cancel</span>
@@ -140,15 +140,6 @@
     gap: 8px;
   }
 
-  form {
-    width: min(680px, 75vw);
-  }
-
-  h2,
-  p {
-    margin: 0;
-  }
-
   textarea {
     box-sizing: border-box;
     width: 100%;
@@ -165,9 +156,4 @@
     overflow-wrap: anywhere;
   }
 
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 2px;
-  }
 </style>

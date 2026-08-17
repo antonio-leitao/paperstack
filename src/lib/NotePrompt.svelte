@@ -59,10 +59,10 @@
   }
 </script>
 
-<Modal {open} onopen={handleOpen} onclose={cancel}>
-  <form onsubmit={submit}>
-    <h2>{title}</h2>
-    <p>{documentTitle}</p>
+<Modal {open} ariaLabel={title} size="medium" onopen={handleOpen} onclose={cancel}>
+  <form class="dialog-form" onsubmit={submit}>
+    <h2 class="dialog-title">{title}</h2>
+    <p class="document-title">{documentTitle}</p>
     <label>
       Note
       <textarea bind:this={textarea} bind:value rows="8" disabled={saving}></textarea>
@@ -70,7 +70,7 @@
     {#if validationError}
       <div class="validation-error" role="alert">{validationError}</div>
     {/if}
-    <div class="actions">
+    <div class="dialog-actions">
       <button class="paper-btn" type="button" disabled={saving} onclick={cancel}>
         <X size={15} strokeWidth={1.8} aria-hidden="true" />
         <span>Cancel</span>
@@ -88,27 +88,16 @@
 </Modal>
 
 <style>
-  form {
-    display: grid;
-    width: min(520px, calc(100vw - 48px));
-    gap: 10px;
-  }
-
-  h2,
-  p {
+  .document-title {
     margin: 0;
-  }
-
-  p {
-    overflow: hidden;
     color: var(--ink-2);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
   }
 
   label {
     display: grid;
-    gap: 4px;
+    gap: 6px;
   }
 
   textarea {
@@ -120,9 +109,4 @@
     color: var(--danger);
   }
 
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 2px;
-  }
 </style>

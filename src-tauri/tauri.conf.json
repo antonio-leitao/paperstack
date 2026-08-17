@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Research PDF",
+  "productName": "PaperStack",
   "version": "0.1.0",
   "identifier": "com.antonio.researchpdf",
   "build": {
@@ -12,14 +12,14 @@
   "app": {
     "windows": [
       {
-        "title": "Research PDF",
+        "title": "PaperStack",
         "width": 1200,
         "height": 800,
         "minHeight": 520,
         "decorations": true,
         "hiddenTitle": true,
         "titleBarStyle": "Overlay",
-        "trafficLightPosition": { "x": 14, "y": 16 }
+        "trafficLightPosition": { "x": 14, "y": 20 }
       }
     ],
     "security": {

@@ -83,6 +83,14 @@ pub(crate) struct LibraryDocument {
     last_viewed_at: i64,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LibraryStatistics {
+    project_count: i64,
+    paper_count: i64,
+    reference_count: i64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BibtexPreview {
@@ -324,9 +332,9 @@ fn handoff_root(app: &AppHandle) -> Result<PathBuf, String> {
 fn create_handoff_directory(app: &AppHandle, paper_count: usize) -> Result<PathBuf, String> {
     let root = handoff_root(app)?;
     let label = if paper_count == 1 {
-        "Research PDF — 1 paper".to_owned()
+        "PaperStack — 1 paper".to_owned()
     } else {
-        format!("Research PDF — {paper_count} papers")
+        format!("PaperStack — {paper_count} papers")
     };
     for index in 1..=10_000 {
         let name = if index == 1 {
@@ -500,6 +508,29 @@ pub(crate) fn list_documents(app: AppHandle) -> Result<Vec<LibraryDocument>, Str
     ids.iter()
         .map(|id| load_document(&app, &connection, id))
         .collect()
+}
+
+#[tauri::command]
+pub(crate) fn library_statistics(app: AppHandle) -> Result<LibraryStatistics, String> {
+    let connection = database::connection(&app)?;
+    let project_count = connection
+        .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+        .map_err(|error| format!("Could not count projects: {error}"))?;
+    let paper_count = connection
+        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        .map_err(|error| format!("Could not count papers: {error}"))?;
+    let reference_count = connection
+        .query_row(
+            "SELECT COUNT(*) FROM \"references\" WHERE merged_into IS NULL",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not count references: {error}"))?;
+    Ok(LibraryStatistics {
+        project_count,
+        paper_count,
+        reference_count,
+    })
 }
 
 #[tauri::command]

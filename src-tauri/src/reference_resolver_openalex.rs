@@ -10,7 +10,7 @@ use tokio::{
 };
 
 const OPENALEX_API: &str = "https://api.openalex.org";
-const OPENALEX_USER_AGENT: &str = "ResearchPDFRender/0.1 (reference-resolution prototype)";
+const OPENALEX_USER_AGENT: &str = "PaperStack/0.1 (reference resolution)";
 const OPENALEX_RESULTS: &str = "5";
 const OPENALEX_DOI_BATCH_SIZE: usize = 100;
 const OPENALEX_MAX_CONCURRENCY: usize = 4;
@@ -73,7 +73,9 @@ pub(super) struct OpenAlexBiblio {
 }
 
 pub(super) fn is_configured() -> bool {
-    api_key().is_some()
+    crate::provider_settings::openalex_api_key_candidates()
+        .first()
+        .is_some_and(Option::is_some)
 }
 
 pub(super) async fn lookup_dois(
@@ -260,28 +262,27 @@ fn extract_arxiv_id(url: &str) -> Option<String> {
     (!id.is_empty()).then(|| id.to_owned())
 }
 
-fn openalex_request(mut request: RequestBuilder) -> RequestBuilder {
-    if let Some(api_key) = api_key() {
-        request = request.query(&[("api_key", api_key)]);
-    }
+fn openalex_request(request: RequestBuilder) -> RequestBuilder {
     request
         .timeout(OPENALEX_TIMEOUT)
         .header(USER_AGENT, OPENALEX_USER_AGENT)
 }
 
-fn api_key() -> Option<String> {
-    std::env::var("OPENALEX_API_KEY")
-        .ok()
-        .map(|key| key.trim().to_owned())
-        .filter(|key| !key.is_empty())
-}
-
 async fn send_with_retries(request: RequestBuilder) -> Result<Response, String> {
+    let credentials = crate::provider_settings::openalex_api_key_candidates();
+    let mut credential_index = 0;
     let mut last_error = None;
-    for attempt in 0..MAX_ATTEMPTS {
-        let request = request
+    let mut attempt = 0;
+    while attempt < MAX_ATTEMPTS {
+        let mut request = request
             .try_clone()
             .ok_or_else(|| "Could not clone OpenAlex request".to_owned())?;
+        if let Some(api_key) = credentials
+            .get(credential_index)
+            .and_then(|credential| credential.as_deref())
+        {
+            request = request.query(&[("api_key", api_key)]);
+        }
         let response = {
             let _permit = request_gate()
                 .acquire()
@@ -291,6 +292,15 @@ async fn send_with_retries(request: RequestBuilder) -> Result<Response, String> 
             request.send().await
         };
         match response {
+            Ok(response)
+                if matches!(
+                    response.status(),
+                    StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+                ) && credential_index + 1 < credentials.len() =>
+            {
+                credential_index += 1;
+                eprintln!("[resolver] provider=openalex authentication_failed=true fallback=true");
+            }
             Ok(response)
                 if response.status() == StatusCode::TOO_MANY_REQUESTS
                     || response.status().is_server_error() =>
@@ -305,15 +315,18 @@ async fn send_with_retries(request: RequestBuilder) -> Result<Response, String> 
                     );
                     extend_cooldown(cooldown).await;
                 }
-                if attempt + 1 < MAX_ATTEMPTS {
+                attempt += 1;
+                if attempt < MAX_ATTEMPTS {
                     tokio::time::sleep(delay).await;
                 }
             }
             Ok(response) => return Ok(response),
             Err(error) => {
                 last_error = Some(format!("Could not reach OpenAlex: {error}"));
-                if attempt + 1 < MAX_ATTEMPTS {
-                    tokio::time::sleep(Duration::from_secs(1 << attempt)).await;
+                let delay = Duration::from_secs(1 << attempt);
+                attempt += 1;
+                if attempt < MAX_ATTEMPTS {
+                    tokio::time::sleep(delay).await;
                 }
             }
         }

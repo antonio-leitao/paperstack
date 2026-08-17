@@ -35,14 +35,14 @@
   }
 </script>
 
-<Modal {open} onopen={handleOpen} onclose={oncancel}>
-  <form onsubmit={submit}>
-    <h2>{title}</h2>
+<Modal {open} ariaLabel={title} onopen={handleOpen} onclose={oncancel}>
+  <form class="dialog-form" onsubmit={submit}>
+    <h2 class="dialog-title">{title}</h2>
     <label>
       Name
       <input bind:this={input} bind:value required />
     </label>
-    <div class="actions">
+    <div class="dialog-actions">
       <button class="paper-btn" type="button" onclick={oncancel}>
         <X size={15} strokeWidth={1.8} aria-hidden="true" />
         <span>Cancel</span>
@@ -56,23 +56,13 @@
 </Modal>
 
 <style>
-  form {
-    display: grid;
-    gap: 10px;
-  }
-
-  h2 {
-    margin: 0;
-  }
-
   label {
     display: grid;
-    gap: 4px;
+    gap: 6px;
   }
 
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 2px;
+  input {
+    width: 100%;
+    padding: 7px 9px;
   }
 </style>

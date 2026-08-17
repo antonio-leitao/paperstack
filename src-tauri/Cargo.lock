@@ -2778,6 +2778,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "paperstack"
+version = "0.1.0"
+dependencies = [
+ "biblatex",
+ "futures",
+ "hayro",
+ "image",
+ "libc",
+ "regex",
+ "reqwest 0.12.28",
+ "roxmltree",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-opener",
+ "tauri-plugin-window-state",
+ "tokio",
+ "unicode-normalization",
+ "uuid",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4157,34 +4185,6 @@ dependencies = [
  "webview2-com",
  "window-vibrancy",
  "windows",
-]
-
-[[package]]
-name = "tauri-app"
-version = "0.1.0"
-dependencies = [
- "biblatex",
- "futures",
- "hayro",
- "image",
- "libc",
- "regex",
- "reqwest 0.12.28",
- "roxmltree",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-opener",
- "tauri-plugin-window-state",
- "tokio",
- "unicode-normalization",
- "uuid",
 ]
 
 [[package]]

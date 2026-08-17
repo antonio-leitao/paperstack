@@ -2,22 +2,38 @@
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
   import Pencil from "@lucide/svelte/icons/pencil";
+  import Settings from "@lucide/svelte/icons/settings";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import { onMount, tick } from "svelte";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
   import NamePrompt from "$lib/NamePrompt.svelte";
   import NewProjectPaperStackCard from "$lib/NewProjectPaperStackCard.svelte";
   import ProjectPaperStackCard from "$lib/ProjectPaperStackCard.svelte";
+  import SettingsDialog from "$lib/SettingsDialog.svelte";
   import { errorMessage } from "$lib/errorMessage";
-  import type { Project, ProjectStack } from "$lib/types";
+  import type { LibraryStatistics, Project, ProjectStack } from "$lib/types";
 
   let projects = $state<Project[]>([]);
+  let statistics = $state<LibraryStatistics | null>(null);
   let error = $state<string | null>(null);
   let desktop = isTauri();
   let projectNamePrompt = $state<
     { mode: "create" } | { mode: "rename"; project: Project } | null
   >(null);
   let projectToDelete = $state<Project | null>(null);
+  let settingsOpen = $state(false);
+
+  const diagnosticSummary = $derived(
+    statistics
+      ? [
+          formatCount(statistics.projectCount, "project"),
+          formatCount(statistics.paperCount, "paper"),
+          formatCount(statistics.referenceCount, "reference"),
+        ].join(" · ")
+      : desktop
+        ? "Loading library summary…"
+        : "Desktop research library",
+  );
 
   type ProjectContextMenu = {
     project: Project;
@@ -36,11 +52,20 @@
 
   async function refreshProjects() {
     try {
-      projects = await invoke<Project[]>("list_projects");
+      const [loadedProjects, loadedStatistics] = await Promise.all([
+        invoke<Project[]>("list_projects"),
+        invoke<LibraryStatistics>("library_statistics"),
+      ]);
+      projects = loadedProjects;
+      statistics = loadedStatistics;
       error = null;
     } catch (caught) {
       error = errorMessage(caught);
     }
+  }
+
+  function formatCount(count: number, singular: string) {
+    return `${new Intl.NumberFormat().format(count)} ${singular}${count === 1 ? "" : "s"}`;
   }
 
   async function createProject(name: string) {
@@ -74,6 +99,9 @@
     try {
       await invoke("delete_project", { id: project.id });
       projects = projects.filter((item) => item.id !== project.id);
+      if (statistics) {
+        statistics = { ...statistics, projectCount: Math.max(0, statistics.projectCount - 1) };
+      }
       error = null;
     } catch (caught) {
       error = errorMessage(caught);
@@ -172,12 +200,25 @@
 />
 
 <svelte:head>
-  <title>Projects - Research PDF</title>
+  <title>PaperStack</title>
 </svelte:head>
 
 <main>
   <header>
-    <h1>Projects</h1>
+    <button
+      class="quiet-btn quiet-btn--icon settings-button"
+      type="button"
+      aria-label="Open settings"
+      title="Settings"
+      disabled={!desktop}
+      onclick={() => (settingsOpen = true)}
+    >
+      <Settings size={17} strokeWidth={1.7} aria-hidden="true" />
+    </button>
+    <div class="brand-heading">
+      <h1>PaperStack</h1>
+      <p class="diagnostics">{diagnosticSummary}</p>
+    </div>
   </header>
 
   {#if error}
@@ -229,6 +270,7 @@
     onconfirm={confirmDeleteProject}
     oncancel={() => (projectToDelete = null)}
   />
+  <SettingsDialog open={settingsOpen} onclose={() => (settingsOpen = false)} />
 </main>
 
 {#if contextMenu}
@@ -285,8 +327,8 @@
 
   header {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-start;
+    gap: 5px;
   }
 
   h1,
@@ -295,8 +337,23 @@
   }
 
   h1 {
-    margin-right: auto;
     font-size: var(--fs-title);
+    line-height: 1.15;
+  }
+
+  .brand-heading {
+    display: grid;
+    gap: 4px;
+  }
+
+  .settings-button {
+    margin-top: -4px;
+    margin-left: -7px;
+  }
+
+  .diagnostics {
+    color: var(--ink-3);
+    font-size: var(--fs-body);
   }
 
   .project-grid {

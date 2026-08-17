@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import FolderMinus from "@lucide/svelte/icons/folder-minus";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import Pencil from "@lucide/svelte/icons/pencil";
@@ -1063,7 +1065,7 @@
                   disabled={!canMoveStack(stack.id, -1)}
                   onclick={() => moveStack(stack.id, -1)}
                 >
-                  ←
+                  <ChevronLeft size={15} strokeWidth={1.7} aria-hidden="true" />
                 </button>
                 <button
                   class="stack__move"
@@ -1073,7 +1075,7 @@
                   disabled={!canMoveStack(stack.id, 1)}
                   onclick={() => moveStack(stack.id, 1)}
                 >
-                  →
+                  <ChevronRight size={15} strokeWidth={1.7} aria-hidden="true" />
                 </button>
               </div>
               <button
@@ -1515,11 +1517,6 @@
     border-radius: var(--radius-chip);
     background: transparent;
     color: var(--ink-3);
-    font: 700 18px/1 var(--font-sans);
-  }
-
-  .stack__move {
-    font-size: 15px;
   }
 
   .stack__menu {

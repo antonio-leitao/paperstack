@@ -1,5 +1,6 @@
 mod database;
 mod document_library;
+mod provider_settings;
 mod reference_resolver;
 mod thumbnail;
 
@@ -997,12 +998,6 @@ fn normalize_arxiv(value: String) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     load_local_env();
-    eprintln!(
-        "[resolver] crossref_polite_pool={} openalex_key_present={} semantic_scholar_key_present={}",
-        reference_resolver::crossref_polite_pool_configured(),
-        reference_resolver::openalex_api_key_configured(),
-        reference_resolver::semantic_scholar_api_key_configured(),
-    );
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1013,6 +1008,13 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AnalysisManager::new())
         .setup(|app| {
+            provider_settings::initialize(app.handle()).map_err(std::io::Error::other)?;
+            eprintln!(
+                "[resolver] crossref_polite_pool={} openalex_key_present={} semantic_scholar_key_present={}",
+                reference_resolver::crossref_polite_pool_configured(),
+                reference_resolver::openalex_api_key_configured(),
+                reference_resolver::semantic_scholar_api_key_configured(),
+            );
             // Resume any analysis left unfinished by a previous run, in the
             // background so startup isn't blocked.
             let handle = app.handle().clone();
@@ -1034,9 +1036,12 @@ pub fn run() {
             analysis_states,
             analysis_state,
             get_analysis,
+            provider_settings::get_provider_settings,
+            provider_settings::save_provider_settings,
             document_library::import_document,
             document_library::prepare_documents_for_folder,
             document_library::list_documents,
+            document_library::library_statistics,
             document_library::get_document,
             document_library::open_document,
             document_library::rename_document,

@@ -1,6 +1,6 @@
-# Research PDF prototype
+# PaperStack
 
-A functional Tauri prototype for opening scholarly PDFs, extracting their bibliography and in-text citation coordinates with GROBID, and showing reference cards over citation callouts.
+A desktop research workspace for organizing scholarly PDFs into projects and stacks, reading and annotating papers, extracting bibliographies and in-text citation coordinates with GROBID, and resolving references through scholarly metadata providers.
 
 ## Run
 
@@ -27,7 +27,7 @@ npm run tauri dev
 
 ## Provider configuration
 
-OpenAlex and Semantic Scholar can be used anonymously, but keys provide more predictable quotas and avoid shared anonymous throttling. Get a free OpenAlex key from [OpenAlex settings](https://openalex.org/settings/api) and request a Semantic Scholar key from the [Semantic Scholar API page](https://www.semanticscholar.org/product/api). Optional keys can go in a project-root `.env` file (see `.env.example`) or in the environment that launches the app:
+OpenAlex and Semantic Scholar can be used anonymously, but keys provide more predictable quotas and avoid shared anonymous throttling. Get a free OpenAlex key from [OpenAlex settings](https://openalex.org/settings/api) and request a Semantic Scholar key from the [Semantic Scholar API page](https://www.semanticscholar.org/product/api). Optional keys can be entered in PaperStack's Settings dialog, placed in a project-root `.env` file (see `.env.example`), or provided by the environment that launches the app:
 
 ```sh
 OPENALEX_API_KEY=your_openalex_key
@@ -35,7 +35,7 @@ SEMANTIC_SCHOLAR_API_KEY=your_semantic_scholar_key
 CROSSREF_MAILTO=you@example.com
 ```
 
-Use one `NAME=value` entry per line with no spaces around `=`. Quotes are optional for these values, so both `CROSSREF_MAILTO=you@example.com` and `CROSSREF_MAILTO="you@example.com"` work. Enter the address itself, without `mailto:` or angle brackets, and restart the app after changing `.env`. Real environment variables take precedence over `.env`, and the `.env` file is ignored by Git. When `OPENALEX_API_KEY` or `SEMANTIC_SCHOLAR_API_KEY` is absent, the provider is still queried without authentication. Crossref and arXiv also work without keys. When `CROSSREF_MAILTO` is set, its value is added as `mailto` to every Crossref request, activating Crossref's polite pool; the startup log should say `crossref_polite_pool=true` without exposing the email.
+Use one `NAME=value` entry per line with no spaces around `=`. Quotes are optional for these values, so both `CROSSREF_MAILTO=you@example.com` and `CROSSREF_MAILTO="you@example.com"` work. Enter the address itself, without `mailto:` or angle brackets, and restart the app after changing `.env`. Real environment variables take precedence over `.env`, and the `.env` file is ignored by Git. A value saved in Settings is tried first; if a saved API key is rejected, PaperStack retries with the environment value and then uses the provider's anonymous tier when available. Environment values are detected but never revealed in the Settings dialog. When `CROSSREF_MAILTO` is set, its value is added as `mailto` to every Crossref request, activating Crossref's polite pool.
 
 Opening a PDF immediately renders it. The app checks `http://127.0.0.1:8070` first and uses it without contacting a hosted GROBID when healthy. Otherwise it wakes and waits up to three minutes for the official full GROBID Space at `https://grobidorg-grobid-full.hf.space` or its official `full2` mirror. In that fallback case, the PDF is uploaded to the public hosted service.
 
@@ -55,7 +55,7 @@ Semantic Scholar is the final resolver. All references complete the Crossref, Op
 
 Fresh PDF cache hits return their stored extraction and resolution state immediately without retrying unresolved references. A new extraction, a resolver-version change, or the explicit Analyze again action emits the bibliography as soon as extraction is available, then emits updates as individual references finish resolution. References currently resolving remain visible for citation hover but external actions are disabled until their attempt completes.
 
-## Prototype limits
+## Limitations
 
 - Hosted GROBID availability and quotas are controlled by Hugging Face. Running the local container avoids both limits and external PDF upload.
 - Citation overlays currently assume unrotated pages.

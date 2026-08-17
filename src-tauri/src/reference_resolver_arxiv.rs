@@ -10,7 +10,7 @@ use tokio::{
 };
 
 const ARXIV_API: &str = "https://export.arxiv.org/api/query";
-const ARXIV_USER_AGENT: &str = "ResearchPDFRender/0.1 (reference-resolution prototype)";
+const ARXIV_USER_AGENT: &str = "PaperStack/0.1 (reference resolution)";
 const ARXIV_RESULTS: &str = "5";
 const ARXIV_DELAY: Duration = Duration::from_secs(3);
 const ARXIV_ID_BATCH_SIZE: usize = 100;
