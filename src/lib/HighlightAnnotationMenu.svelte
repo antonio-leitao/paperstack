@@ -13,7 +13,7 @@
 
   const action = $derived(menuWrapperProps.action);
   const isAppHighlight = $derived(
-    context.annotation.object.custom?.researchPdf?.documentId === libraryDocumentId,
+    context.annotation.object.custom?.paperstack?.documentId === libraryDocumentId,
   );
 
   function remove(event: MouseEvent) {

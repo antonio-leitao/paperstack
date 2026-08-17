@@ -261,7 +261,7 @@ async fn wait_for_cooldown() {
 async fn extend_cooldown(delay: Duration) {
     let candidate = Instant::now() + delay;
     let mut until = cooldown_gate().lock().await;
-    if until.map_or(true, |current| candidate > current) {
+    if until.is_none_or(|current| candidate > current) {
         *until = Some(candidate);
     }
 }

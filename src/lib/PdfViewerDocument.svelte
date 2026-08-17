@@ -186,17 +186,17 @@
   }
 
   function hydrateHighlight(annotation: StoredHighlightAnnotation): PdfHighlightAnnoObject {
-    const researchPdf = annotation.custom?.researchPdf ?? {};
+    const paperstack = annotation.custom?.paperstack ?? {};
     return {
       ...annotation,
       created: normalizeDate(annotation.created),
       modified: normalizeDate(annotation.modified),
       custom: {
         ...annotation.custom,
-        researchPdf: {
-          ...researchPdf,
-          version: researchPdf.version ?? 1,
-          documentId: researchPdf.documentId ?? libraryDocumentId,
+        paperstack: {
+          ...paperstack,
+          version: paperstack.version ?? 1,
+          documentId: paperstack.documentId ?? libraryDocumentId,
         },
       },
     } as PdfHighlightAnnoObject;
@@ -323,7 +323,7 @@
       created: now,
       modified: now,
       custom: {
-        researchPdf: {
+        paperstack: {
           version: 1,
           documentId: libraryDocumentId,
           selectedText: selectedText ?? undefined,
@@ -363,7 +363,7 @@
   async function deleteHighlight(annotationId: string, pageIndex: number) {
     const annotationScope = annotationCapability.provides?.forDocument(documentId);
     const annotation = annotationScope?.getAnnotationById(annotationId)?.object;
-    if (annotation?.custom?.researchPdf?.documentId !== libraryDocumentId) return;
+    if (annotation?.custom?.paperstack?.documentId !== libraryDocumentId) return;
 
     try {
       await invoke("delete_document_annotation", {

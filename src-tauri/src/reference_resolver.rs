@@ -212,9 +212,15 @@ struct PendingSemanticResolution {
     provider_errors: Vec<String>,
 }
 
+// `Pending` is boxed because this enum is buffered eight at a time by
+// `buffer_unordered` and collected into a Vec; without it the common `Complete`
+// case would carry the larger variant's footprint too. `Complete` itself stays
+// unboxed on purpose — it is the majority path and is destructured straight
+// away, so boxing it would buy stack bytes at the cost of an allocation each.
+#[allow(clippy::large_enum_variant)]
 enum PrimaryResolution {
     Complete(ReferenceResolution),
-    Pending(PendingSemanticResolution),
+    Pending(Box<PendingSemanticResolution>),
 }
 
 pub fn document_digest(bytes: &[u8]) -> String {
@@ -332,7 +338,7 @@ where
                             members,
                             resolve_semantic_reference(
                                 client,
-                                pending,
+                                *pending,
                                 &semantic_works,
                                 semantic_batch_error.as_deref(),
                                 &lookups,
@@ -585,11 +591,11 @@ async fn resolve_primary_reference(
         }
     }
 
-    PrimaryResolution::Pending(PendingSemanticResolution {
+    PrimaryResolution::Pending(Box::new(PendingSemanticResolution {
         input,
         fallback,
         provider_errors,
-    })
+    }))
 }
 
 async fn resolve_semantic_reference(
@@ -1153,7 +1159,7 @@ impl CrossrefGate {
     async fn extend_cooldown(&self, delay: Duration) {
         let candidate = Instant::now() + delay;
         let mut until = self.cooldown_until.lock().await;
-        if until.map_or(true, |current| candidate > current) {
+        if until.is_none_or(|current| candidate > current) {
             *until = Some(candidate);
         }
     }

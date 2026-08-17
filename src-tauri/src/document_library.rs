@@ -277,7 +277,7 @@ pub(crate) fn prepare_documents_for_folder(
 
     for document in documents {
         let filename = unique_handoff_filename(&document, &mut used_names);
-        let source = document_path(&app, &document.id)?;
+        let source = document_file(&app, &document.id)?;
         let destination = directory.join(filename);
         if let Err(error) = copy_for_handoff(&source, &destination) {
             let _ = std::fs::remove_dir_all(&directory);
@@ -498,15 +498,19 @@ fn clone_for_handoff(source: &Path, destination: &Path) -> io::Result<()> {
 pub(crate) fn list_documents(app: AppHandle) -> Result<Vec<LibraryDocument>, String> {
     let connection = database::connection(&app)?;
     let mut statement = connection
-        .prepare("SELECT id FROM documents ORDER BY last_viewed_at DESC, id")
+        .prepare(&format!(
+            "{DOCUMENT_SELECT} ORDER BY d.last_viewed_at DESC, d.id"
+        ))
         .map_err(|error| format!("Could not prepare the document list: {error}"))?;
-    let ids = statement
-        .query_map([], |row| row.get::<_, String>(0))
+    let rows = statement
+        .query_map([], document_row)
         .map_err(|error| format!("Could not list documents: {error}"))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("Could not read the document list: {error}"))?;
-    ids.iter()
-        .map(|id| load_document(&app, &connection, id))
+    let documents_directory = documents_directory(&app)?;
+    let thumbnails_directory = crate::thumbnail::thumbnails_directory(&app)?;
+    rows.into_iter()
+        .map(|row| document_from_row(row, &documents_directory, &thumbnails_directory))
         .collect()
 }
 
@@ -617,7 +621,7 @@ fn save_document_note_in_connection(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| format!("Could not start saving the note: {error}"))?;
-    require_document(&transaction, &document_id)?;
+    require_document(&transaction, document_id)?;
 
     let now = database::unix_timestamp();
     let created_at = transaction
@@ -691,7 +695,7 @@ pub(crate) fn delete_document(
     id: String,
 ) -> Result<(), String> {
     let mut connection = database::connection(&app)?;
-    let stored_path = document_path(&app, &id)?;
+    let stored_path = document_file(&app, &id)?;
     let content_hash: Option<String> = connection
         .query_row(
             "SELECT content_hash FROM documents WHERE id = ?1",
@@ -731,7 +735,7 @@ pub(crate) fn delete_document(
     emit_library_changed(&app, "document", Some(&id), "deleted");
     // Best-effort thumbnail cleanup; an orphan is harmless if this fails.
     if let Some(content_hash) = content_hash {
-        if let Ok(thumbnail) = crate::thumbnail::thumbnail_path(&app, &content_hash) {
+        if let Ok(thumbnail) = crate::thumbnail::thumbnail_file(&app, &content_hash) {
             let _ = std::fs::remove_file(thumbnail);
         }
     }
@@ -1005,6 +1009,9 @@ pub(crate) fn list_project_documents(
     load_project_documents(&app, &connection, &project_id)
 }
 
+// Every document in a project, with its stack, pile, note and linked reference,
+// in one query. Columns 0..=12 are exactly `DOCUMENT_SELECT`'s, so `document_row`
+// reads them unchanged; the project-specific columns follow.
 fn load_project_documents(
     app: &AppHandle,
     connection: &Connection,
@@ -1013,23 +1020,61 @@ fn load_project_documents(
     let mut statement = connection
         .prepare(
             r#"
-            SELECT pd.document_id
+            SELECT d.id, d.content_hash, d.original_filename, d.title, d.byte_size,
+                   l.reference_id, r.data_json, d.created_at, d.updated_at, d.last_viewed_at,
+                   n.text, n.created_at, n.updated_at,
+                   ps.id, ps.project_id, ps.name, ps.position, ps.created_at, ps.updated_at,
+                   pd.pile_id, pd.position, pd.added_at, pd.updated_at, pp.name
             FROM project_documents pd
             JOIN project_stacks ps ON ps.project_id = pd.project_id AND ps.id = pd.stack_id
             JOIN documents d ON d.id = pd.document_id
+            LEFT JOIN document_notes n ON n.document_id = d.id
+            LEFT JOIN document_reference_links l ON l.document_id = d.id
+            LEFT JOIN "references" r ON r.id = l.reference_id
+            LEFT JOIN project_piles pp
+                ON pp.project_id = pd.project_id AND pp.pile_id = pd.pile_id
             WHERE pd.project_id = ?1
             ORDER BY ps.position, ps.name_key, pd.position, d.title, d.id
             "#,
         )
         .map_err(|error| format!("Could not prepare project documents: {error}"))?;
-    let document_ids = statement
-        .query_map(params![project_id], |row| row.get::<_, String>(0))
+    let rows = statement
+        .query_map(params![project_id], |row| {
+            Ok((
+                document_row(row)?,
+                ProjectStack {
+                    id: row.get(13)?,
+                    project_id: row.get(14)?,
+                    name: row.get(15)?,
+                    position: row.get(16)?,
+                    created_at: row.get(17)?,
+                    updated_at: row.get(18)?,
+                },
+                row.get::<_, Option<String>>(19)?,
+                row.get::<_, i64>(20)?,
+                row.get::<_, i64>(21)?,
+                row.get::<_, i64>(22)?,
+                row.get::<_, Option<String>>(23)?,
+            ))
+        })
         .map_err(|error| format!("Could not list project documents: {error}"))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("Could not read project documents: {error}"))?;
-    document_ids
-        .iter()
-        .map(|document_id| load_project_document(app, connection, project_id, document_id))
+    let documents_directory = documents_directory(app)?;
+    let thumbnails_directory = crate::thumbnail::thumbnails_directory(app)?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(ProjectDocument {
+                project_id: project_id.to_owned(),
+                document: document_from_row(row.0, &documents_directory, &thumbnails_directory)?,
+                stack: row.1,
+                pile_id: row.2,
+                position: row.3,
+                added_at: row.4,
+                updated_at: row.5,
+                pile_name: row.6,
+            })
+        })
         .collect()
 }
 
@@ -2058,60 +2103,75 @@ pub(crate) fn delete_document_annotation(
     Ok(())
 }
 
-fn load_document(
-    app: &AppHandle,
-    connection: &Connection,
-    id: &str,
+// One document row joined with its note and any linked reference. Shared by the
+// single-document load and the library listing so both stay in step.
+const DOCUMENT_SELECT: &str = r#"
+    SELECT d.id, d.content_hash, d.original_filename, d.title, d.byte_size,
+           l.reference_id, r.data_json, d.created_at, d.updated_at, d.last_viewed_at,
+           n.text, n.created_at, n.updated_at
+    FROM documents d
+    LEFT JOIN document_notes n ON n.document_id = d.id
+    LEFT JOIN document_reference_links l ON l.document_id = d.id
+    LEFT JOIN "references" r ON r.id = l.reference_id
+"#;
+
+type DocumentRow = (
+    String,
+    String,
+    String,
+    String,
+    i64,
+    Option<String>,
+    Option<String>,
+    i64,
+    i64,
+    i64,
+    Option<String>,
+    Option<i64>,
+    Option<i64>,
+);
+
+fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentRow> {
+    Ok((
+        row.get::<_, String>(0)?,
+        row.get::<_, String>(1)?,
+        row.get::<_, String>(2)?,
+        row.get::<_, String>(3)?,
+        row.get::<_, i64>(4)?,
+        row.get::<_, Option<String>>(5)?,
+        row.get::<_, Option<String>>(6)?,
+        row.get::<_, i64>(7)?,
+        row.get::<_, i64>(8)?,
+        row.get::<_, i64>(9)?,
+        row.get::<_, Option<String>>(10)?,
+        row.get::<_, Option<i64>>(11)?,
+        row.get::<_, Option<i64>>(12)?,
+    ))
+}
+
+// Builds the API shape from a row. Both directories are resolved by the caller
+// so a listing pays that cost once rather than per document.
+fn document_from_row(
+    row: DocumentRow,
+    documents_directory: &Path,
+    thumbnails_directory: &Path,
 ) -> Result<LibraryDocument, String> {
-    let row = connection
-        .query_row(
-            r#"
-            SELECT d.content_hash, d.original_filename, d.title, d.byte_size,
-                   l.reference_id, r.data_json, d.created_at, d.updated_at, d.last_viewed_at,
-                   n.text, n.created_at, n.updated_at
-            FROM documents d
-            LEFT JOIN document_notes n ON n.document_id = d.id
-            LEFT JOIN document_reference_links l ON l.document_id = d.id
-            LEFT JOIN "references" r ON r.id = l.reference_id
-            WHERE d.id = ?1
-            "#,
-            params![id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                    row.get::<_, i64>(6)?,
-                    row.get::<_, i64>(7)?,
-                    row.get::<_, i64>(8)?,
-                    row.get::<_, Option<String>>(9)?,
-                    row.get::<_, Option<i64>>(10)?,
-                    row.get::<_, Option<i64>>(11)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|error| format!("Could not load the document: {error}"))?
-        .ok_or_else(|| "Document not found".to_owned())?;
     let linked_reference = row
-        .5
+        .6
         .as_deref()
         .map(serde_json::from_str::<LinkedReferenceData>)
         .transpose()
         .map_err(|error| format!("Could not read linked reference metadata: {error}"))?;
-    let thumbnail_path = crate::thumbnail::thumbnail_path(app, &row.0)
-        .ok()
-        .filter(|path| path.exists())
-        .map(|path| path.to_string_lossy().into_owned());
+    let thumbnail = crate::thumbnail::thumbnail_file_in(thumbnails_directory, &row.1);
+    let thumbnail_path = thumbnail
+        .exists()
+        .then(|| thumbnail.to_string_lossy().into_owned());
     let reference_bibtex = linked_reference.as_ref().and_then(|reference| {
         (!reference.bibtex.trim().is_empty()).then(|| reference.bibtex.clone())
     });
-    let note = match (row.9, row.10, row.11) {
+    let note = match (row.10, row.11, row.12) {
         (Some(text), Some(created_at), Some(updated_at)) => Some(DocumentNote {
-            document_id: id.to_owned(),
+            document_id: row.0.clone(),
             text,
             created_at,
             updated_at,
@@ -2119,15 +2179,17 @@ fn load_document(
         _ => None,
     };
     Ok(LibraryDocument {
-        id: id.to_owned(),
-        content_hash: row.0,
-        original_filename: row.1,
-        title: row.2,
-        byte_size: row.3.max(0) as u64,
-        stored_path: document_path(app, id)?.to_string_lossy().into_owned(),
+        stored_path: document_file_in(documents_directory, &row.0)
+            .to_string_lossy()
+            .into_owned(),
+        id: row.0,
+        content_hash: row.1,
+        original_filename: row.2,
+        title: row.3,
+        byte_size: row.4.max(0) as u64,
         thumbnail_path,
         note,
-        reference_id: row.4,
+        reference_id: row.5,
         reference_bibtex,
         reference_title: linked_reference
             .as_ref()
@@ -2138,10 +2200,31 @@ fn load_document(
         reference_authors: linked_reference
             .map(|reference| reference.authors)
             .unwrap_or_default(),
-        created_at: row.6,
-        updated_at: row.7,
-        last_viewed_at: row.8,
+        created_at: row.7,
+        updated_at: row.8,
+        last_viewed_at: row.9,
     })
+}
+
+fn load_document(
+    app: &AppHandle,
+    connection: &Connection,
+    id: &str,
+) -> Result<LibraryDocument, String> {
+    let row = connection
+        .query_row(
+            &format!("{DOCUMENT_SELECT} WHERE d.id = ?1"),
+            params![id],
+            document_row,
+        )
+        .optional()
+        .map_err(|error| format!("Could not load the document: {error}"))?
+        .ok_or_else(|| "Document not found".to_owned())?;
+    document_from_row(
+        row,
+        &documents_directory(app)?,
+        &crate::thumbnail::thumbnails_directory(app)?,
+    )
 }
 
 fn load_project(connection: &Connection, id: &str) -> Result<Project, String> {
@@ -2576,6 +2659,24 @@ fn integer_field(value: &Value, field: &str) -> Result<i64, String> {
         .ok_or_else(|| format!("Annotation is missing numeric {field}"))
 }
 
+// Resolves the document library directory without touching the filesystem.
+pub(crate) fn documents_directory(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(database::app_data_directory_path(app)?.join("documents"))
+}
+
+// Names a stored PDF inside an already-resolved directory, so a bulk load can
+// resolve the directory once instead of once per row.
+fn document_file_in(directory: &Path, id: &str) -> PathBuf {
+    directory.join(format!("{id}.pdf"))
+}
+
+// Where a document's PDF lives, without touching the filesystem. Reading does
+// not need the directory to exist.
+pub(crate) fn document_file(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+    Ok(document_file_in(&documents_directory(app)?, id))
+}
+
+// Same, but creates the library directory. Use this only before writing a PDF.
 pub(crate) fn document_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     let directory = database::app_data_directory(app)?.join("documents");
     std::fs::create_dir_all(&directory)
@@ -2633,7 +2734,7 @@ mod tests {
     #[test]
     fn handoff_files_are_independent_from_library_files() {
         let directory =
-            std::env::temp_dir().join(format!("research-pdf-handoff-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("paperstack-handoff-test-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let source = directory.join("source.pdf");
         let destination = directory.join("destination.pdf");
@@ -2665,7 +2766,7 @@ mod tests {
     #[test]
     fn document_note_crud_rejects_empty_content_and_preserves_created_at() {
         let directory =
-            std::env::temp_dir().join(format!("research-pdf-note-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("paperstack-note-test-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("notes.sqlite3");
         let mut connection = database::open_connection(&path).unwrap();

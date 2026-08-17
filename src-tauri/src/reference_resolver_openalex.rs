@@ -243,10 +243,9 @@ fn extract_arxiv_id(url: &str) -> Option<String> {
     let lower = url.to_ascii_lowercase();
     let marker = if let Some(position) = lower.find("arxiv.org/abs/") {
         (position, "arxiv.org/abs/")
-    } else if let Some(position) = lower.find("arxiv.org/pdf/") {
-        (position, "arxiv.org/pdf/")
     } else {
-        return None;
+        let position = lower.find("arxiv.org/pdf/")?;
+        (position, "arxiv.org/pdf/")
     };
     let start = marker.0 + marker.1.len();
     let mut id = url
@@ -360,7 +359,7 @@ async fn wait_for_cooldown() {
 async fn extend_cooldown(delay: Duration) {
     let candidate = Instant::now() + delay;
     let mut until = cooldown_gate().lock().await;
-    if until.map_or(true, |current| candidate > current) {
+    if until.is_none_or(|current| candidate > current) {
         *until = Some(candidate);
     }
 }

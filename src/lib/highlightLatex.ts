@@ -28,7 +28,7 @@ function annotationText(annotation: DocumentAnnotation): string {
   return (
     annotation.selectedText ??
     annotation.annotation.contents ??
-    annotation.annotation.custom?.researchPdf?.selectedText ??
+    annotation.annotation.custom?.paperstack?.selectedText ??
     ""
   ).trim();
 }

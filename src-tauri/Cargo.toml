@@ -15,6 +15,14 @@ edition = "2021"
 name = "paperstack_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# `panic` is deliberately left at "unwind": thumbnail.rs isolates a hayro panic
+# on a malformed PDF with `catch_unwind`, and "abort" would turn one bad file
+# into a crashed app.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

@@ -165,3 +165,12 @@ export type DocumentAnnotation = {
   createdAt: number;
   updatedAt: number;
 };
+
+// Broadcast by the backend after a committed library mutation, so every window
+// (the organizer and any open viewers) can reconcile from the database.
+// `action` is "opened" for a last-viewed bump, which needs no full reload.
+export type LibraryChangedEvent = {
+  kind: string;
+  documentId: string | null;
+  action: string;
+};

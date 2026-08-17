@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::{
     io::Cursor,
     panic::{catch_unwind, AssertUnwindSafe},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use tauri::{AppHandle, Emitter};
 
@@ -25,6 +25,24 @@ struct ThumbnailReady {
 // $APPDATA/thumbnails/<content-hash>.<version>.jpg — keyed by PDF content so it
 // dedupes and survives re-import, and version-tagged so a format change is a
 // clean regeneration.
+// Resolves the thumbnail directory without touching the filesystem.
+pub(crate) fn thumbnails_directory(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(database::app_data_directory_path(app)?.join("thumbnails"))
+}
+
+// Names a thumbnail inside an already-resolved directory, so a bulk load can
+// resolve the directory once instead of once per row.
+pub(crate) fn thumbnail_file_in(directory: &Path, content_hash: &str) -> PathBuf {
+    directory.join(format!("{content_hash}.{THUMBNAIL_VERSION}.jpg"))
+}
+
+// Where a thumbnail lives, without touching the filesystem. Reading does not
+// need the directory to exist.
+pub(crate) fn thumbnail_file(app: &AppHandle, content_hash: &str) -> Result<PathBuf, String> {
+    Ok(thumbnail_file_in(&thumbnails_directory(app)?, content_hash))
+}
+
+// Same, but creates the thumbnail directory. Use this only before writing one.
 pub(crate) fn thumbnail_path(app: &AppHandle, content_hash: &str) -> Result<PathBuf, String> {
     let directory = database::app_data_directory(app)?.join("thumbnails");
     std::fs::create_dir_all(&directory)
@@ -131,13 +149,13 @@ pub(crate) fn recover_missing_thumbnails(app: AppHandle) {
         Err(_) => return,
     };
     for (document_id, content_hash) in documents {
-        let Ok(path) = thumbnail_path(&app, &content_hash) else {
+        let Ok(path) = thumbnail_file(&app, &content_hash) else {
             continue;
         };
         if path.exists() {
             continue;
         }
-        let Ok(pdf_path) = document_library::document_path(&app, &document_id) else {
+        let Ok(pdf_path) = document_library::document_file(&app, &document_id) else {
             continue;
         };
         let Ok(bytes) = std::fs::read(&pdf_path) else {

@@ -333,22 +333,56 @@ fn publish_done(
     let _ = app.emit("analysis-status", AnalysisState::new(document_id, "done"));
 }
 
-fn emit_analysis_progress(
-    app: &tauri::AppHandle,
-    document_id: &str,
-    analysis: &AnalysisResult,
-    resolving_reference_ids: &HashSet<String>,
-) {
-    let mut resolving_reference_ids = resolving_reference_ids.iter().cloned().collect::<Vec<_>>();
-    resolving_reference_ids.sort();
-    let _ = app.emit(
-        "analysis-progress",
-        AnalysisProgressEvent {
-            document_id: document_id.to_owned(),
-            analysis: analysis.clone(),
-            resolving_reference_ids,
-        },
-    );
+// Streams the in-progress analysis to the viewer showing this document.
+//
+// Each frame carries the whole `AnalysisResult`, so emitting one per resolved
+// reference makes an n-reference paper cost O(n^2) in cloning and JSON. Frames
+// are therefore coalesced behind a short interval — an intermediate frame is a
+// snapshot, so dropping one loses nothing as long as the last one always goes
+// out, which `force` guarantees for the first and final frames.
+struct ProgressEmitter {
+    last_emit: Option<Instant>,
+}
+
+const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(250);
+
+impl ProgressEmitter {
+    fn new() -> Self {
+        Self { last_emit: None }
+    }
+
+    fn emit(
+        &mut self,
+        app: &tauri::AppHandle,
+        document_id: &str,
+        analysis: &AnalysisResult,
+        resolving_reference_ids: &HashSet<String>,
+        force: bool,
+    ) {
+        let now = Instant::now();
+        if !force
+            && self
+                .last_emit
+                .is_some_and(|last| now.duration_since(last) < PROGRESS_EMIT_INTERVAL)
+        {
+            return;
+        }
+        self.last_emit = Some(now);
+        let mut resolving_reference_ids =
+            resolving_reference_ids.iter().cloned().collect::<Vec<_>>();
+        resolving_reference_ids.sort();
+        // Only the viewer for this document renders the stream. Addressing it by
+        // label keeps every other window from deserializing a payload it drops.
+        let _ = app.emit_to(
+            format!("viewer:{document_id}"),
+            "analysis-progress",
+            AnalysisProgressEvent {
+                document_id: document_id.to_owned(),
+                analysis: analysis.clone(),
+                resolving_reference_ids,
+            },
+        );
+    }
 }
 
 // The analysis pipeline, owned by the worker. Reads from the document's stored
@@ -362,7 +396,7 @@ async fn run_analysis(
     states: &Arc<Mutex<HashMap<String, AnalysisState>>>,
     cancelled: &Arc<Mutex<HashSet<String>>>,
 ) -> Result<RunOutcome, String> {
-    let path = document_library::document_path(app, document_id)?;
+    let path = document_library::document_file(app, document_id)?;
     let pdf = std::fs::read(&path).map_err(|error| format!("Could not read PDF: {error}"))?;
     let document_digest = reference_resolver::document_digest(&pdf);
     let mut cache_warnings = Vec::new();
@@ -474,8 +508,11 @@ async fn run_analysis(
     resolving_state.total = total;
     resolving_state.resolved = total - resolving_reference_ids.len();
     publish(app, states, resolving_state);
+    let mut progress = ProgressEmitter::new();
     if !resolving_reference_ids.is_empty() {
-        emit_analysis_progress(app, document_id, &result, &resolving_reference_ids);
+        // The first frame carries the freshly extracted bibliography, so it must
+        // not be coalesced away.
+        progress.emit(app, document_id, &result, &resolving_reference_ids, true);
     }
     let resolution_batch = reference_resolver::resolve_references(&client, inputs, |completed| {
         if is_cancelled(cancelled, document_id) {
@@ -489,7 +526,7 @@ async fn run_analysis(
         progress_state.total = total;
         progress_state.resolved = total - resolving_reference_ids.len();
         publish(app, states, progress_state);
-        emit_analysis_progress(app, document_id, &result, &resolving_reference_ids);
+        progress.emit(app, document_id, &result, &resolving_reference_ids, false);
     })
     .await;
     warnings.extend(resolution_batch.warning);
@@ -518,7 +555,7 @@ async fn run_analysis(
     );
     // Final snapshot so an open viewer picks up the canonical result (shared ids
     // and any warnings) rather than the last mid-resolution state.
-    emit_analysis_progress(app, document_id, &result, &HashSet::new());
+    progress.emit(app, document_id, &result, &HashSet::new(), true);
     Ok(RunOutcome::Completed)
 }
 
@@ -560,7 +597,7 @@ fn load_cached_analysis(
     app: &tauri::AppHandle,
     document_id: &str,
 ) -> Result<Option<AnalysisResult>, String> {
-    let path = document_library::document_path(app, document_id)?;
+    let path = document_library::document_file(app, document_id)?;
     let pdf = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(_) => return Ok(None),
@@ -997,7 +1034,6 @@ fn normalize_arxiv(value: String) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    load_local_env();
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1008,6 +1044,9 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AnalysisManager::new())
         .setup(|app| {
+            // Must run before anything reads a provider credential, and before we
+            // spawn the background threads below (it mutates the environment).
+            load_local_env(database::app_data_directory_path(app.handle()).ok().as_deref());
             provider_settings::initialize(app.handle()).map_err(std::io::Error::other)?;
             eprintln!(
                 "[resolver] crossref_polite_pool={} openalex_key_present={} semantic_scholar_key_present={}",
@@ -1080,15 +1119,29 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn load_local_env() {
+// Reads `KEY=value` lines into the process environment, without overriding a
+// variable that is already set.
+//
+// An installed app is launched by the desktop shell, so it inherits neither the
+// shell environment nor a useful working directory — the app-data directory is
+// the only location it can reliably find a `.env` in. The source-tree paths are
+// a development convenience and are compiled out of release builds, which also
+// keeps this machine's absolute paths out of the shipped binary.
+fn load_local_env(app_data_directory: Option<&Path>) {
     let mut candidates = Vec::new();
-    if let Ok(current_dir) = std::env::current_dir() {
-        candidates.push(current_dir.join(".env"));
+    if let Some(directory) = app_data_directory {
+        candidates.push(directory.join(".env"));
     }
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    candidates.push(manifest_dir.join(".env"));
-    if let Some(repo_root) = manifest_dir.parent() {
-        candidates.push(repo_root.join(".env"));
+    #[cfg(debug_assertions)]
+    {
+        if let Ok(current_dir) = std::env::current_dir() {
+            candidates.push(current_dir.join(".env"));
+        }
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        candidates.push(manifest_dir.join(".env"));
+        if let Some(repo_root) = manifest_dir.parent() {
+            candidates.push(repo_root.join(".env"));
+        }
     }
 
     let mut seen = HashSet::new();

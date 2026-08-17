@@ -22,6 +22,9 @@ struct CachedPdf {
     resolver_version: String,
 }
 
+// Deliberately unboxed: this is produced once per analysis and destructured
+// immediately, so the variants' size difference never reaches a hot path.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum CacheLookup {
     Miss,
     Fresh {
@@ -68,18 +71,26 @@ struct MatchCandidate {
     corroborators: usize,
 }
 
-pub(crate) fn app_data_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let directory = app
-        .path()
+// Resolves the app-data directory without touching the filesystem. Use this on
+// read paths (which run per document, in loops) so listing a library doesn't
+// issue a `create_dir_all` for every row.
+pub(crate) fn app_data_directory_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
         .app_data_dir()
-        .map_err(|error| format!("Could not determine application data directory: {error}"))?;
+        .map_err(|error| format!("Could not determine application data directory: {error}"))
+}
+
+// Same, but creates the directory. Use this only where something is about to be
+// written into it.
+pub(crate) fn app_data_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let directory = app_data_directory_path(app)?;
     std::fs::create_dir_all(&directory)
         .map_err(|error| format!("Could not create application data directory: {error}"))?;
     Ok(directory)
 }
 
 pub(crate) fn database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(app_data_directory(app)?.join("research-pdf.sqlite3"))
+    Ok(app_data_directory(app)?.join("paperstack.sqlite3"))
 }
 
 pub(crate) fn connection(app: &tauri::AppHandle) -> Result<Connection, String> {

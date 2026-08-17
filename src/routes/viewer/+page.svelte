@@ -19,6 +19,7 @@
     AnalysisProgress,
     AnalysisResult,
     AnalysisStatus,
+    LibraryChangedEvent,
     LibraryDocument,
     Reference,
   } from "$lib/types";
@@ -62,12 +63,6 @@
       : null,
   );
 
-  type LibraryChangedEvent = {
-    kind: string;
-    documentId: string | null;
-    action: string;
-  };
-
   function resolveDocumentId(): string | null {
     const label = getCurrentWebviewWindow().label;
     if (label.startsWith("viewer:")) return label.slice("viewer:".length);
@@ -77,50 +72,68 @@
   onMount(() => {
     documentId = resolveDocumentId();
     const disposers: Array<() => void> = [];
+    let disposed = false;
+    // `listen` resolves after a round trip to the backend. If we unmount before
+    // it does, the disposer would land on a list nobody drains, leaking the
+    // subscription — so run it straight away in that case.
+    const track = (pending: Promise<() => void>) => {
+      void pending.then((dispose) => {
+        if (disposed) dispose();
+        else disposers.push(dispose);
+      });
+    };
     // The background worker streams the full analysis for whichever document is
     // processing; this window only reacts to events for the document it shows.
-    void listen<AnalysisProgress>("analysis-progress", (event) => {
-      if (event.payload.documentId !== documentId) return;
-      analysis = event.payload.analysis;
-      resolvingReferenceIds = event.payload.resolvingReferenceIds;
-    }).then((dispose) => disposers.push(dispose));
-    void listen<AnalysisStatus>("analysis-status", (event) => {
-      if (event.payload.documentId !== documentId) return;
-      const status = event.payload;
-      analysisStatus = status;
-      if (status.phase === "done") {
-        analyzing = false;
-        resolvingReferenceIds = [];
-        grobidStatus = "Analysis complete";
-        void refreshAnalysis();
-      } else if (status.phase === "error") {
-        analyzing = false;
-        resolvingReferenceIds = [];
-        analysisError = status.error ?? "Analysis failed";
-        grobidStatus = "Analysis failed";
-      } else {
-        analyzing = true;
-        analysisError = null;
-        grobidStatus = analysisProgressMessage(status);
-      }
-    }).then((dispose) => disposers.push(dispose));
+    track(
+      listen<AnalysisProgress>("analysis-progress", (event) => {
+        if (event.payload.documentId !== documentId) return;
+        analysis = event.payload.analysis;
+        resolvingReferenceIds = event.payload.resolvingReferenceIds;
+      }),
+    );
+    track(
+      listen<AnalysisStatus>("analysis-status", (event) => {
+        if (event.payload.documentId !== documentId) return;
+        const status = event.payload;
+        analysisStatus = status;
+        if (status.phase === "done") {
+          analyzing = false;
+          resolvingReferenceIds = [];
+          grobidStatus = "Analysis complete";
+          void refreshAnalysis();
+        } else if (status.phase === "error") {
+          analyzing = false;
+          resolvingReferenceIds = [];
+          analysisError = status.error ?? "Analysis failed";
+          grobidStatus = "Analysis failed";
+        } else {
+          analyzing = true;
+          analysisError = null;
+          grobidStatus = analysisProgressMessage(status);
+        }
+      }),
+    );
     // If this document is deleted (from any window) close ourselves; if it is
     // renamed / (un)linked elsewhere, refresh our metadata.
-    void listen<LibraryChangedEvent>("library-changed", (event) => {
-      if (event.payload.kind !== "document") return;
-      // Any link/import/delete may change which references have a local PDF.
-      if (event.payload.action !== "opened") void refreshLibraryDocuments();
-      if (event.payload.documentId !== documentId) return;
-      if (event.payload.action === "deleted") {
-        void getCurrentWebviewWindow().close();
-      } else if (event.payload.action === "updated") {
-        void reloadDocument();
-      }
-    }).then((dispose) => disposers.push(dispose));
+    track(
+      listen<LibraryChangedEvent>("library-changed", (event) => {
+        if (event.payload.kind !== "document") return;
+        // Any link/import/delete may change which references have a local PDF.
+        if (event.payload.action !== "opened") void refreshLibraryDocuments();
+        if (event.payload.documentId !== documentId) return;
+        if (event.payload.action === "deleted") {
+          void getCurrentWebviewWindow().close();
+        } else if (event.payload.action === "updated") {
+          void reloadDocument();
+        }
+      }),
+    );
     void loadDocument();
     void refreshLibraryDocuments();
     return () => {
+      disposed = true;
       for (const dispose of disposers) dispose();
+      disposers.length = 0;
     };
   });
 

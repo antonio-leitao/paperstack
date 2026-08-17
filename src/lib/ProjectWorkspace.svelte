@@ -33,6 +33,7 @@
     BibtexPreview,
     DocumentAnnotation,
     DocumentNote,
+    LibraryChangedEvent,
     LibraryDocument,
     Project,
     ProjectDocument,
@@ -82,21 +83,48 @@
     if (!desktop) return;
     void refreshProject();
     void refreshOpenWindows();
+    const disposers: Array<() => void> = [];
+    let disposed = false;
+    // `listen` resolves after a round trip to the backend. If we unmount before
+    // it does, the disposer would land on a list nobody drains, leaking the
+    // subscription — so run it straight away in that case.
+    const track = (pending: Promise<() => void>) => {
+      void pending.then((dispose) => {
+        if (disposed) dispose();
+        else disposers.push(dispose);
+      });
+    };
     // Viewer windows live in their own webviews; when one of them mutates the
     // library (rename / link / unlink / delete) the backend broadcasts
     // "library-changed" and we reconcile our lists from the database.
-    const disposers: Array<() => void> = [];
-    void listen("library-changed", () => {
-      void refreshProject();
-      void refreshOpenWindows();
-    }).then((dispose) => disposers.push(dispose));
+    track(
+      listen<LibraryChangedEvent>("library-changed", (event) => {
+        // "opened" only bumps one document's last-viewed time. That reorders the
+        // library, but refetching the project, its stacks and every document to
+        // learn it would be wasteful — reload just the document that changed.
+        if (event.payload.kind === "document" && event.payload.action === "opened") {
+          const { documentId } = event.payload;
+          if (documentId) {
+            void invoke<LibraryDocument>("get_document", { id: documentId })
+              .then((document) => upsertDocument(document))
+              .catch(() => {});
+          }
+          void refreshOpenWindows();
+          return;
+        }
+        void refreshProject();
+        void refreshOpenWindows();
+      }),
+    );
     // A first-page thumbnail finished rendering in the background worker; refresh
     // just that document so its card picks up the new image.
-    void listen<{ documentId: string }>("thumbnail-ready", (event) => {
-      void invoke<LibraryDocument>("get_document", { id: event.payload.documentId })
-        .then((document) => upsertDocument(document))
-        .catch(() => {});
-    }).then((dispose) => disposers.push(dispose));
+    track(
+      listen<{ documentId: string }>("thumbnail-ready", (event) => {
+        void invoke<LibraryDocument>("get_document", { id: event.payload.documentId })
+          .then((document) => upsertDocument(document))
+          .catch(() => {});
+      }),
+    );
     // Background analysis runs in the Rust worker; it broadcasts a status per
     // document so cards can show a loader regardless of which window triggered it.
     void invoke<AnalysisStatus[]>("analysis_states")
@@ -104,24 +132,26 @@
         analysisStates = Object.fromEntries(states.map((state) => [state.documentId, state]));
       })
       .catch(() => {});
-    void listen<AnalysisStatus>("analysis-status", (event) => {
-      const status = event.payload;
-      if (status.phase === "done") {
-        const { [status.documentId]: _removed, ...rest } = analysisStates;
-        analysisStates = rest;
-      } else {
-        analysisStates = { ...analysisStates, [status.documentId]: status };
-      }
-    }).then((dispose) => disposers.push(dispose));
+    track(
+      listen<AnalysisStatus>("analysis-status", (event) => {
+        const status = event.payload;
+        if (status.phase === "done") {
+          const { [status.documentId]: _removed, ...rest } = analysisStates;
+          analysisStates = rest;
+        } else {
+          analysisStates = { ...analysisStates, [status.documentId]: status };
+        }
+      }),
+    );
     // Refresh which papers are open whenever we regain focus (e.g. after a
     // viewer window was closed) so the "open" highlight stays accurate.
-    void getCurrentWebviewWindow()
-      .onFocusChanged(({ payload: focused }) => {
+    track(
+      getCurrentWebviewWindow().onFocusChanged(({ payload: focused }) => {
         if (focused) void refreshOpenWindows();
-      })
-      .then((dispose) => disposers.push(dispose));
-    void getCurrentWebview()
-      .onDragDropEvent((event) => {
+      }),
+    );
+    track(
+      getCurrentWebview().onDragDropEvent((event) => {
         const payload = event.payload;
         if (payload.type === "enter") {
           fileDropState = filterPdfPaths(payload.paths).length ? "ready" : "invalid";
@@ -138,10 +168,12 @@
             libraryError = "Drop one or more PDF files";
           }
         }
-      })
-      .then((dispose) => disposers.push(dispose));
+      }),
+    );
     return () => {
+      disposed = true;
       for (const dispose of disposers) dispose();
+      disposers.length = 0;
     };
   });
 
