@@ -46,7 +46,8 @@ command -v gh >/dev/null || die "gh is not installed (brew install gh)"
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated (gh auth login)"
 git remote get-url origin >/dev/null 2>&1 || die "no 'origin' remote — add one before releasing"
 
-# finalize-dmg.py needs these; failing here beats failing after a 3-minute build.
+# scripts/make-dmg.py writes the DMG's .DS_Store and background alias itself,
+# rather than asking Finder to. Failing here beats failing after a 3-minute build.
 python3 -c "import ds_store, mac_alias" 2>/dev/null || die \
   "python needs ds-store: pip3 install ds-store mac_alias"
 
@@ -94,40 +95,21 @@ fi
 # ── Build ──────────────────────────────────────────────────────────────────
 dmg="src-tauri/target/universal-apple-darwin/release/bundle/dmg/PaperStack_${version}_universal.dmg"
 
-# A volume left mounted from an interrupted run makes bundle_dmg.sh fail, since
-# it mounts its own under the same name. Cheap to rule out.
-for vol in /Volumes/PaperStack*; do
-  [ -d "$vol" ] && { echo "  ejecting stale $vol"; hdiutil detach "$vol" -quiet || true; }
-done
-
+# Only the .app comes from Tauri. Its DMG step drives Finder over AppleScript,
+# which needs the calling terminal to hold macOS's Automation → Finder grant;
+# without it osascript is refused and the build dies with nothing useful in the
+# log. scripts/make-dmg.py writes the same Finder settings into .DS_Store itself,
+# so the DMG builds identically from any terminal, over SSH, or on CI.
 say "Building universal (this compiles the whole tree for both architectures)"
-# Tauri builds the DMG by driving Finder over AppleScript to place the icons and
-# set the background. That is inherently flaky — a Finder window in the wrong
-# state, or a volume still settling, and the step fails even though nothing is
-# wrong with the build. It succeeds on a retry, so treat one failure as noise
-# rather than making you start over after a three-minute compile.
-if ! npm run tauri build -- --target universal-apple-darwin; then
-  if [ -f "$dmg" ]; then
-    echo "  (tauri reported failure but produced the DMG — continuing)"
-  else
-    say "Bundling failed. Retrying once — this step drives Finder and is flaky"
-    for vol in /Volumes/PaperStack*; do
-      [ -d "$vol" ] && hdiutil detach "$vol" -quiet || true
-    done
-    sleep 2
-    npm run tauri build -- --target universal-apple-darwin --bundles dmg \
-      || die "DMG bundling failed twice. Close any Finder windows showing a
-  PaperStack volume, check that nothing is mounted under /Volumes, and re-run.
-  The compile is cached, so a retry only redoes the bundling."
-  fi
-fi
+npm run tauri build -- --target universal-apple-darwin --bundles app
+
+app="src-tauri/target/universal-apple-darwin/release/bundle/macos/PaperStack.app"
+[ -d "$app" ] || die "expected an app bundle at $app"
+
+say "Building the DMG"
+python3 scripts/make-dmg.py "$app" -o "$dmg"
 
 [ -f "$dmg" ] || die "expected a DMG at $dmg"
-
-# Tauri hands the window geometry to Finder over AppleScript and Finder does not
-# reliably honour it, so the icon positions and window size get corrected here.
-say "Finalizing the DMG"
-python3 scripts/finalize-dmg.py "$dmg"
 
 size=$(python3 -c "import os;print(f'{os.path.getsize(\"$dmg\")/1e6:.1f} MB')")
 sha=$(shasum -a 256 "$dmg" | cut -d' ' -f1)
@@ -172,7 +154,7 @@ if [[ ! "$reply" =~ ^[Yy]$ ]]; then
     git tag -d $tag && git reset --hard HEAD~1
 
   Or to publish later:
-    git push origin $branch --follow-tags
+    git push origin $branch && git push origin $tag
     gh release create $tag "$dmg" --generate-notes --title "PaperStack $version"
 EOF
   exit 0
