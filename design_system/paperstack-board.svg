@@ -1,10 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 5.1 570 320.9" width="570" height="320.9" role="img" aria-label="A PaperStack board: papers filed under columns named To read and Method, with one card mid-drag between them">
+<defs>
+  <filter id="card-shadow" x="-5%" y="-10%" width="110%" height="125%" color-interpolation-filters="sRGB">
+    <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000000" flood-opacity="0.25"/>
+  </filter>
+  <filter id="drag-shadow" x="-12%" y="-30%" width="124%" height="170%" color-interpolation-filters="sRGB">
+    <feDropShadow dx="0" dy="5" stdDeviation="7.5" flood-color="#000000" flood-opacity="0.25"/>
+  </filter>
+</defs>
 <rect x="-8" y="5.1" width="570" height="320.9" rx="8" fill="#f8f8f6"/>
 <line x1="8" y1="47.5" x2="262" y2="47.5" stroke="#d5d3cd" stroke-width="1"/>
 <text x="8" y="28.6" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">To read</text>
 <text x="61.8" y="29.6" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#797873">4</text>
 <text x="248.3" y="28.6" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#797873">⋮</text>
-<rect x="8.5" y="54.5" width="253" height="77" rx="5" fill="#ffffff" stroke="#e4e2dc" stroke-width="1"/>
+<rect x="8.5" y="54.5" width="253" height="77" rx="5" fill="#ffffff" filter="url(#card-shadow)"/>
 <rect x="16.5" y="62.5" width="45" height="61" fill="#ffffff" stroke="#d5d3cd" stroke-width="1"/>
 <rect x="22" y="69" width="30" height="2" fill="#20201e"/>
 <rect x="22" y="73" width="21" height="2" fill="#20201e"/>
@@ -22,7 +30,7 @@
 <text x="72" y="74" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">ImageNet Classification with</text>
 <text x="72" y="90.2" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">Deep Convolutional Neural…</text>
 <text x="72" y="111" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#797873">Krizhevsky et al. 2012</text>
-<rect x="8.5" y="141.5" width="253" height="77" rx="5" fill="#ffffff" stroke="#e4e2dc" stroke-width="1"/>
+<rect x="8.5" y="141.5" width="253" height="77" rx="5" fill="#ffffff" filter="url(#card-shadow)"/>
 <rect x="16.5" y="149.5" width="45" height="61" fill="#ffffff" stroke="#d5d3cd" stroke-width="1"/>
 <rect x="22" y="156" width="25" height="2" fill="#20201e"/>
 <line x1="22" y1="164" x2="56" y2="164" stroke="#b3b1a9" stroke-width="1"/>
@@ -40,7 +48,7 @@
 <text x="72" y="161" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">Dropout: A Simple Way to</text>
 <text x="72" y="177.2" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">Prevent Neural Networks…</text>
 <text x="72" y="198" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#797873">Srivastava et al. 2014</text>
-<rect x="8.5" y="228.5" width="253" height="77" rx="5" fill="#ffffff" stroke="#e4e2dc" stroke-width="1"/>
+<rect x="8.5" y="228.5" width="253" height="77" rx="5" fill="#ffffff" filter="url(#card-shadow)"/>
 <rect x="16.5" y="236.5" width="45" height="61" fill="#ffffff" stroke="#d5d3cd" stroke-width="1"/>
 <rect x="22" y="243" width="21" height="2" fill="#20201e"/>
 <line x1="22" y1="251" x2="56" y2="251" stroke="#b3b1a9" stroke-width="1"/>
@@ -62,7 +70,7 @@
 <text x="292" y="28.6" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">Method</text>
 <text x="347.3" y="29.6" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#797873">2</text>
 <text x="532.3" y="28.6" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#797873">⋮</text>
-<rect x="292.5" y="54.5" width="253" height="77" rx="5" fill="#ffffff" stroke="#e4e2dc" stroke-width="1"/>
+<rect x="292.5" y="54.5" width="253" height="77" rx="5" fill="#ffffff" filter="url(#card-shadow)"/>
 <rect x="300.5" y="62.5" width="45" height="61" fill="#ffffff" stroke="#d5d3cd" stroke-width="1"/>
 <rect x="306" y="69" width="28" height="2" fill="#20201e"/>
 <line x1="306" y1="77" x2="340" y2="77" stroke="#b3b1a9" stroke-width="1"/>
@@ -78,27 +86,26 @@
 <line x1="306" y1="117" x2="340" y2="117" stroke="#c9c7c0" stroke-width="1"/>
 <text x="356" y="82.1" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">Attention Is All You Need</text>
 <text x="356" y="102.8" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#797873">Vaswani et al. 2017</text>
-<rect x="293" y="142" width="252" height="80" rx="5" fill="none" stroke="#1d628c" stroke-width="2" stroke-dasharray="4 3"/>
-<rect x="292" y="232" width="254" height="78" rx="5" fill="#ffffff"/>
-<line x1="294" y1="232" x2="294" y2="310" stroke="#1d628c" stroke-width="4"/>
-<rect x="304.5" y="240.5" width="45" height="61" fill="#ffffff" stroke="#d5d3cd" stroke-width="1"/>
-<rect x="310" y="247" width="30" height="2" fill="#20201e"/>
-<rect x="310" y="251" width="15" height="2" fill="#20201e"/>
-<line x1="310" y1="259" x2="344" y2="259" stroke="#b3b1a9" stroke-width="1"/>
-<line x1="310" y1="262" x2="344" y2="262" stroke="#b3b1a9" stroke-width="1"/>
-<line x1="310" y1="265" x2="344" y2="265" stroke="#b3b1a9" stroke-width="1"/>
-<line x1="310" y1="268" x2="344" y2="268" stroke="#b3b1a9" stroke-width="1"/>
-<line x1="310" y1="275" x2="344" y2="275" stroke="#c9c7c0" stroke-width="1"/>
-<line x1="310" y1="278" x2="344" y2="278" stroke="#c9c7c0" stroke-width="1"/>
-<line x1="310" y1="281" x2="344" y2="281" stroke="#c9c7c0" stroke-width="1"/>
-<line x1="310" y1="288" x2="344" y2="288" stroke="#c9c7c0" stroke-width="1"/>
-<line x1="310" y1="291" x2="344" y2="291" stroke="#c9c7c0" stroke-width="1"/>
-<line x1="310" y1="294" x2="344" y2="294" stroke="#c9c7c0" stroke-width="1"/>
-<text x="360" y="252" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">BERT: Pre-training of Deep</text>
-<text x="360" y="268.2" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">Bidirectional Transformers</text>
-<text x="360" y="289" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#797873">Devlin et al. 2019</text>
+<rect x="292.5" y="141.5" width="253" height="77" rx="5" fill="#f2f6f8" stroke="#1d628c" stroke-width="2" stroke-dasharray="4 3"/>
+<rect x="292.5" y="228.5" width="253" height="77" rx="5" fill="#ffffff" filter="url(#card-shadow)"/>
+<rect x="300.5" y="236.5" width="45" height="61" fill="#ffffff" stroke="#d5d3cd" stroke-width="1"/>
+<rect x="306" y="243" width="30" height="2" fill="#20201e"/>
+<rect x="306" y="247" width="15" height="2" fill="#20201e"/>
+<line x1="306" y1="255" x2="340" y2="255" stroke="#b3b1a9" stroke-width="1"/>
+<line x1="306" y1="258" x2="340" y2="258" stroke="#b3b1a9" stroke-width="1"/>
+<line x1="306" y1="261" x2="340" y2="261" stroke="#b3b1a9" stroke-width="1"/>
+<line x1="306" y1="264" x2="340" y2="264" stroke="#b3b1a9" stroke-width="1"/>
+<line x1="306" y1="271" x2="340" y2="271" stroke="#c9c7c0" stroke-width="1"/>
+<line x1="306" y1="274" x2="340" y2="274" stroke="#c9c7c0" stroke-width="1"/>
+<line x1="306" y1="277" x2="340" y2="277" stroke="#c9c7c0" stroke-width="1"/>
+<line x1="306" y1="284" x2="340" y2="284" stroke="#c9c7c0" stroke-width="1"/>
+<line x1="306" y1="287" x2="340" y2="287" stroke="#c9c7c0" stroke-width="1"/>
+<line x1="306" y1="290" x2="340" y2="290" stroke="#c9c7c0" stroke-width="1"/>
+<text x="356" y="248" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">BERT: Pre-training of Deep</text>
+<text x="356" y="264.2" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#20201e">Bidirectional Transformers</text>
+<text x="356" y="285" dominant-baseline="central" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#797873">Devlin et al. 2019</text>
 <g transform="rotate(-1.6 281 197)">
-<rect x="154.5" y="158.5" width="253" height="77" rx="5" fill="#ffffff" stroke="#e4e2dc" stroke-width="1"/>
+<rect x="154.5" y="158.5" width="253" height="77" rx="5" fill="#ffffff" filter="url(#drag-shadow)"/>
 <rect x="162.5" y="166.5" width="45" height="61" fill="#ffffff" stroke="#d5d3cd" stroke-width="1"/>
 <rect x="168" y="173" width="31" height="2" fill="#20201e"/>
 <rect x="168" y="177" width="19" height="2" fill="#20201e"/>
