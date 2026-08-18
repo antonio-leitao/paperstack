@@ -16,7 +16,7 @@
 
 <p align="center">
   <img src="design_system/paperstack-board.svg" width="720"
-       alt="A PaperStack board: papers filed under columns named To read and Method, with one card mid-drag between them and a hint reading Hold shift to make a pile.">
+       alt="A PaperStack board: papers filed under columns named To read and Method, with one card mid-drag between them.">
 </p>
 
 #
