@@ -1,5 +1,5 @@
 <p align="center">
-  <img src='design_system/paperstack-mark-light-bold.svg' width='200px' align="center"></img>
+  <img src='design_system/paperstack-mark-light-bold.svg' width='240px' align="center"></img>
 </p>
 
 <div align="center">
@@ -14,21 +14,7 @@
   <p><a href="https://antonio-leitao.github.io/paperstack/"><b>antonio-leitao.github.io/paperstack</b></a></p>
 </div>
 
-<p align="center">
-  <img src="design_system/paperstack-board.svg" width="720"
-       alt="A PaperStack board: papers filed under columns named To read and Method, with one card mid-drag between them.">
-</p>
-
 #
-
-### Contents
-
-- [Install](#install)
-  - [Build from source](#build-from-source)
-- [The citation service](#the-citation-service)
-- [Provider keys](#provider-keys)
-- [How it works](#how-it-works)
-- [Limitations](#limitations)
 
 PaperStack keeps a library of papers on your own machine and lets you arrange
 them the way you actually think about them — into projects, into columns, into
@@ -40,6 +26,20 @@ shows you what it is and where to get it.
 Everything is local: your PDFs, your highlights, your notes and the reference
 database all live in a single folder on your machine.
 
+<p align="center">
+  <img src="design_system/paperstack-board.svg" width="700"
+       alt="A PaperStack board: papers filed under columns named To read and Method, with one card mid-drag between them.">
+</p>
+
+### Contents
+
+- [Install](#install)
+  - [Build from source](#build-from-source)
+- [The citation service](#the-citation-service)
+- [Provider keys](#provider-keys)
+- [How it works](#how-it-works)
+- [Limitations](#limitations)
+
 ## Install
 
 Download the latest `.dmg` from
@@ -47,7 +47,7 @@ Download the latest `.dmg` from
 PaperStack into Applications. It is a universal build — Apple Silicon and Intel.
 
 **The app is not code-signed**, so macOS will refuse it the first time with
-*"PaperStack is damaged and can't be opened."* It is not damaged; that is simply
+_"PaperStack is damaged and can't be opened."_ It is not damaged; that is simply
 what Gatekeeper says about an app from a developer who has not paid Apple's
 $99/year. To open it:
 
@@ -111,11 +111,11 @@ All of them work anonymously, so PaperStack needs no configuration to run.
 Keys only buy you higher, more predictable rate limits, and are worth adding if
 you analyse a lot of papers at once:
 
-| Setting | Get one from | Effect |
-| --- | --- | --- |
-| OpenAlex key | [OpenAlex settings](https://openalex.org/settings/api) | Avoids the shared anonymous pool |
-| Semantic Scholar key | [Semantic Scholar API](https://www.semanticscholar.org/product/api) | Higher rate limit |
-| Crossref email | — | Enters Crossref's faster "polite pool" |
+| Setting              | Get one from                                                        | Effect                                 |
+| -------------------- | ------------------------------------------------------------------- | -------------------------------------- |
+| OpenAlex key         | [OpenAlex settings](https://openalex.org/settings/api)              | Avoids the shared anonymous pool       |
+| Semantic Scholar key | [Semantic Scholar API](https://www.semanticscholar.org/product/api) | Higher rate limit                      |
+| Crossref email       | —                                                                   | Enters Crossref's faster "polite pool" |
 
 Add them in **Settings** (the gear, top right). They are stored in your
 application data folder, readable only by you, and never leave your machine
