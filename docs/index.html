@@ -93,8 +93,9 @@
       }
 
       /* ── Hero ─────────────────────────────────────────────────────────────────
-   Full bleed, flat, no gradient — the icon is flat on purpose and the app's
-   surfaces are too, so a gradient here would disagree with both. */
+   Full bleed and flat: the icon is flat on purpose and the app's surfaces are
+   too. The one exception is the wordmark, which carries a short vertical wash
+   so it reads as lit rather than painted — see .hero h1. */
       .hero {
         background: var(--accent);
         color: #fff;
@@ -102,10 +103,10 @@
         text-align: center;
       }
       .mark {
-        width: 128px;
-        height: 128px;
+        width: clamp(150px, 19vw, 186px);
+        height: auto;
         display: block;
-        margin: 0 auto 26px;
+        margin: 0 auto 28px;
       }
       .hero h1 {
         font-size: clamp(42px, 8vw, 60px);
@@ -113,6 +114,31 @@
         letter-spacing: -0.028em;
         line-height: 1;
         margin: 0 0 16px;
+      }
+      /* White at the cap line falling to a cooled paper tone at the baseline —
+   enough to give the lettering a light source, not enough to read as colour.
+   Guarded, because the transparent fill would erase the word outright where
+   background-clip:text is unsupported. The padding is not decorative: the
+   gradient is painted over the box and only then clipped to the glyphs, and
+   line-height:1 cuts the box off at the baseline-ish — so without the padding
+   the descender of the "p" falls outside the paint and vanishes. 0.16em clears
+   a 0.25em descender at the half-leading this line-height gives. The margin
+   below is trimmed by as much as the padding adds, keeping the gap unchanged. */
+      @supports (-webkit-background-clip: text) or (background-clip: text) {
+        .hero h1 {
+          padding-bottom: 0.16em;
+          margin-bottom: 7px;
+          background-image: linear-gradient(
+            176deg,
+            #ffffff 0%,
+            #f4f9fc 40%,
+            #c6dbec 92%
+          );
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          color: transparent;
+        }
       }
       .hero .tagline {
         margin: 0 auto 34px;
@@ -280,8 +306,8 @@
           padding: 56px 0 50px;
         }
         .mark {
-          width: 100px;
-          height: 100px;
+          width: 140px;
+          height: auto;
         }
         .sheet {
           padding: 44px 0 42px;
@@ -296,9 +322,12 @@
         }
       }
       /* ── Feature showcase ─────────────────────────────────────────────────────
-   Vertical tab list beside a fixed 700×500 stage. The stage keeps one
-   composition per feature and is scaled down as a whole when the column is
-   narrower than 700px, so nothing is ever clipped. */
+   Vertical tab list beside a stage. Every illustration is authored against the
+   same 700×500 canvas; .fit carries that canvas and is scaled — up as well as
+   down — so it covers the frame exactly at any width. Covering exactly is the
+   whole trick: .track is five canvases wide and slides inside .fit, so if .fit
+   were ever narrower than .frame the neighbouring panels would show through the
+   leftover gutter. .frame keeps the 700×500 ratio so the scale stays uniform. */
       .features {
         background: var(--desk);
         padding: 74px 0 78px;
@@ -336,8 +365,13 @@
         background: var(--card);
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
         transition:
-          transform 0.22s cubic-bezier(0.2, 0.6, 0.2, 1),
-          height 0.22s cubic-bezier(0.2, 0.6, 0.2, 1);
+          transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+          height 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      /* A resize retargets the indicator every frame; letting it ease there
+   would leave it trailing the tab it marks while the window is being dragged. */
+      .tablist.resizing .ind {
+        transition: none;
       }
       .tablist button {
         position: relative;
@@ -381,7 +415,7 @@
       .frame {
         position: relative;
         width: 100%;
-        height: 500px;
+        aspect-ratio: 700 / 500;
         overflow: hidden;
         border: 1px solid var(--line-2);
         border-radius: 6px;
@@ -390,18 +424,26 @@
       }
       .fit {
         position: absolute;
-        left: 50%;
-        top: 50%;
+        left: 0;
+        top: 0;
         width: 700px;
         height: 500px;
-        transform: translate(-50%, -50%);
-        transform-origin: center center;
+        overflow: hidden;
+        transform-origin: top left;
       }
       .track {
         display: flex;
         width: 500%;
         height: 100%;
-        transition: transform 0.28s cubic-bezier(0.2, 0.6, 0.2, 1);
+        transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      /* The panel keeps its own background at full strength while its contents
+   fade, so the slide never shows a colour shift underneath the artwork. */
+      .track > * > * {
+        transition: opacity 0.5s ease;
+      }
+      .track > [aria-hidden="true"] > * {
+        opacity: 0.4;
       }
 
       @media (max-width: 860px) {
@@ -1042,8 +1084,17 @@ npm run install:local</pre>
         const track = root.querySelector(".track");
         const panels = [...track.children];
         const W = 700;
-        const H = 500;
+        const stride = 100 / panels.length;
         let current = 0;
+        let settle = 0;
+
+        // The width, the panel basis and the slide distance are three views of
+        // the same number, so take all three from the panel count rather than
+        // leaving the CSS to be updated in step by hand.
+        track.style.width = panels.length * 100 + "%";
+        panels.forEach((panel) => {
+          panel.style.flex = "0 0 " + stride + "%";
+        });
 
         panels.forEach((panel, k) => {
           panel.id = "feat-panel-" + k;
@@ -1051,17 +1102,50 @@ npm run install:local</pre>
           panel.setAttribute("aria-labelledby", "feat-tab-" + k);
         });
 
+        // Cover the frame exactly: scale up as readily as down, and take the
+        // height back off the frame rather than assuming 500. Measured off the
+        // bounding rect and not clientWidth/clientHeight, because those round to
+        // whole pixels — and a stage half a pixel narrower than its frame is
+        // precisely how the neighbouring panel shows through along the edge.
         function scaleStage() {
-          const scale = Math.min(1, frame.clientWidth / W);
-          fit.style.height = H / scale + "px";
-          fit.style.transform = "translate(-50%,-50%) scale(" + scale + ")";
+          const rect = frame.getBoundingClientRect();
+          const edge = getComputedStyle(frame);
+          const inner =
+            rect.width -
+            parseFloat(edge.borderLeftWidth) -
+            parseFloat(edge.borderRightWidth);
+          const innerHeight =
+            rect.height -
+            parseFloat(edge.borderTopWidth) -
+            parseFloat(edge.borderBottomWidth);
+          if (!(inner > 0)) return;
+          const scale = inner / W;
+          fit.style.height = innerHeight / scale + "px";
+          fit.style.transform = "scale(" + scale + ")";
+        }
+
+        function syncIndicator() {
+          ind.style.height = tabs[current].offsetHeight + "px";
+          ind.style.transform = "translateY(" + tabs[current].offsetTop + "px)";
+        }
+
+        // Tab heights change when the list reflows to full width, so the stage
+        // and the indicator are both re-measured; the indicator is pinned rather
+        // than eased for the duration of the drag.
+        function relayout() {
+          list.classList.add("resizing");
+          scaleStage();
+          syncIndicator();
+          cancelAnimationFrame(settle);
+          settle = requestAnimationFrame(() =>
+            requestAnimationFrame(() => list.classList.remove("resizing")),
+          );
         }
 
         function show(n) {
           current = n;
-          track.style.transform = "translateX(" + -n * 20 + "%)";
-          ind.style.height = tabs[n].offsetHeight + "px";
-          ind.style.transform = "translateY(" + tabs[n].offsetTop + "px)";
+          track.style.transform = "translateX(" + -n * stride + "%)";
+          syncIndicator();
           tabs.forEach((tab, k) => {
             tab.setAttribute("aria-selected", String(k === n));
             tab.tabIndex = k === n ? 0 : -1;
@@ -1088,13 +1172,19 @@ npm run install:local</pre>
         });
 
         if (typeof ResizeObserver !== "undefined") {
-          new ResizeObserver(scaleStage).observe(frame);
+          const observer = new ResizeObserver(relayout);
+          observer.observe(frame);
+          observer.observe(list);
         } else {
-          window.addEventListener("resize", scaleStage);
+          window.addEventListener("resize", relayout);
         }
         scaleStage();
         show(0);
-        window.addEventListener("load", () => show(current));
+        // Web fonts land after first paint and change the tab heights with them.
+        window.addEventListener("load", relayout);
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(relayout);
+        }
       })();
     </script>
   </body>
