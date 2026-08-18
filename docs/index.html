@@ -295,6 +295,123 @@
           transition: none !important;
         }
       }
+      /* ── Feature showcase ─────────────────────────────────────────────────────
+   Vertical tab list beside a fixed 700×500 stage. The stage keeps one
+   composition per feature and is scaled down as a whole when the column is
+   narrower than 700px, so nothing is ever clipped. */
+      .features {
+        background: var(--desk);
+        padding: 74px 0 78px;
+      }
+      .features .wide {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      .features .intro {
+        max-width: 46ch;
+        margin: 0 0 34px;
+      }
+      .features h2 {
+        font-size: 24px;
+      }
+      .showcase {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 28px;
+        align-items: flex-start;
+      }
+
+      .tablist {
+        position: relative;
+        flex: 0 0 276px;
+      }
+      .tablist .ind {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100px;
+        border-radius: var(--radius);
+        background: var(--card);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+        transition:
+          transform 0.22s cubic-bezier(0.2, 0.6, 0.2, 1),
+          height 0.22s cubic-bezier(0.2, 0.6, 0.2, 1);
+      }
+      .tablist button {
+        position: relative;
+        display: block;
+        width: 100%;
+        min-height: 100px;
+        padding: 12px 18px;
+        border: 0;
+        border-radius: var(--radius);
+        background: transparent;
+        text-align: left;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      .tablist button .t {
+        display: block;
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      .tablist button .d {
+        display: block;
+        margin-top: 3px;
+        color: var(--ink-2);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .tablist button:hover .t {
+        color: var(--accent-strong);
+      }
+      .tablist button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+      }
+
+      .stage {
+        flex: 1 1 420px;
+        min-width: 0;
+      }
+      .frame {
+        position: relative;
+        width: 100%;
+        height: 500px;
+        overflow: hidden;
+        border: 1px solid var(--line-2);
+        border-radius: 6px;
+        background: var(--paper);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+      }
+      .fit {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 700px;
+        height: 500px;
+        transform: translate(-50%, -50%);
+        transform-origin: center center;
+      }
+      .track {
+        display: flex;
+        width: 500%;
+        height: 100%;
+        transition: transform 0.28s cubic-bezier(0.2, 0.6, 0.2, 1);
+      }
+
+      @media (max-width: 860px) {
+        .features {
+          padding: 52px 0 56px;
+        }
+        .tablist {
+          flex: 1 1 100%;
+        }
+      }
     </style>
   </head>
   <body>
@@ -453,6 +570,387 @@
       </div>
     </header>
 
+    <section class="features" aria-labelledby="features-h">
+      <div class="wide">
+        <div class="intro">
+          <h2 id="features-h">What you actually do with it</h2>
+          <p>Papers on a desk, not rows in a database. All of it on your own machine.</p>
+        </div>
+
+        <div class="showcase">
+          <div class="tablist" role="tablist" aria-orientation="vertical" aria-label="Features">
+            <div class="ind" aria-hidden="true"></div>
+          <button type="button" role="tab" id="feat-tab-0" aria-controls="feat-panel-0" aria-selected="true" tabindex="0">
+            <span class="t">Drag it where it goes</span>
+            <span class="d">Columns you name yourself. Move a paper across; that's it.</span>
+          </button>
+          <button type="button" role="tab" id="feat-tab-1" aria-controls="feat-panel-1" aria-selected="false" tabindex="-1">
+            <span class="t">Pile what belongs together</span>
+            <span class="d">Hold ⇧ mid-drag to make a pile. Name it, open it, move it as one.</span>
+          </button>
+          <button type="button" role="tab" id="feat-tab-2" aria-controls="feat-panel-2" aria-selected="false" tabindex="-1">
+            <span class="t">Hover a citation, see the paper</span>
+            <span class="d">[12] stops being a number: title, authors, venue, a way in.</span>
+          </button>
+          <button type="button" role="tab" id="feat-tab-3" aria-controls="feat-panel-3" aria-selected="false" tabindex="-1">
+            <span class="t">Highlight while you read</span>
+            <span class="d">Select, click Highlight. Stored beside the PDF, in your folder.</span>
+          </button>
+          <button type="button" role="tab" id="feat-tab-4" aria-controls="feat-panel-4" aria-selected="false" tabindex="-1">
+            <span class="t">Highlights out as LaTeX</span>
+            <span class="d">Copy a paper, a pile or a column. Passages arrive cited.</span>
+          </button>
+          </div>
+
+          <div class="stage">
+            <div class="frame">
+              <div class="fit">
+                <div class="track">
+
+            <div style="position:relative;flex:0 0 20%;height:100%;overflow:hidden;background:#f8f8f6;">
+              <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(0.95);transform-origin:center center;">
+                <div style="position:relative;display:flex;gap:14px;width:554px;height:404px;padding-top:16px;">
+
+                  <div style="width:270px;">
+                    <header style="display:flex;min-height:32px;align-items:center;gap:6px;margin-inline:8px;padding:2px 0 7px;border-bottom:1px solid #d5d3cd;">
+                      <div style="display:flex;flex:1 1 auto;min-width:0;align-items:baseline;gap:7px;">
+                        <strong style="font-size:13px;font-weight:600;">To read</strong>
+                        <span style="color:#797873;font-size:11px;font-variant-numeric:tabular-nums;">4</span>
+                      </div>
+                      <span style="display:grid;width:22px;height:22px;place-items:center;color:#797873;opacity:0.62;font-size:13px;">⋮</span>
+                    </header>
+                    <div style="padding:6px 8px 8px;display:flex;flex-direction:column;gap:9px;">
+                      <div style="position:relative;display:grid;gap:6px;padding:8px;border-radius:5px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.25);">
+                        <div style="display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:62px;column-gap:10px;min-height:62px;overflow:hidden;">
+                          <span style="position:relative;display:block;width:46px;height:62px;flex:none;border:1px solid #d5d3cd;background:#ffffff;overflow:hidden;">
+                            <span style="position:absolute;left:5px;right:9px;top:6px;height:2px;background:#20201e;"></span>
+                            <span style="position:absolute;left:5px;right:18px;top:10px;height:2px;background:#20201e;"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:17px;height:9px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:5px;right:22px;top:30px;height:12px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;right:5px;top:30px;width:14px;height:10px;border:1px solid #d5d3cd;background:#e8e8e4;"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:46px;height:10px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                          </span>
+                          <div style="display:grid;align-content:center;gap:4px;min-width:0;">
+                            <strong style="display:-webkit-box;overflow:hidden;font-size:13px;font-weight:600;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:2;">ImageNet Classification with Deep Convolutional Neural Networks</strong>
+                            <small style="overflow:hidden;color:#797873;font-size:11px;text-overflow:ellipsis;white-space:nowrap;">Krizhevsky et al. 2012</small>
+                          </div>
+                        </div>
+                      </div>
+                      <div style="position:relative;display:grid;gap:6px;padding:8px;border-radius:5px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.25);">
+                        <div style="display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:62px;column-gap:10px;min-height:62px;overflow:hidden;">
+                          <span style="position:relative;display:block;width:46px;height:62px;flex:none;border:1px solid #d5d3cd;background:#ffffff;overflow:hidden;">
+                            <span style="position:absolute;left:5px;right:14px;top:6px;height:2px;background:#20201e;"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:13px;height:14px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:32px;height:8px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:44px;height:13px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                          </span>
+                          <div style="display:grid;align-content:center;gap:4px;min-width:0;">
+                            <strong style="display:-webkit-box;overflow:hidden;font-size:13px;font-weight:600;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:2;">Dropout: A Simple Way to Prevent Neural Networks from Overfitting</strong>
+                            <small style="overflow:hidden;color:#797873;font-size:11px;text-overflow:ellipsis;white-space:nowrap;">Srivastava et al. 2014</small>
+                          </div>
+                        </div>
+                      </div>
+                      <div style="position:relative;display:grid;gap:6px;padding:8px;border-radius:5px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.25);">
+                        <div style="display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:62px;column-gap:10px;min-height:62px;overflow:hidden;">
+                          <span style="position:relative;display:block;width:46px;height:62px;flex:none;border:1px solid #d5d3cd;background:#ffffff;overflow:hidden;">
+                            <span style="position:absolute;left:5px;right:18px;top:6px;height:2px;background:#20201e;"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:13px;height:9px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:26px;height:17px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:5px;right:16px;top:47px;height:9px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                          </span>
+                          <div style="display:grid;align-content:center;gap:4px;min-width:0;">
+                            <strong style="display:-webkit-box;overflow:hidden;font-size:13px;font-weight:600;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:2;">Generative Adversarial Networks</strong>
+                            <small style="overflow:hidden;color:#797873;font-size:11px;text-overflow:ellipsis;white-space:nowrap;">Goodfellow et al. 2014</small>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="width:270px;">
+                    <header style="display:flex;min-height:32px;align-items:center;gap:6px;margin-inline:8px;padding:2px 0 7px;border-bottom:1px solid #d5d3cd;">
+                      <div style="display:flex;flex:1 1 auto;min-width:0;align-items:baseline;gap:7px;">
+                        <strong style="font-size:13px;font-weight:600;">Method</strong>
+                        <span style="color:#797873;font-size:11px;font-variant-numeric:tabular-nums;">2</span>
+                      </div>
+                      <span style="display:grid;width:22px;height:22px;place-items:center;color:#797873;opacity:0.62;font-size:13px;">⋮</span>
+                    </header>
+                    <div style="padding:6px 8px 8px;display:flex;flex-direction:column;gap:9px;">
+                      <div style="position:relative;display:grid;gap:6px;padding:8px;border-radius:5px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.25);">
+                        <div style="display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:62px;column-gap:10px;min-height:62px;overflow:hidden;">
+                          <span style="position:relative;display:block;width:46px;height:62px;flex:none;border:1px solid #d5d3cd;background:#ffffff;overflow:hidden;">
+                            <span style="position:absolute;left:5px;right:11px;top:6px;height:2px;background:#20201e;"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:13px;height:10px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:27px;height:16px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:47px;height:9px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                          </span>
+                          <div style="display:grid;align-content:center;gap:4px;min-width:0;">
+                            <strong style="display:-webkit-box;overflow:hidden;font-size:13px;font-weight:600;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:2;">Attention Is All You Need</strong>
+                            <small style="overflow:hidden;color:#797873;font-size:11px;text-overflow:ellipsis;white-space:nowrap;">Vaswani et al. 2017</small>
+                          </div>
+                        </div>
+                      </div>
+                      <div style="position:relative;display:grid;gap:6px;padding:8px;border:2px dashed #1d628c;border-radius:5px;background:color-mix(in oklab,#1d628c 8%,#ffffff);">
+                        <div style="min-height:62px;"></div>
+                      </div>
+                      <div style="position:relative;display:grid;gap:6px;padding:8px;border-left:4px solid #1d628c;border-radius:5px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.25);">
+                        <div style="display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:62px;column-gap:10px;min-height:62px;overflow:hidden;">
+                          <span style="position:relative;display:block;width:46px;height:62px;flex:none;border:1px solid #d5d3cd;background:#ffffff;overflow:hidden;">
+                            <span style="position:absolute;left:5px;right:9px;top:6px;height:2px;background:#20201e;"></span>
+                            <span style="position:absolute;left:5px;right:24px;top:10px;height:2px;background:#20201e;"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:17px;height:12px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:33px;height:9px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:5px;right:5px;top:46px;height:10px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                          </span>
+                          <div style="display:grid;align-content:center;gap:4px;min-width:0;">
+                            <strong style="display:-webkit-box;overflow:hidden;font-size:13px;font-weight:600;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:2;">BERT: Pre-training of Deep Bidirectional Transformers</strong>
+                            <small style="overflow:hidden;color:#797873;font-size:11px;text-overflow:ellipsis;white-space:nowrap;">Devlin et al. 2019</small>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="position:absolute;left:154px;top:158px;width:254px;padding:8px;border-radius:5px;background:#ffffff;box-shadow:0 5px 15px rgba(0,0,0,0.25);transform:rotate(-1.6deg);">
+                    <div style="display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:62px;column-gap:10px;min-height:62px;overflow:hidden;">
+                      <span style="position:relative;display:block;width:46px;height:62px;flex:none;border:1px solid #d5d3cd;background:#ffffff;overflow:hidden;">
+                        <span style="position:absolute;left:5px;right:8px;top:6px;height:2px;background:#20201e;"></span>
+                        <span style="position:absolute;left:5px;right:20px;top:10px;height:2px;background:#20201e;"></span>
+                        <span style="position:absolute;left:5px;right:5px;top:17px;height:11px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                        <span style="position:absolute;left:5px;right:5px;top:32px;height:10px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                        <span style="position:absolute;left:5px;right:5px;top:46px;height:10px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                      </span>
+                      <div style="display:grid;align-content:center;gap:4px;min-width:0;">
+                        <strong style="display:-webkit-box;overflow:hidden;font-size:13px;font-weight:600;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:2;">Deep Residual Learning for Image Recognition</strong>
+                        <small style="overflow:hidden;color:#797873;font-size:11px;text-overflow:ellipsis;white-space:nowrap;">He et al. 2016</small>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="position:absolute;left:186px;top:344px;padding:6px 12px;border:1px solid #20201e;background:#20201e;color:#f8f8f6;font-size:11px;font-weight:500;letter-spacing:0.02em;white-space:nowrap;">Hold ⇧ to make a pile</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="position:relative;flex:0 0 20%;height:100%;overflow:hidden;background:#f8f8f6;">
+              <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(1.46);transform-origin:center center;">
+                <div style="position:relative;width:270px;padding-top:14px;">
+                  <header style="display:flex;min-height:32px;align-items:center;gap:6px;margin-inline:8px;padding:2px 0 7px;border-bottom:1px solid #d5d3cd;">
+                    <div style="display:flex;flex:1 1 auto;min-width:0;align-items:baseline;gap:7px;">
+                      <strong style="font-size:13px;font-weight:600;">Method</strong>
+                      <span style="color:#797873;font-size:11px;font-variant-numeric:tabular-nums;">5</span>
+                    </div>
+                    <span style="display:grid;width:22px;height:22px;place-items:center;color:#797873;opacity:0.62;font-size:13px;">⋮</span>
+                  </header>
+
+                  <div style="padding:6px 8px 8px;display:flex;flex-direction:column;gap:0;">
+
+                    <div style="position:relative;display:grid;gap:0;padding:0;overflow:hidden;border-style:solid;border-color:#1d628c;border-width:2px 2px 0;border-radius:5px 5px 0 0;background:#ffffff;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 8px;background:color-mix(in oklab,#1d628c 8%,#f8f8f6);">
+                        <strong style="min-width:0;overflow:hidden;font-size:12.5px;font-weight:600;text-overflow:ellipsis;white-space:nowrap;">Positional encoding</strong>
+                        <span style="display:grid;width:22px;height:22px;flex:0 0 auto;place-items:center;border-radius:2px;color:#797873;opacity:0.62;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"></path></svg></span>
+                      </div>
+                    </div>
+
+                    <div style="position:relative;display:grid;gap:6px;padding:7px;border-style:solid;border-color:#1d628c;border-width:0 2px;background:#ffffff;">
+                      <div style="display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:62px;column-gap:10px;min-height:62px;overflow:hidden;">
+                        <span style="position:relative;display:block;width:46px;height:62px;flex:none;border:1px solid #d5d3cd;background:#ffffff;overflow:hidden;">
+                          <span style="position:absolute;left:5px;right:11px;top:6px;height:2px;background:#20201e;"></span>
+                          <span style="position:absolute;left:5px;right:5px;top:13px;height:10px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                          <span style="position:absolute;left:5px;right:5px;top:27px;height:16px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                          <span style="position:absolute;left:5px;right:5px;top:47px;height:9px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                        </span>
+                        <div style="display:grid;align-content:center;gap:4px;min-width:0;">
+                          <strong style="display:-webkit-box;overflow:hidden;font-size:13px;font-weight:600;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:2;">Attention Is All You Need</strong>
+                          <small style="overflow:hidden;color:#797873;font-size:11px;text-overflow:ellipsis;white-space:nowrap;">Vaswani et al. 2017</small>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="position:relative;display:grid;gap:6px;padding:7px;overflow:hidden;border-style:solid;border-color:#1d628c;border-width:0 2px 2px;border-radius:0 0 5px 5px;background:#ffffff;margin-bottom:9px;" style-before="content:'';position:absolute;top:0;left:1px;right:1px;height:1px;background:#ebeae6;">
+                      <div style="display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:62px;column-gap:10px;min-height:62px;overflow:hidden;">
+                        <span style="position:relative;display:block;width:46px;height:62px;flex:none;border:1px solid #d5d3cd;background:#ffffff;overflow:hidden;">
+                          <span style="position:absolute;left:5px;right:16px;top:6px;height:2px;background:#20201e;"></span>
+                          <span style="position:absolute;left:5px;right:5px;top:13px;height:13px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                          <span style="position:absolute;right:5px;top:30px;width:14px;height:11px;border:1px solid #d5d3cd;background:#e8e8e4;"></span>
+                          <span style="position:absolute;left:5px;right:22px;top:30px;height:12px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                          <span style="position:absolute;left:5px;right:5px;top:46px;height:10px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                        </span>
+                        <div style="display:grid;align-content:center;gap:4px;min-width:0;">
+                          <strong style="display:-webkit-box;overflow:hidden;font-size:13px;font-weight:600;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:2;">Self-Attention with Relative Position Representations</strong>
+                          <small style="overflow:hidden;color:#797873;font-size:11px;text-overflow:ellipsis;white-space:nowrap;">Shaw et al. 2018</small>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="position:relative;display:grid;gap:6px;padding:8px;border-radius:5px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.25);" style-before="content:'';position:absolute;inset:0;border-radius:5px;background:#ffffff;z-index:-1;transform:translate(3px,3px);box-shadow:0 1px 2px rgba(0,0,0,0.25);" style-after="content:'';position:absolute;inset:0;border-radius:5px;background:#ffffff;z-index:-2;transform:translate(6px,6px);box-shadow:0 0.5px 1px rgba(0,0,0,0.25);">
+                      <div style="position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;height:62px;width:100%;overflow:hidden;text-align:left;">
+                        <div style="display:flex;align-items:stretch;height:62px;overflow:hidden;">
+                          <span style="position:relative;display:block;flex:none;width:40px;height:62px;border:1px solid #ebeae6;background:#ffffff;overflow:hidden;">
+                            <span style="position:absolute;left:4px;right:10px;top:6px;height:2px;background:#20201e;"></span>
+                            <span style="position:absolute;left:4px;right:4px;top:13px;height:11px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:4px;right:4px;top:28px;height:14px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                          </span>
+                          <span style="position:relative;display:block;flex:none;width:40px;height:62px;margin-left:-28px;border:1px solid #ebeae6;background:#ffffff;overflow:hidden;">
+                            <span style="position:absolute;left:4px;right:8px;top:6px;height:2px;background:#20201e;"></span>
+                            <span style="position:absolute;left:4px;right:4px;top:13px;height:13px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:4px;right:4px;top:30px;height:12px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                          </span>
+                          <span style="position:relative;display:block;flex:none;width:40px;height:62px;margin-left:-28px;border:1px solid #ebeae6;background:#ffffff;overflow:hidden;">
+                            <span style="position:absolute;left:4px;right:12px;top:6px;height:2px;background:#20201e;"></span>
+                            <span style="position:absolute;left:4px;right:4px;top:13px;height:10px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                            <span style="position:absolute;left:4px;right:4px;top:27px;height:15px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                          </span>
+                        </div>
+                        <div style="display:grid;align-content:center;gap:4px;min-width:0;">
+                          <strong style="display:-webkit-box;overflow:hidden;font-size:13px;font-weight:600;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:2;">Normalization tricks</strong>
+                          <small style="color:#797873;font-size:11px;">3 papers</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="position:relative;flex:0 0 20%;height:100%;overflow:hidden;background:#e8e8e4;">
+              <div style="position:absolute;left:50%;top:-32px;transform:translateX(-50%) scale(1.06);transform-origin:top center;">
+                <div style="position:relative;width:520px;min-height:760px;background:#ffffff;box-shadow:0 1px 4px rgba(0,0,0,0.28);padding:54px 62px;">
+                  <div style="font-family:Georgia,'Times New Roman',serif;font-size:11px;font-weight:700;line-height:1.3;margin-bottom:9px;">3.2&nbsp;&nbsp;Scaled dot-product attention</div>
+                  <p style="margin:0 0 9px;font-family:Georgia,'Times New Roman',serif;font-size:9.5px;line-height:1.6;text-align:justify;color:#20201e;">We compute attention as a weighted sum over value vectors, where the weight assigned to each value follows from a compatibility function <span style="display:inline-block;padding:0 2px;border:1px solid #02486c;border-radius:2px;background:color-mix(in oklab,#1d628c 25%,transparent);">[12]</span> of the query with the corresponding key. Scaling the dot products by the square root of the key dimension keeps the softmax in a regime with useful gradients, an adjustment first reported for deep recurrent stacks. Without it the products grow with dimension and the distribution saturates.</p>
+                  <p style="margin:0 0 9px;font-family:Georgia,'Times New Roman',serif;font-size:9.5px;line-height:1.6;text-align:justify;color:#20201e;">In practice we found it useful to project queries, keys and values several times with different learned matrices and to run the attention function in parallel over those projections. Concatenating the results recovers a representation of the same width as a single full-dimensional head at roughly the same cost <span style="display:inline-block;padding:0 2px;border:1px solid color-mix(in oklab,#1d628c 45%,transparent);border-radius:2px;background:color-mix(in oklab,#1d628c 12%,transparent);">[7]</span>.</p>
+                  <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:9.5px;line-height:1.6;text-align:justify;color:#20201e;">The same formulation covers the encoder–decoder case: queries come from the previous decoder layer while keys and values come from the encoder output, so every position in the decoder may attend over the whole input sequence.</p>
+
+                  <div style="position:absolute;top:124px;left:96px;z-index:10;display:flex;flex-direction:column;width:360px;padding:10px;border:1px solid #ebeae6;border-radius:8px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.25),0 6px 18px rgba(0,0,0,0.08);">
+                    <div style="display:grid;min-width:0;gap:4px;text-align:left;">
+                      <strong style="font-size:13px;font-weight:600;line-height:1.25;">Layer Normalization</strong>
+                      <span style="overflow:hidden;color:#797873;font-size:11px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap;">Ba, Kiros, Hinton 2016</span>
+                      <span style="color:#797873;font-size:11px;line-height:1.35;">arXiv preprint arXiv:1607.06450</span>
+                      <span style="display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;margin-top:4px;padding-top:8px;border-top:1px solid #ebeae6;color:#4b4a47;font-size:12.5px;line-height:1.4;">Training state-of-the-art, deep neural networks is computationally expensive. One way of reducing the training time is to normalize the activities of the neurons.</span>
+                      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px;">
+                        <div style="position:relative;display:flex;min-width:0;min-height:30px;border:1px solid #d5d3cd;border-radius:5px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.12);">
+                          <span style="display:inline-flex;min-width:0;flex:1;align-items:center;justify-content:center;gap:6px;padding:5px 8px;color:#4b4a47;font-size:12.5px;line-height:1.2;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#797873" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>
+                            <span>Open</span>
+                          </span>
+                          <span style="display:inline-grid;width:29px;flex:0 0 29px;place-items:center;border-left:1px solid #d5d3cd;color:#4b4a47;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#797873" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+                          </span>
+                        </div>
+                        <div style="display:inline-flex;min-height:30px;align-items:center;justify-content:center;gap:6px;padding:5px 6px;border:1px solid #d5d3cd;border-radius:5px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.12);color:#4b4a47;font-size:12.5px;line-height:1.2;">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#797873" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">BibTeX</span>
+                        </div>
+                        <div style="display:inline-flex;min-height:30px;align-items:center;justify-content:center;gap:6px;padding:5px 6px;border:1px solid #d5d3cd;border-radius:5px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.12);color:#4b4a47;font-size:12.5px;line-height:1.2;">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#797873" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"></path><circle cx="16.5" cy="7.5" r=".5" fill="#797873"></circle></svg>
+                          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Citation key</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="position:relative;flex:0 0 20%;height:100%;overflow:hidden;background:#e8e8e4;">
+              <div style="position:absolute;left:50%;top:-48px;transform:translateX(-50%) scale(1.2);transform-origin:top center;">
+                <div style="position:relative;width:520px;min-height:700px;background:#ffffff;box-shadow:0 1px 4px rgba(0,0,0,0.28);padding:54px 62px;">
+                  <div style="font-family:Georgia,'Times New Roman',serif;font-size:11px;font-weight:700;line-height:1.3;margin-bottom:9px;">3.2&nbsp;&nbsp;Scaled dot-product attention</div>
+                  <p style="margin:0 0 9px;font-family:Georgia,'Times New Roman',serif;font-size:9.5px;line-height:1.7;text-align:justify;color:#20201e;">We compute attention as a weighted sum over value vectors, where the weight assigned to each value follows from a compatibility function of the query with the corresponding key.</p>
+                  <p style="position:relative;margin:0 0 9px;font-family:Georgia,'Times New Roman',serif;font-size:9.5px;line-height:1.7;text-align:justify;color:#20201e;"><span style="background:#FFCD45;">Scaling the dot products by the square root of the key dimension keeps the softmax in a regime with useful gradients</span>, an adjustment first reported for deep recurrent stacks. Without it the products grow with dimension and the distribution saturates.
+                    <span style="position:absolute;left:104px;top:-30px;display:inline-block;padding:5px 9px;border:1px solid #8a741f;border-radius:4px;background:#ffdf65;box-shadow:0 2px 8px rgba(0,0,0,0.22);color:#211a05;font:12px system-ui,sans-serif;white-space:nowrap;">Highlight</span>
+                  </p>
+                  <p style="margin:0 0 9px;font-family:Georgia,'Times New Roman',serif;font-size:9.5px;line-height:1.7;text-align:justify;color:#20201e;">In practice we found it useful to project queries, keys and values several times with different learned matrices and to run the attention function in parallel over those projections. Concatenating the results recovers a representation of the same width as a single full-dimensional head.</p>
+                  <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:9.5px;line-height:1.7;text-align:justify;color:#20201e;">The same formulation covers the encoder–decoder case: queries come from the previous decoder layer while keys and values come from the encoder output.</p>
+                </div>
+              </div>
+              <div style="position:absolute;top:4px;right:4px;bottom:4px;width:6px;">
+                <span style="position:absolute;right:0;top:33%;width:100%;height:3px;background:color-mix(in oklab,#ffcd45 88%,#9a7526);"></span>
+                <span style="position:absolute;right:0;top:37%;width:100%;height:3px;background:color-mix(in oklab,#ffcd45 88%,#9a7526);"></span>
+                <span style="position:absolute;right:0;top:64%;width:100%;height:3px;background:color-mix(in oklab,#ffcd45 88%,#9a7526);"></span>
+              </div>
+            </div>
+
+            <div style="position:relative;flex:0 0 20%;height:100%;overflow:hidden;background:#f8f8f6;">
+              <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(1.2);transform-origin:center center;">
+               <div style="position:relative;width:562px;height:326px;">
+
+                <div style="position:absolute;left:0;top:0;width:254px;display:grid;gap:6px;padding:8px;border-radius:5px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.25);">
+                  <div style="display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:62px;column-gap:10px;min-height:62px;overflow:hidden;">
+                    <span style="position:relative;display:block;width:46px;height:62px;flex:none;border:1px solid #d5d3cd;background:#ffffff;overflow:hidden;">
+                      <span style="position:absolute;left:5px;right:14px;top:6px;height:2px;background:#20201e;"></span>
+                      <span style="position:absolute;left:5px;right:5px;top:13px;height:14px;background:repeating-linear-gradient(180deg,#b3b1a9 0 1px,transparent 1px 3px);"></span>
+                      <span style="position:absolute;left:5px;right:5px;top:32px;height:8px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                      <span style="position:absolute;left:5px;right:5px;top:44px;height:13px;background:repeating-linear-gradient(180deg,#c9c7c0 0 1px,transparent 1px 3px);"></span>
+                    </span>
+                    <div style="display:grid;align-content:center;gap:4px;min-width:0;">
+                      <strong style="display:-webkit-box;overflow:hidden;font-size:13px;font-weight:600;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:2;">Attention Is All You Need</strong>
+                      <small style="overflow:hidden;color:#797873;font-size:11px;text-overflow:ellipsis;white-space:nowrap;">Vaswani et al. 2017</small>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="position:absolute;left:36px;top:62px;display:grid;width:236px;padding:4px;border:1px solid #ebeae6;border-radius:8px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.25),0 8px 22px rgba(0,0,0,0.10);">
+                  <div style="display:grid;gap:1px;">
+                    <div style="display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:8px;min-height:28px;padding:5px 7px;border-radius:5px;color:#20201e;font-size:12.5px;line-height:1.2;white-space:nowrap;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#797873" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
+                      <span>Open</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:8px;min-height:28px;padding:5px 7px;border-radius:5px;color:#20201e;font-size:12.5px;line-height:1.2;white-space:nowrap;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#797873" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"></path></svg>
+                      <span>Show in Folder</span>
+                    </div>
+                  </div>
+                  <hr style="width:100%;margin:4px 0;border:0;border-top:1px solid #ebeae6;" />
+                  <div style="display:grid;gap:1px;">
+                    <div style="display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:8px;min-height:28px;padding:5px 7px;border-radius:5px;color:#20201e;font-size:12.5px;line-height:1.2;white-space:nowrap;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#797873" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                      <span>Copy BibTeX</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:8px;min-height:28px;padding:5px 7px;border-radius:5px;background:color-mix(in oklab,#1d628c 8%,#f8f8f6);color:#02486c;font-size:12.5px;line-height:1.2;white-space:nowrap;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1d628c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path></svg>
+                      <span>Copy as LaTeX</span>
+                    </div>
+                  </div>
+                  <hr style="width:100%;margin:4px 0;border:0;border-top:1px solid #ebeae6;" />
+                  <div style="display:grid;gap:1px;">
+                    <div style="display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:8px;min-height:28px;padding:5px 7px;border-radius:5px;color:#20201e;font-size:12.5px;line-height:1.2;white-space:nowrap;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#797873" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a1 1 0 0 1-1-1v-3H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-3.6l-3.7 3.7A1 1 0 0 1 12 22"></path><path d="M8 8h8"></path><path d="M8 12h6"></path></svg>
+                      <span>Add note…</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:8px;min-height:28px;padding:5px 7px;border-radius:5px;color:#20201e;font-size:12.5px;line-height:1.2;white-space:nowrap;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#797873" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><circle cx="12" cy="12" r="3"></circle><path d="m16 16-1.9-1.9"></path></svg>
+                      <span>Analyze again</span>
+                    </div>
+                  </div>
+                  <hr style="width:100%;margin:4px 0;border:0;border-top:1px solid #ebeae6;" />
+                  <div style="display:grid;gap:1px;">
+                    <div style="display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:8px;min-height:28px;padding:5px 7px;border-radius:5px;color:color-mix(in oklab,#94402f 80%,#20201e);font-size:12.5px;line-height:1.2;white-space:nowrap;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94402f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 13h6"></path><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                      <span>Remove from project</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="position:absolute;left:302px;top:16px;width:260px;">
+                  <div style="font-size:10.5px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:#797873;margin-bottom:8px;">On your clipboard</div>
+                  <pre style="margin:0;padding:13px 14px;background:#f1f1ee;border:1px solid #d5d3cd;border-radius:5px;font-family:ui-monospace,'SF Mono','Menlo','Consolas',monospace;font-size:10px;line-height:1.85;color:#4b4a47;white-space:pre-wrap;overflow:hidden;">The dominant sequence transduction models are based on complex recurrent or convolutional neural networks. <span style="color:#1d628c;">\cite{vaswani2017attention}</span>
+
+We propose a new simple network architecture, the Transformer, based solely on attention mechanisms. <span style="color:#1d628c;">\cite{vaswani2017attention}</span>
+
+Self-attention layers connect all positions with a constant number of sequential operations. <span style="color:#1d628c;">\cite{vaswani2017attention}</span></pre>
+                </div>
+               </div>
+              </div>
+            </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <main class="sheet">
       <div class="wrap">
         <h2>macOS will say it's damaged. It isn't.</h2>
@@ -526,6 +1024,77 @@ npm run install:local</pre>
         } catch (_) {
           /* static link stands */
         }
+      })();
+    </script>
+
+    <script>
+      // Feature showcase: vertical tabs drive one horizontal track. The stage is
+      // authored at 700×500 and scaled as a whole, so each illustration keeps its
+      // composition (and its margins) at any width instead of being cropped.
+      (() => {
+        const root = document.querySelector(".features");
+        if (!root) return;
+        const list = root.querySelector(".tablist");
+        const tabs = [...list.querySelectorAll("button")];
+        const ind = list.querySelector(".ind");
+        const frame = root.querySelector(".frame");
+        const fit = root.querySelector(".fit");
+        const track = root.querySelector(".track");
+        const panels = [...track.children];
+        const W = 700;
+        const H = 500;
+        let current = 0;
+
+        panels.forEach((panel, k) => {
+          panel.id = "feat-panel-" + k;
+          panel.setAttribute("role", "tabpanel");
+          panel.setAttribute("aria-labelledby", "feat-tab-" + k);
+        });
+
+        function scaleStage() {
+          const scale = Math.min(1, frame.clientWidth / W);
+          fit.style.height = H / scale + "px";
+          fit.style.transform = "translate(-50%,-50%) scale(" + scale + ")";
+        }
+
+        function show(n) {
+          current = n;
+          track.style.transform = "translateX(" + -n * 20 + "%)";
+          ind.style.height = tabs[n].offsetHeight + "px";
+          ind.style.transform = "translateY(" + tabs[n].offsetTop + "px)";
+          tabs.forEach((tab, k) => {
+            tab.setAttribute("aria-selected", String(k === n));
+            tab.tabIndex = k === n ? 0 : -1;
+          });
+          panels.forEach((panel, k) => {
+            panel.hidden = false;
+            panel.setAttribute("aria-hidden", String(k !== n));
+          });
+        }
+
+        tabs.forEach((tab, k) => tab.addEventListener("click", () => show(k)));
+        list.addEventListener("keydown", (event) => {
+          const step =
+            event.key === "ArrowDown" || event.key === "ArrowRight"
+              ? 1
+              : event.key === "ArrowUp" || event.key === "ArrowLeft"
+                ? -1
+                : 0;
+          if (!step) return;
+          event.preventDefault();
+          const next = (current + step + tabs.length) % tabs.length;
+          show(next);
+          tabs[next].focus();
+        });
+
+        if (typeof ResizeObserver !== "undefined") {
+          new ResizeObserver(scaleStage).observe(frame);
+        } else {
+          window.addEventListener("resize", scaleStage);
+        }
+        scaleStage();
+        show(0);
+        window.addEventListener("load", () => show(current));
       })();
     </script>
   </body>

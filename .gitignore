@@ -25,7 +25,7 @@
 # (the SVG, and the two PNGs tiffutil combines) or a preview.
 /src-tauri/dmg/*
 !/src-tauri/dmg/background.tiff
-
+scripts/__pycache__
 # Local application data and temporary files
 /tmp/
 *.sqlite
