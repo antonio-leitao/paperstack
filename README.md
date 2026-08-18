@@ -11,7 +11,13 @@
     <img alt="macOS" src="https://img.shields.io/badge/macOS-black?style=for-the-badge&logo=apple&logoColor=white">
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge">
   </p>
+  <p><a href="https://antonio-leitao.github.io/paperstack/"><b>antonio-leitao.github.io/paperstack</b></a></p>
 </div>
+
+<p align="center">
+  <img src="design_system/paperstack-board.svg" width="720"
+       alt="A PaperStack board: papers filed under columns named To read and Method, with one card mid-drag between them and a hint reading Hold shift to make a pile.">
+</p>
 
 #
 
